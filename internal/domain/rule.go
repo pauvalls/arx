@@ -2,6 +2,7 @@ package domain
 
 import (
 	"fmt"
+	"strings"
 )
 
 // RuleType defines the type of architectural rule
@@ -18,6 +19,28 @@ const (
 	RuleTypeMustNotCircular RuleType = "MustNotCircular"
 )
 
+// UnmarshalYAML implements yaml.Unmarshaler for RuleType (case-insensitive)
+func (rt *RuleType) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var s string
+	if err := unmarshal(&s); err != nil {
+		return err
+	}
+	// Normalize to title case for comparison
+	switch strings.Title(strings.ToLower(s)) {
+	case "Cannot":
+		*rt = RuleTypeCannot
+	case "Must":
+		*rt = RuleTypeMust
+	case "Can":
+		*rt = RuleTypeCan
+	case "MustNotCircular":
+		*rt = RuleTypeMustNotCircular
+	default:
+		*rt = RuleType(s) // Allow custom types
+	}
+	return nil
+}
+
 // Severity defines the severity level of a rule violation
 type Severity string
 
@@ -26,6 +49,26 @@ const (
 	SeverityWarning Severity = "warning"
 	SeverityInfo    Severity = "info"
 )
+
+// UnmarshalYAML implements yaml.Unmarshaler for Severity (case-insensitive)
+func (s *Severity) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var sev string
+	if err := unmarshal(&sev); err != nil {
+		return err
+	}
+	// Normalize to lowercase
+	switch strings.ToLower(sev) {
+	case "error":
+		*s = SeverityError
+	case "warning":
+		*s = SeverityWarning
+	case "info":
+		*s = SeverityInfo
+	default:
+		*s = Severity(sev) // Allow custom severities
+	}
+	return nil
+}
 
 // Rule represents an architectural rule between layers
 type Rule struct {

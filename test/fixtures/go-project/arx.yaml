@@ -1,0 +1,51 @@
+version: "1.0"
+
+layers:
+  - name: domain
+    description: "Core business logic"
+    paths:
+      - "internal/domain/**"
+  - name: application
+    description: "Use cases and orchestration"
+    paths:
+      - "internal/application/**"
+  - name: infrastructure
+    description: "External implementations"
+    paths:
+      - "internal/infrastructure/**"
+
+rules:
+  - id: domain-cannot-depend-on-infrastructure
+    from: domain
+    to: [infrastructure]
+    type: cannot
+    severity: error
+    explanation: |
+      The domain layer is the heart of your business logic. It should
+      not know HOW data is persisted — only THAT it is persisted.
+      If domain imports your database driver, changing from PostgreSQL
+      to MongoDB requires modifying business rules.
+
+  - id: application-must-depend-on-domain
+    from: application
+    to: [domain]
+    type: must
+    severity: error
+    explanation: |
+      The application layer exists to orchestrate domain operations.
+      If it doesn't depend on domain, business logic has leaked into
+      application or the use case is empty.
+
+  - id: application-cannot-depend-on-infrastructure
+    from: application
+    to: [infrastructure]
+    type: cannot
+    severity: warning
+    explanation: |
+      Application should depend on abstractions (ports), not concrete
+      infrastructure. Use interfaces and inject implementations at the
+      composition root.
+
+exclude:
+  - "**/*_test.go"
+  - "vendor/**"

@@ -1,0 +1,22 @@
+version: "1.0"
+layers:
+  - name: domain
+    description: "Core business logic"
+    paths:
+      - "src/domain/**"
+  - name: application
+    description: "Use cases"
+    paths:
+      - "src/application/**"
+  - name: infrastructure
+    description: "External implementations"
+    paths:
+      - "src/infrastructure/**"
+rules:
+  - id: domain-cannot-depend-on-infrastructure
+    from: domain
+    to: [infrastructure]
+    type: cannot
+    severity: error
+    explanation: |
+      The domain layer should not know about infrastructure details.
