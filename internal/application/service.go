@@ -54,6 +54,11 @@ func (s *InitService) Init(projectRoot, outputPath string) (*domain.Config, erro
 	return config, nil
 }
 
+// Writer returns the FileWriter dependency for use in InitWithPreset.
+func (s *InitService) Writer() ports.FileWriter {
+	return s.writer
+}
+
 // CheckService wraps the Check use case functions with dependency injection.
 // It provides a clean API for running architecture checks on a project.
 type CheckService struct {

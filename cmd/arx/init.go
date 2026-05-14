@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/pauvalls/arx/internal/application"
 	"github.com/spf13/cobra"
 )
 
@@ -35,11 +36,13 @@ Example:
 var (
 	initOutput string
 	initForce  bool
+	initPreset string
 )
 
 func init() {
 	initCmd.Flags().StringVarP(&initOutput, "output", "o", "arx.yaml", "Output file path for the generated configuration")
 	initCmd.Flags().BoolVarP(&initForce, "force", "f", false, "Overwrite existing configuration file")
+	initCmd.Flags().StringVarP(&initPreset, "preset", "p", "", "Use a preset template (clean, hexagonal, ddd)")
 	rootCmd.AddCommand(initCmd)
 }
 
@@ -68,28 +71,62 @@ func runInit(cmd *cobra.Command, args []string) error {
 		outputPath = filepath.Join(projectRoot, outputPath)
 	}
 
-	if _, err := os.Stat(outputPath); err == nil && !initForce {
-		return fmt.Errorf("configuration file already exists: %s\nUse --force to overwrite", outputPath)
-	}
-
-	// Create service and run init
-	service := newInitService()
-	config, err := service.Init(projectRoot, outputPath)
-	if err != nil {
-		return fmt.Errorf("failed to initialize configuration: %w", err)
-	}
-
-	// Print success message
-	fmt.Printf("✓ Written to %s\n", outputPath)
-	fmt.Printf("  Detected %d layer(s): ", len(config.Layers))
-	for i, layer := range config.Layers {
-		if i > 0 {
-			fmt.Print(", ")
+	if !initForce {
+		if _, err := os.Stat(outputPath); err == nil {
+			return fmt.Errorf("configuration file already exists: %s\nUse --force to overwrite", outputPath)
 		}
-		fmt.Print(layer.Name)
 	}
-	fmt.Println()
-	fmt.Printf("  Generated %d rule(s)\n", len(config.Rules))
+
+	// Create service
+	service := newInitService()
+
+	// Handle preset vs auto-detect
+	if initPreset != "" {
+		// Use preset
+		presetService := application.NewPresetService()
+		err := application.InitWithPreset(initPreset, outputPath, initForce, service.Writer(), presetService)
+		if err != nil {
+			return fmt.Errorf("failed to initialize with preset %q: %w", initPreset, err)
+		}
+
+		// Load config for display
+		config, err := presetService.LoadPreset(initPreset)
+		if err != nil {
+			// Config was written, so just warn about display
+			fmt.Fprintf(os.Stderr, "Warning: could not load preset for display: %v\n", err)
+		} else {
+			// Print success message with preset info
+			fmt.Printf("✓ Written to %s (preset: %s)\n", outputPath, initPreset)
+			fmt.Printf("  Loaded %d layer(s): ", len(config.Layers))
+			for i, layer := range config.Layers {
+				if i > 0 {
+					fmt.Print(", ")
+				}
+				fmt.Print(layer.Name)
+			}
+			fmt.Println()
+			fmt.Printf("  Generated %d rule(s)\n", len(config.Rules))
+		}
+	} else {
+		// Auto-detect (existing behavior)
+		config, err := service.Init(projectRoot, outputPath)
+		if err != nil {
+			return fmt.Errorf("failed to initialize configuration: %w", err)
+		}
+
+		// Print success message
+		fmt.Printf("✓ Written to %s\n", outputPath)
+		fmt.Printf("  Detected %d layer(s): ", len(config.Layers))
+		for i, layer := range config.Layers {
+			if i > 0 {
+				fmt.Print(", ")
+			}
+			fmt.Print(layer.Name)
+		}
+		fmt.Println()
+		fmt.Printf("  Generated %d rule(s)\n", len(config.Rules))
+	}
+
 	fmt.Println()
 	fmt.Println("Review and adjust the configuration before running 'arx check'.")
 

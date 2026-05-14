@@ -1,0 +1,178 @@
+# Arx Architecture Configuration
+# Preset: Domain-Driven Design (DDD)
+# 
+# This preset implements DDD strategic/tactical patterns with 4 layers:
+# - domain: Domain model with entities, value objects, aggregates, domain services
+# - application: Application services, DTOs, use case orchestration
+# - infrastructure: Repository implementations, external services, messaging
+# - interfaces: Public API, CLI, event handlers, subscribers
+#
+# ⚠️  This is a starting point. Review and customize before running 'arx check'.
+# See: https://arx.cli/docs/presets for available presets
+
+version: "1.0"
+
+layers:
+  - name: domain
+    description: "Domain model: entities, value objects, aggregates, domain services, domain events"
+    paths:
+      - "internal/domain/**"
+      - "domain/**"
+      - "internal/model/**"
+      - "model/**"
+    tags:
+      - "entities"
+      - "value-objects"
+      - "aggregates"
+      - "domain-services"
+
+  - name: application
+    description: "Application services, use cases, command/query handlers, DTOs"
+    paths:
+      - "internal/application/**"
+      - "application/**"
+      - "internal/app/**"
+      - "app/**"
+      - "usecases/**"
+    tags:
+      - "application-services"
+      - "use-cases"
+      - "cqrs"
+
+  - name: infrastructure
+    description: "Repository implementations, external services, event bus, messaging, persistence"
+    paths:
+      - "internal/infrastructure/**"
+      - "infrastructure/**"
+      - "internal/infra/**"
+      - "infra/**"
+      - "persistence/**"
+      - "repositories/**"
+    tags:
+      - "repositories"
+      - "external-services"
+      - "event-bus"
+
+  - name: interfaces
+    description: "Public APIs, CLI commands, event handlers, subscribers, web controllers"
+    paths:
+      - "internal/interfaces/**"
+      - "interfaces/**"
+      - "internal/api/**"
+      - "api/**"
+      - "internal/handlers/**"
+      - "handlers/**"
+      - "cmd/**"
+    tags:
+      - "api"
+      - "cli"
+      - "events"
+
+rules:
+  # Core DDD rules
+  - id: domain-isolation
+    from: domain
+    to:
+      - application
+      - infrastructure
+      - interfaces
+    type: Cannot
+    severity: error
+    explanation: |
+      The domain layer must be completely isolated from external concerns.
+      Domain entities should contain only business logic, without dependencies
+      on application services, infrastructure, or interface adapters.
+      This ensures the domain model remains pure and testable.
+
+  - id: application-dependency
+    from: application
+    to:
+      - domain
+    type: Must
+    severity: error
+    explanation: |
+      Application services must depend on the domain. If an application service
+      doesn't use domain types, it's either a CRUD operation (consider removing)
+      or the domain logic has leaked into the application layer.
+
+  - id: application-isolation
+    from: application
+    to:
+      - infrastructure
+      - interfaces
+    type: Cannot
+    severity: error
+    explanation: |
+      Application services orchestrate domain operations but must not depend on
+      infrastructure implementations or interface adapters. Use dependency inversion:
+      define repository interfaces in application (or domain), implement in infrastructure.
+
+  - id: infrastructure-dependency
+    from: infrastructure
+    to:
+      - domain
+      - application
+    type: Can
+    severity: info
+    explanation: |
+      Infrastructure implementations depend on domain types (entities, value objects)
+      and application interfaces (repository interfaces). This is correct DDD:
+      outer layers depend on inner abstractions.
+
+  - id: interfaces-dependency
+    from: interfaces
+    to:
+      - application
+    type: Must
+    severity: error
+    explanation: |
+      Interfaces (APIs, CLI, handlers) must depend on application services.
+      Interfaces should not call domain directly — application services handle
+      transaction boundaries, validation, and orchestration.
+
+  - id: interfaces-isolation
+    from: interfaces
+    to:
+      - infrastructure
+    type: Cannot
+    severity: warning
+    explanation: |
+      Interfaces should not directly depend on infrastructure. If an interface
+      needs infrastructure, it should go through application services.
+      Exception: composition root / dependency injection configuration.
+
+  - id: no-circular-dependencies
+    from: domain
+    to:
+      - application
+      - infrastructure
+      - interfaces
+    type: MustNotCircular
+    severity: error
+    explanation: |
+      Circular dependencies violate DDD layering. Dependencies must flow:
+      interfaces → application → domain (inward) and infrastructure → application/domain.
+
+exclude:
+  - "**/*_test.go"
+  - "**/*.spec.ts"
+  - "**/*.test.ts"
+  - "vendor/**"
+  - "node_modules/**"
+  - ".git/**"
+  - "dist/**"
+  - "build/**"
+  - "generated/**"
+
+language_overrides:
+  go:
+    extensions:
+      - ".go"
+    comment: "//"
+    import: "import"
+  typescript:
+    extensions:
+      - ".ts"
+      - ".tsx"
+    comment: "//"
+    import: "import"

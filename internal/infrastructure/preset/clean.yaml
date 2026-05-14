@@ -1,0 +1,146 @@
+# Arx Architecture Configuration
+# Preset: Clean Architecture
+# 
+# This preset implements Clean Architecture principles with 4 layers:
+# - domain: Business logic and entities (innermost)
+# - application: Use cases and orchestration
+# - infrastructure: External implementations (DB, APIs, frameworks)
+# - interface: Adapters for UI, Web, CLI (outermost)
+#
+# ⚠️  This is a starting point. Review and customize before running 'arx check'.
+# See: https://arx.cli/docs/presets for available presets
+
+version: "1.0"
+
+layers:
+  - name: domain
+    description: "Core business logic, entities, and domain services — no external dependencies"
+    paths:
+      - "internal/domain/**"
+      - "domain/**"
+      - "core/**"
+      - "entities/**"
+    tags:
+      - "business-logic"
+      - "innermost"
+
+  - name: application
+    description: "Use cases, application services, and orchestration logic"
+    paths:
+      - "internal/application/**"
+      - "application/**"
+      - "usecases/**"
+      - "services/**"
+    tags:
+      - "orchestration"
+      - "use-cases"
+
+  - name: infrastructure
+    description: "External implementations: databases, APIs, frameworks, third-party services"
+    paths:
+      - "internal/infrastructure/**"
+      - "infrastructure/**"
+      - "infra/**"
+      - "persistence/**"
+      - "repositories/**"
+    tags:
+      - "external"
+      - "implementations"
+
+  - name: interface
+    description: "Interface adapters: HTTP handlers, CLI commands, presenters, views"
+    paths:
+      - "internal/interface/**"
+      - "interface/**"
+      - "presentation/**"
+      - "handlers/**"
+      - "controllers/**"
+      - "cmd/**"
+      - "ui/**"
+    tags:
+      - "adapters"
+      - "outermost"
+
+rules:
+  # Core Clean Architecture rules
+  - id: domain-purity
+    from: domain
+    to:
+      - application
+      - infrastructure
+      - interface
+    type: Cannot
+    severity: error
+    explanation: |
+      The domain layer is the heart of your business logic. It must not depend on
+      any other layer. Domain entities should be pure POJOs/structs without framework
+      dependencies, database annotations, or application-specific logic.
+
+  - id: application-isolation
+    from: application
+    to:
+      - infrastructure
+      - interface
+    type: Cannot
+    severity: error
+    explanation: |
+      The application layer orchestrates domain operations but must not depend on
+      external implementations (infrastructure) or interface adapters. Use dependency
+      inversion: define interfaces in application, implement them in infrastructure.
+
+  - id: interface-direction
+    from: interface
+    to:
+      - application
+    type: Can
+    severity: info
+    explanation: |
+      Interface adapters depend on application use cases. This is the expected flow
+      in Clean Architecture: outer layers depend on inner layers, never the reverse.
+
+  - id: infrastructure-dependency
+    from: infrastructure
+    to:
+      - application
+      - domain
+    type: Can
+    severity: info
+    explanation: |
+      Infrastructure implementations depend on abstractions defined in inner layers.
+      This is correct: repositories implement interfaces, services use domain entities.
+
+  - id: no-circular-dependencies
+    from: domain
+    to:
+      - application
+      - infrastructure
+      - interface
+    type: MustNotCircular
+    severity: error
+    explanation: |
+      Circular dependencies violate the dependency rule of Clean Architecture.
+      Dependencies must always point inward: interface → infrastructure → application → domain
+
+exclude:
+  - "**/*_test.go"
+  - "**/*.spec.ts"
+  - "**/*.test.ts"
+  - "vendor/**"
+  - "node_modules/**"
+  - ".git/**"
+  - "dist/**"
+  - "build/**"
+  - "generated/**"
+
+language_overrides:
+  go:
+    extensions:
+      - ".go"
+    comment: "//"
+    import: "import"
+  typescript:
+    extensions:
+      - ".ts"
+      - ".tsx"
+    comment: "//"
+    import: "import"

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/pauvalls/arx/internal/domain"
 	"github.com/pauvalls/arx/internal/ports"
@@ -345,6 +346,48 @@ func WriteConfig(config *domain.Config, outputPath string, writer ports.FileWrit
 
 	// Add a header comment
 	header := "# Arx Architecture Configuration\n# Generated automatically — edit to customize\n\n"
+	content := append([]byte(header), yamlBytes...)
+
+	// Write using the port interface
+	if err := writer.Write(outputPath, content); err != nil {
+		return fmt.Errorf("failed to write config: %w", err)
+	}
+
+	return nil
+}
+
+// InitWithPreset initializes a project using a preset template
+func InitWithPreset(presetName, outputPath string, force bool, writer ports.FileWriter, presetService ports.PresetService) error {
+	// Load preset config
+	config, err := presetService.LoadPreset(presetName)
+	if err != nil {
+		return fmt.Errorf("failed to load preset %q: %w", presetName, err)
+	}
+
+	// Check if file exists and force flag
+	if !force {
+		if writer.Exists(outputPath) {
+			return fmt.Errorf("config file %q already exists. Use --force to overwrite", outputPath)
+		}
+	}
+
+	// Marshal to YAML
+	yamlBytes, err := yaml.Marshal(config)
+	if err != nil {
+		return fmt.Errorf("failed to marshal config to YAML: %w", err)
+	}
+
+	// Add header with preset info
+	header := fmt.Sprintf(
+		"# Arx Architecture Configuration\n"+
+			"# Preset: %s\n"+
+			"# Generated: %s\n"+
+			"#\n"+
+			"# ⚠️  This is a starting point. Review and customize before running 'arx check'.\n"+
+			"# See: https://arx.cli/docs/presets for available presets\n\n",
+		presetName,
+		time.Now().Format("2006-01-02T15:04:05Z07:00"),
+	)
 	content := append([]byte(header), yamlBytes...)
 
 	// Write using the port interface

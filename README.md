@@ -67,13 +67,54 @@ arx check --ci
 
 ---
 
+## 🆕 v0.5.0 New Features
+
+### Configuration Presets
+
+Start with battle-tested architecture templates:
+
+```bash
+arx init --preset clean        # Clean Architecture
+arx init --preset hexagonal    # Ports & Adapters
+arx init --preset ddd          # Domain-Driven Design
+```
+
+📚 **[Full Presets Guide →](docs/presets/README.md)**
+
+### Dependency Diagrams
+
+Visualize your architecture:
+
+```bash
+arx diagram                    # ASCII in terminal
+arx diagram --format dot       # Graphviz DOT
+arx diagram -o deps.dot        # Export to file
+```
+
+📚 **[Full Diagrams Guide →](docs/diagrams/README.md)**
+
+---
+
+## Documentation
+
+| Topic | Description |
+|-------|-------------|
+| **[Presets](docs/presets/README.md)** | Configuration presets for Clean, Hexagonal, and DDD architectures |
+| **[Diagrams](docs/diagrams/README.md)** | Generate and render dependency diagrams |
+| **[Commands](#commands)** | CLI reference |
+| **[Configuration](#configuration)** | arx.yaml format and examples |
+
+---
+
 ## Commands
 
 | Command | Description |
 |---------|-------------|
 | `arx init [path]` | Initialize arx.yaml configuration for a project |
+| `arx init --preset {clean,hexagonal,ddd}` | Initialize with a preset template |
 | `arx check [path]` | Run architecture audit against defined rules |
 | `arx check --ci` | JSON output for CI/CD pipelines (exit code 1 on violations) |
+| `arx diagram [path]` | Generate dependency diagram (ASCII or DOT) |
 | `arx explain <id>` | Show detailed guidance for a specific violation |
 | `arx --version` | Show version and build info |
 | `arx --help` | Show help for any command |
@@ -86,7 +127,34 @@ arx check --format json           # Explicit JSON output
 arx check --verbose               # Show detailed dependency info
 arx init --output config/arx.yaml # Write config to custom path
 arx init --force                  # Overwrite existing config
+arx init --preset clean           # Use Clean Architecture preset
+arx diagram --format dot          # Output Graphviz DOT format
+arx diagram -o deps.dot           # Write diagram to file
 ```
+
+---
+
+## Presets
+
+Arx includes three architecture presets based on established patterns. See **[Presets Guide](docs/presets/README.md)** for complete documentation.
+
+### Quick Reference
+
+| Preset | Best For | Layers |
+|--------|----------|--------|
+| **clean** | Web apps, services | domain, application, infrastructure, interface |
+| **hexagonal** | Testability, adapter swapping | domain, ports, adapters, infrastructure |
+| **ddd** | Complex business domains | domain, application, infrastructure, interfaces |
+
+### Usage
+
+```bash
+arx init --preset clean
+arx init --preset hexagonal
+arx init --preset ddd
+```
+
+Presets are starting points — review and customize the generated `arx.yaml` to match your architecture.
 
 ---
 
@@ -286,7 +354,34 @@ architecture-audit:
 
 ## Roadmap
 
-### ✅ v0.1.0 (Current — MVP)
+### ✅ v0.5.0 (Current — Presets + Diagrams)
+
+- [x] `arx init --preset {clean,hexagonal,ddd}` — Configuration presets
+- [x] `arx diagram` — Dependency graph (ASCII + Graphviz DOT)
+- [x] `arx diagram -o file.dot` — Export to Graphviz format
+- [x] Violation highlighting in diagrams (red edges, [!] markers)
+- [x] 3 preset templates: Clean, Hexagonal, DDD
+
+### ✅ v0.4.0
+
+- [x] Python detector (import extraction)
+- [x] TDD — 7 tests, 100% pass
+
+### ✅ v0.3.0
+
+- [x] `arx explain <id>` — Full detailed violation guidance
+- [x] `arx explain --list` — List all cached violations
+- [x] Circular dependency detection (DFS algorithm)
+- [x] TDD — 20+ tests for circular detection
+
+### ✅ v0.2.0
+
+- [x] SARIF 2.1.0 output (GitHub code scanning integration)
+- [x] Markdown report output
+- [x] Violation cache with 24h TTL
+- [x] Warning severity level support
+
+### ✅ v0.1.0 (MVP)
 
 - [x] `arx init` — Project scanning, language detection, config generation
 - [x] `arx check` — Rule evaluation with terminal output
@@ -296,28 +391,13 @@ architecture-audit:
 - [x] Built-in explanations library (12+ patterns)
 - [x] Hexagonal architecture (clean separation)
 
-### 🔜 v0.2.0
+### 🔜 v0.6.0
 
-- [ ] `arx explain <id>` — Full detailed violation guidance
-- [ ] SARIF output format (GitHub code scanning integration)
-- [ ] Markdown report output
-- [ ] Circular dependency detection
-- [ ] Warning severity level support
-
-### 🔜 v0.3.0
-
-- [ ] Python detector
 - [ ] Java detector
-- [ ] `arx diagram` — Dependency graph (Graphviz DOT)
+- [ ] GitHub Action wrapper (`arx-action`)
 - [ ] `arx audit` — Health report with trend tracking
+- [ ] Performance optimization for large codebases (>10k lines)
 - [ ] Layer coupling matrix visualization
-
-### 🔜 v0.4.0
-
-- [ ] `arx rules suggest` — Auto-suggest rules from project structure
-- [ ] GitHub Action wrapper
-- [ ] Git diff tracking (PR-only checks)
-- [ ] Configuration presets (Clean, Hexagonal, DDD)
 
 ---
 

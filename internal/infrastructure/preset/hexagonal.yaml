@@ -1,0 +1,166 @@
+# Arx Architecture Configuration
+# Preset: Hexagonal Architecture (Ports & Adapters)
+# 
+# This preset implements Hexagonal Architecture with 4 layers:
+# - domain: Business logic and domain model (center)
+# - ports: Interfaces defining contracts (boundaries)
+# - adapters: Implementations of ports (driving/driven)
+# - infrastructure: External concerns and shared utilities
+#
+# ⚠️  This is a starting point. Review and customize before running 'arx check'.
+# See: https://arx.cli/docs/presets for available presets
+
+version: "1.0"
+
+layers:
+  - name: domain
+    description: "Core business logic, domain model, and business rules — the heart of the application"
+    paths:
+      - "internal/domain/**"
+      - "domain/**"
+      - "core/**"
+      - "model/**"
+    tags:
+      - "business-logic"
+      - "center"
+
+  - name: ports
+    description: "Interfaces (ports) defining contracts between domain and external world"
+    paths:
+      - "internal/ports/**"
+      - "ports/**"
+      - "interfaces/**"
+    tags:
+      - "contracts"
+      - "boundaries"
+
+  - name: adapters
+    description: "Implementations of ports: driving (input) and driven (output) adapters"
+    paths:
+      - "internal/adapters/**"
+      - "adapters/**"
+      - "driving/**"
+      - "driven/**"
+    tags:
+      - "implementations"
+      - "primary"
+      - "secondary"
+
+  - name: infrastructure
+    description: "Shared infrastructure utilities, configuration, and cross-cutting concerns"
+    paths:
+      - "internal/infrastructure/**"
+      - "infrastructure/**"
+      - "infra/**"
+      - "config/**"
+      - "utils/**"
+    tags:
+      - "utilities"
+      - "shared"
+
+rules:
+  # Core Hexagonal Architecture rules
+  - id: domain-purity
+    from: domain
+    to:
+      - ports
+      - adapters
+      - infrastructure
+    type: Cannot
+    severity: error
+    explanation: |
+      The domain layer must be completely isolated. It should not know about ports,
+      adapters, or infrastructure. Domain entities are pure business objects without
+      any framework, database, or external system dependencies.
+
+  - id: ports-depend-on-domain
+    from: ports
+    to:
+      - domain
+    type: can
+    severity: info
+    explanation: |
+      Ports (interfaces) reference domain types. This is correct: ports define how
+      the outside world interacts with the domain model.
+
+  - id: ports-isolation
+    from: ports
+    to:
+      - adapters
+      - infrastructure
+    type: Cannot
+    severity: error
+    explanation: |
+      Ports are pure interfaces. They must not depend on adapter implementations
+      or infrastructure utilities. This ensures adapters can be swapped without
+      changing the port definitions.
+
+  - id: adapters-depend-on-ports
+    from: adapters
+    to:
+      - ports
+    type: Must
+    severity: error
+    explanation: |
+      Adapters must implement ports. This is the core of Hexagonal Architecture:
+      external systems connect through well-defined interfaces, not directly to
+      the domain.
+
+  - id: adapters-depend-on-domain
+    from: adapters
+    to:
+      - domain
+    type: Can
+    severity: info
+    explanation: |
+      Adapters may depend on domain types when implementing ports. This is expected:
+      a repository adapter returns domain entities, a controller uses domain input
+      objects.
+
+  - id: infrastructure-isolation
+    from: infrastructure
+    to:
+      - domain
+      - ports
+    type: Cannot
+    severity: warning
+    explanation: |
+      Infrastructure should be generic and not depend on domain-specific logic.
+      If infrastructure needs domain types, consider moving that type to infrastructure
+      or creating a shared kernel.
+
+  - id: no-circular-dependencies
+    from: domain
+    to:
+      - ports
+      - adapters
+      - infrastructure
+    type: MustNotCircular
+    severity: error
+    explanation: |
+      Circular dependencies break the hexagonal model. Dependencies flow:
+      adapters → ports → domain (inward) and infrastructure (isolated).
+
+exclude:
+  - "**/*_test.go"
+  - "**/*.spec.ts"
+  - "**/*.test.ts"
+  - "vendor/**"
+  - "node_modules/**"
+  - ".git/**"
+  - "dist/**"
+  - "build/**"
+  - "generated/**"
+
+language_overrides:
+  go:
+    extensions:
+      - ".go"
+    comment: "//"
+    import: "import"
+  typescript:
+    extensions:
+      - ".ts"
+      - ".tsx"
+    comment: "//"
+    import: "import"
