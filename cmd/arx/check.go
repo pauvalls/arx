@@ -126,6 +126,12 @@ func runCheck(cmd *cobra.Command, args []string) error {
 
 	violations := service.Evaluate(dependencies, config.Rules, config.Layers)
 
+	// Cache violations for arx explain command
+	if err := output.CacheViolations(violations, projectRoot); err != nil {
+		// Log warning but don't fail the check
+		fmt.Fprintf(os.Stderr, "Warning: failed to cache violations: %v\n", err)
+	}
+
 	// Report violations
 	if err := service.Report(violations, format); err != nil {
 		return fmt.Errorf("report generation failed: %w", err)

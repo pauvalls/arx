@@ -1,0 +1,18 @@
+{
+  "violations": [
+    {
+      "id": "D-01",
+      "rule_id": "domain-cannot-depend-on-infrastructure",
+      "severity": "",
+      "file": "internal/domain/order_violation.go",
+      "line": 3,
+      "source_layer": "domain",
+      "target_layer": "infrastructure",
+      "import": "github.com/example/test-project/internal/infrastructure/postgres",
+      "message": "The domain layer is the heart of your business logic. It should\nnot know HOW data is persisted — only THAT it is persisted.\nIf domain imports your database driver, changing from PostgreSQL\nto MongoDB requires modifying business rules.\n",
+      "explanation": ""
+    }
+  ],
+  "timestamp": "2026-05-14T10:49:21.248178807+02:00",
+  "project_root": "/home/pau/projects/arx/test/fixtures/go-project"
+}

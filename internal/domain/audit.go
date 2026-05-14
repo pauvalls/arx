@@ -44,6 +44,10 @@ func EvaluateRules(dependencies []Dependency, rules []Rule, layers []Layer) []Vi
 		}
 	}
 
+	// Check for circular dependencies
+	circularViolations := EvaluateCircularDependencies(dependencies, rules, layers)
+	violations = append(violations, circularViolations...)
+
 	return violations
 }
 
@@ -68,4 +72,43 @@ func buildViolationMessage(rule Rule, sourceLayer, targetLayer, importPath strin
 		return fmt.Sprintf("%s: %s cannot import %s", rule.Explanation, sourceLayer, targetLayer)
 	}
 	return fmt.Sprintf("%s cannot depend on %s (import: %s)", sourceLayer, targetLayer, importPath)
+}
+
+// EvaluateCircularDependencies detects circular dependencies and creates violations
+func EvaluateCircularDependencies(dependencies []Dependency, rules []Rule, layers []Layer) []Violation {
+	var violations []Violation
+
+	// Find circular dependency rules
+	var circularRules []Rule
+	for _, rule := range rules {
+		if rule.Type == RuleTypeMustNotCircular {
+			circularRules = append(circularRules, rule)
+		}
+	}
+
+	// If no circular rules defined, use default circular detection
+	if len(circularRules) == 0 {
+		circularRules = []Rule{
+			{
+				ID:       "no-circular-dependencies",
+				From:     "*",
+				To:       []string{"*"},
+				Type:     RuleTypeMustNotCircular,
+				Severity: SeverityError,
+				Explanation: "Circular dependencies create tightly coupled code that is hard to test, modify, and deploy.",
+			},
+		}
+	}
+
+	// Detect cycles
+	cycles := DetectCircularDependencies(dependencies, layers)
+
+	// Create violations for each cycle
+	for _, cycle := range cycles {
+		for _, rule := range circularRules {
+			violations = append(violations, CreateCircularViolations([]CircularDependency{cycle}, rule)...)
+		}
+	}
+
+	return violations
 }
