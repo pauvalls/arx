@@ -55,6 +55,10 @@ func newCheckService(format ports.OutputFormat) *application.CheckService {
 	switch format {
 	case ports.OutputFormatJSON:
 		reporter = output.NewJSONReporter()
+	case ports.OutputFormatSARIF:
+		reporter = output.NewSARIFReporter()
+	case ports.OutputFormatMarkdown:
+		reporter = output.NewMarkdownReporter()
 	default:
 		reporter = output.NewTerminalReporter()
 	}

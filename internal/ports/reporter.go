@@ -10,6 +10,10 @@ const (
 	OutputFormatTerminal OutputFormat = "terminal"
 	// OutputFormatJSON outputs violations in JSON format
 	OutputFormatJSON OutputFormat = "json"
+	// OutputFormatSARIF outputs violations in SARIF 2.1.0 format
+	OutputFormatSARIF OutputFormat = "sarif"
+	// OutputFormatMarkdown outputs violations in Markdown format
+	OutputFormatMarkdown OutputFormat = "markdown"
 )
 
 // Reporter defines the interface for reporting violations

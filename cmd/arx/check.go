@@ -50,7 +50,7 @@ var (
 func init() {
 	checkCmd.Flags().StringVarP(&checkConfig, "config", "c", "arx.yaml", "Config file path")
 	checkCmd.Flags().BoolVar(&checkCI, "ci", false, "Machine-readable JSON output for CI/CD (shorthand for --format json)")
-	checkCmd.Flags().StringVarP(&checkFormat, "format", "f", "terminal", "Output format: terminal|json")
+	checkCmd.Flags().StringVarP(&checkFormat, "format", "f", "terminal", "Output format: terminal|json|sarif|md")
 	checkCmd.Flags().BoolVarP(&checkVerbose, "verbose", "v", false, "Show detailed dependency information")
 	rootCmd.AddCommand(checkCmd)
 }
@@ -84,8 +84,15 @@ func runCheck(cmd *cobra.Command, args []string) error {
 	format := ports.OutputFormatTerminal
 	if checkCI {
 		format = ports.OutputFormatJSON
-	} else if checkFormat == "json" {
-		format = ports.OutputFormatJSON
+	} else {
+		switch checkFormat {
+		case "json":
+			format = ports.OutputFormatJSON
+		case "sarif":
+			format = ports.OutputFormatSARIF
+		case "md", "markdown":
+			format = ports.OutputFormatMarkdown
+		}
 	}
 
 	// Create service and run check
