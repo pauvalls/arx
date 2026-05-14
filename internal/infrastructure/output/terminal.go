@@ -1,0 +1,286 @@
+package output
+
+import (
+	"fmt"
+	"sort"
+
+	"github.com/charmbracelet/lipgloss"
+	"github.com/pauvalls/arx/internal/domain"
+	"github.com/pauvalls/arx/internal/ports"
+)
+
+// TerminalReporter implements the ports.Reporter interface for terminal output
+type TerminalReporter struct {
+	width int
+}
+
+// NewTerminalReporter creates a new terminal reporter
+func NewTerminalReporter() *TerminalReporter {
+	return &TerminalReporter{
+		width: 80,
+	}
+}
+
+// Report outputs violations in human-readable terminal format with colors
+func (r *TerminalReporter) Report(violations []domain.Violation, format ports.OutputFormat) error {
+	if format != ports.OutputFormatTerminal {
+		return fmt.Errorf("terminal reporter only supports terminal format")
+	}
+
+	// Styles
+	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true) // Red
+	warningStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))          // Yellow
+	infoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("39"))              // Blue
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("229")) // Yellow-white
+
+	// Group violations by file for better readability
+	violationsByFile := make(map[string][]domain.Violation)
+	for _, v := range violations {
+		violationsByFile[v.File] = append(violationsByFile[v.File], v)
+	}
+
+	// Sort files for consistent output
+	files := make([]string, 0, len(violationsByFile))
+	for file := range violationsByFile {
+		files = append(files, file)
+	}
+	sort.Strings(files)
+
+	// Output header
+	fmt.Println()
+	fmt.Println(headerStyle.Render("╔═══════════════════════════════════════════════════════════╗"))
+	fmt.Println(headerStyle.Render("║         ARCHITECTURE VIOLATIONS DETECTED                  ║"))
+	fmt.Println(headerStyle.Render("╚═══════════════════════════════════════════════════════════╝"))
+	fmt.Println()
+
+	// Output violations
+	totalErrors := 0
+	totalWarnings := 0
+	totalInfo := 0
+
+	for _, file := range files {
+		fileViolations := violationsByFile[file]
+
+		for _, v := range fileViolations {
+			// Choose style based on severity
+			var severityStyle lipgloss.Style
+			var severityIcon string
+
+			switch domain.Severity(v.Message) {
+			case domain.SeverityWarning:
+				severityStyle = warningStyle
+				severityIcon = "⚠️"
+				totalWarnings++
+			case domain.SeverityInfo:
+				severityStyle = infoStyle
+				severityIcon = "ℹ️"
+				totalInfo++
+			default:
+				severityStyle = errorStyle
+				severityIcon = "❌"
+				totalErrors++
+			}
+
+			// Violation header
+			fmt.Println(severityStyle.Render(fmt.Sprintf("%s [%s] %s:%d",
+				severityIcon,
+				v.ID,
+				v.File,
+				v.Line,
+			)))
+
+			// Rule info
+			fmt.Println(borderStyle.Render("   ───────────────────────────────────────────────────────"))
+			fmt.Println(dimStyle.Render(fmt.Sprintf("   Rule: %q → %q", v.SourceLayer, v.TargetLayer)))
+			fmt.Println(dimStyle.Render(fmt.Sprintf("   Import: %s", v.Import)))
+			fmt.Println()
+
+			// Explanation (Why this matters)
+			fmt.Println(headerStyle.Render("   Why this matters:"))
+			fmt.Println(r.wrapText(v.Message, 70, dimStyle))
+			fmt.Println()
+
+			// How to fix (if available from built-in explanations)
+			fixGuidance := r.getFixGuidance(v)
+			if fixGuidance != "" {
+				fmt.Println(headerStyle.Render("   How to fix:"))
+				fmt.Println(r.wrapText(fixGuidance, 70, dimStyle))
+				fmt.Println()
+			}
+		}
+	}
+
+	// Summary
+	fmt.Println()
+	fmt.Println(borderStyle.Render("═══════════════════════════════════════════════════════════"))
+
+	if len(violations) == 0 {
+		successStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("46")).Bold(true)
+		fmt.Println(successStyle.Render("✓ No violations found!"))
+	} else {
+		summary := fmt.Sprintf("Found %d violation", len(violations))
+		if len(violations) > 1 {
+			summary += "s"
+		}
+
+		details := fmt.Sprintf(" (%d errors, %d warnings, %d info)", totalErrors, totalWarnings, totalInfo)
+		fmt.Println(errorStyle.Render(summary + dimStyle.Render(details)))
+
+		uniqueFiles := len(violationsByFile)
+		fileText := "file"
+		if uniqueFiles > 1 {
+			fileText = "files"
+		}
+		fmt.Println(dimStyle.Render(fmt.Sprintf("Across %d %s", uniqueFiles, fileText)))
+	}
+
+	fmt.Println()
+	fmt.Println(dimStyle.Render("Run `arx explain <violation-id>` for detailed guidance."))
+	fmt.Println()
+
+	return nil
+}
+
+// wrapText wraps text to the specified width
+func (r *TerminalReporter) wrapText(text string, width int, style lipgloss.Style) string {
+	words := splitWords(text)
+	if len(words) == 0 {
+		return ""
+	}
+
+	var lines []string
+	var currentLine string
+
+	for _, word := range words {
+		if len(currentLine)+len(word)+1 > width {
+			lines = append(lines, currentLine)
+			currentLine = word
+		} else {
+			if currentLine == "" {
+				currentLine = word
+			} else {
+				currentLine += " " + word
+			}
+		}
+	}
+
+	if currentLine != "" {
+		lines = append(lines, currentLine)
+	}
+
+	// Apply style and indent
+	var result string
+	for i, line := range lines {
+		indent := "   "
+		if i > 0 {
+			indent = "   "
+		}
+		result += indent + style.Render(line) + "\n"
+	}
+
+	return result
+}
+
+// splitWords splits text into words, preserving paragraphs
+func splitWords(text string) []string {
+	// Simple word splitting
+	var words []string
+	current := ""
+
+	for _, ch := range text {
+		if ch == ' ' || ch == '\n' || ch == '\t' {
+			if current != "" {
+				words = append(words, current)
+				current = ""
+			}
+			if ch == '\n' {
+				// Preserve paragraph breaks
+				words = append(words, "\n")
+			}
+		} else {
+			current += string(ch)
+		}
+	}
+
+	if current != "" {
+		words = append(words, current)
+	}
+
+	// Filter out empty strings and standalone newlines used as markers
+	var filtered []string
+	for _, w := range words {
+		if w != "" && w != "\n" {
+			filtered = append(filtered, w)
+		}
+	}
+
+	return filtered
+}
+
+// getFixGuidance returns fix guidance based on the violation pattern
+func (r *TerminalReporter) getFixGuidance(violation domain.Violation) string {
+	// Check for common patterns in the rule ID or message
+	ruleID := violation.RuleID
+	sourceLayer := violation.SourceLayer
+	targetLayer := violation.TargetLayer
+
+	// Domain depending on infrastructure
+	if sourceLayer == "domain" && targetLayer == "infrastructure" {
+		return "1. Define an interface in the domain layer (e.g., Repository, Service)\n2. Move the concrete implementation to infrastructure\n3. Inject the implementation via constructor (Dependency Inversion)"
+	}
+
+	// Domain depending on cmd
+	if sourceLayer == "domain" && targetLayer == "cmd" {
+		return "1. Remove the import from domain\n2. If domain needs configuration, pass it as a parameter\n3. Keep CLI concerns isolated in the cmd layer"
+	}
+
+	// Application depending on infrastructure
+	if sourceLayer == "application" && targetLayer == "infrastructure" {
+		return "1. Depend on abstractions (ports) instead of concrete implementations\n2. Define interfaces in the ports layer\n3. Inject implementations at the composition root (cmd layer)"
+	}
+
+	// Circular dependency patterns
+	if containsIgnoreCase(ruleID, "circular") {
+		return "1. Identify the shared abstraction both layers need\n2. Extract it to a separate layer (e.g., 'contracts' or 'ports')\n3. Have both layers depend on the abstraction, not each other"
+	}
+
+	// Default guidance
+	return "Review the architectural boundaries between these layers. Consider using dependency inversion or extracting shared abstractions."
+}
+
+// containsIgnoreCase checks if a string contains a substring (case-insensitive)
+func containsIgnoreCase(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) &&
+		(s[:len(substr)] == substr || s[len(s)-len(substr):] == substr ||
+			findSubstring(s, substr)))
+}
+
+func findSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
+// Ensure TerminalReporter implements ports.Reporter interface
+var _ ports.Reporter = (*TerminalReporter)(nil)
+
+// ExitCode returns the appropriate exit code based on violations
+func ExitCode(violations []domain.Violation) int {
+	if len(violations) == 0 {
+		return 0
+	}
+
+	// Check if any violations are errors (not just warnings/info)
+	for range violations {
+		// For now, treat all violations as errors for exit code purposes
+		// In the future, this could check severity levels
+		return 1
+	}
+
+	return 0
+}

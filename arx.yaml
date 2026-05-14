@@ -1,0 +1,171 @@
+# Arx Configuration - Dogfooding
+# This configuration is used to validate Arx's own architecture
+version: "1.0"
+
+layers:
+  - name: domain
+    description: Core business logic - entities, rules, and value objects
+    paths:
+      - internal/domain
+    tags: [core, business]
+
+  - name: application
+    description: Use cases and orchestration - coordinates domain operations
+    paths:
+      - internal/application
+    tags: [usecase, orchestration]
+
+  - name: infrastructure
+    description: External implementations - detectors, reporters, config parsers
+    paths:
+      - internal/infrastructure
+    tags: [external, implementation]
+
+  - name: ports
+    description: Interfaces and contracts that infrastructure must implement
+    paths:
+      - internal/ports
+    tags: [interface, contract]
+
+  - name: cmd
+    description: CLI entry points - wires everything together
+    paths:
+      - cmd
+    tags: [entrypoint]
+
+rules:
+  # Domain layer must be pure - no dependencies on outer layers
+  - id: domain-cannot-depend-on-infrastructure
+    from: domain
+    to: [infrastructure]
+    type: cannot
+    severity: error
+    explanation: |
+      The domain layer is the heart of your business logic. It should
+      not know HOW data is persisted or processed - only THAT it is persisted.
+      If domain imports infrastructure, changing implementations (e.g., PostgreSQL
+      to MongoDB) requires modifying business rules. That coupling direction
+      is backwards. Use dependency inversion: define interfaces in domain/ports,
+      implement them in infrastructure.
+
+  - id: domain-cannot-depend-on-ports
+    from: domain
+    to: [ports]
+    type: cannot
+    severity: error
+    explanation: |
+      The domain layer should contain pure business logic without external
+      contracts. Ports (interfaces) should be defined in the ports layer,
+      not in domain. Domain entities and rules should be self-contained.
+
+  - id: domain-cannot-depend-on-cmd
+    from: domain
+    to: [cmd]
+    type: cannot
+    severity: error
+    explanation: |
+      The domain layer must not know about CLI or entry points. Business
+      rules should be expressible without knowing how the application is
+      launched. CLI concerns belong exclusively in the cmd layer.
+
+  # Application layer orchestration rules
+  - id: application-must-depend-on-domain
+    from: application
+    to: [domain]
+    type: must
+    severity: error
+    explanation: |
+      The application layer exists to orchestrate domain operations.
+      If it doesn't depend on domain, it's not doing its job - either
+      business logic has leaked into application, or the use case
+      is empty. Application should coordinate domain entities and rules.
+
+  - id: application-cannot-depend-on-infrastructure
+    from: application
+    to: [infrastructure]
+    type: cannot
+    severity: warning
+    explanation: |
+      Application should depend on abstractions (ports), not concrete
+      infrastructure. If application imports infrastructure directly,
+      the Dependency Inversion Principle is violated. Define interfaces
+      in ports/, have infrastructure implement them, and inject at the
+      composition root (cmd layer).
+
+  # Infrastructure layer rules
+  - id: infrastructure-must-depend-on-ports
+    from: infrastructure
+    to: [ports]
+    type: must
+    severity: error
+    explanation: |
+      Infrastructure exists to implement the contracts defined in ports.
+      Detectors, reporters, and config readers must implement the interfaces
+      from the ports layer. This ensures loose coupling and testability.
+
+  - id: infrastructure-can-depend-on-domain
+    from: infrastructure
+    to: [domain]
+    type: can
+    severity: info
+    explanation: |
+      Infrastructure may need to work with domain entities (e.g., a
+      repository returning domain aggregates). This is acceptable as
+      long as domain does not depend back on infrastructure.
+
+  # Ports layer rules
+  - id: ports-can-depend-on-domain
+    from: ports
+    to: [domain]
+    type: can
+    severity: info
+    explanation: |
+      Ports (interfaces) may reference domain types in their method
+      signatures. This is expected - interfaces define contracts for
+      working with domain entities.
+
+  - id: ports-cannot-depend-on-infrastructure
+    from: ports
+    to: [infrastructure]
+    type: cannot
+    severity: error
+    explanation: |
+      Ports define abstractions. They must not know about concrete
+      implementations. If ports import infrastructure, the dependency
+      direction is inverted and the architecture becomes rigid.
+
+  # Cmd layer rules - can depend on everything (composition root)
+  - id: cmd-can-depend-on-all
+    from: cmd
+    to: [domain, application, infrastructure, ports]
+    type: can
+    severity: info
+    explanation: |
+      The cmd layer is the composition root. It wires together all
+      other layers: instantiating concrete implementations, injecting
+      dependencies, and bootstrapping the application. This is the
+      only layer allowed to know about all others.
+
+# Exclude patterns - files and directories to skip
+exclude:
+  - "**/*_test.go"
+  - "**/*.spec.ts"
+  - "**/mock/**"
+  - "**/mocks/**"
+  - "**/testdata/**"
+  - "vendor/**"
+  - "node_modules/**"
+  - "**/*.md"
+  - ".git/**"
+
+# Severity configuration
+severity_config:
+  error:
+    fail_build: true
+    show_in_ui: true
+  warning:
+    fail_build: false
+    show_in_ui: true
+  info:
+    fail_build: false
+    show_in_ui: true

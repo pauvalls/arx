@@ -1,0 +1,16 @@
+package detector
+
+import (
+	godetector "github.com/pauvalls/arx/internal/infrastructure/detector/go"
+	tsdetector "github.com/pauvalls/arx/internal/infrastructure/detector/typescript"
+	"github.com/pauvalls/arx/internal/ports"
+)
+
+// GetDetectors returns all available detectors for the MVP
+// In the future, this could support dynamic plugin loading
+func GetDetectors() []ports.Detector {
+	return []ports.Detector{
+		godetector.New(),
+		tsdetector.New(),
+	}
+}
