@@ -2,6 +2,7 @@ package detector
 
 import (
 	godetector "github.com/pauvalls/arx/internal/infrastructure/detector/go"
+	javadetector "github.com/pauvalls/arx/internal/infrastructure/detector/java"
 	pydetector "github.com/pauvalls/arx/internal/infrastructure/detector/python"
 	tsdetector "github.com/pauvalls/arx/internal/infrastructure/detector/typescript"
 	"github.com/pauvalls/arx/internal/ports"
@@ -14,5 +15,6 @@ func GetDetectors() []ports.Detector {
 		godetector.New(),
 		tsdetector.New(),
 		pydetector.New(),
+		javadetector.New(),
 	}
 }
