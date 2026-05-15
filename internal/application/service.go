@@ -2,21 +2,33 @@ package application
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	"github.com/pauvalls/arx/internal/domain"
 	"github.com/pauvalls/arx/internal/ports"
+	"gopkg.in/yaml.v3"
 )
 
 // InitService wraps the Init use case functions with dependency injection.
 // It provides a clean API for initializing Arx configuration in a project.
 type InitService struct {
-	writer ports.FileWriter
+	writer       ports.FileWriter
+	presetService ports.PresetService
 }
 
 // NewInitService creates a new InitService with the given FileWriter dependency.
 func NewInitService(writer ports.FileWriter) *InitService {
 	return &InitService{
 		writer: writer,
+	}
+}
+
+// NewInitServiceWithPreset creates a new InitService with both FileWriter and PresetService dependencies.
+func NewInitServiceWithPreset(writer ports.FileWriter, presetService ports.PresetService) *InitService {
+	return &InitService{
+		writer:       writer,
+		presetService: presetService,
 	}
 }
 
@@ -37,18 +49,71 @@ func (s *InitService) Write(config *domain.Config, outputPath string) error {
 
 // Init runs the complete initialization workflow: scan, generate, and write.
 func (s *InitService) Init(projectRoot, outputPath string) (*domain.Config, error) {
+	return InitWithPreset(s, projectRoot, outputPath, "")
+}
+
+// InitWithPreset runs initialization with an optional preset template.
+// If presetName is empty, uses automatic detection.
+// Deprecated: Use s.InitWithPreset directly instead.
+func InitWithPreset(s *InitService, projectRoot, outputPath, presetName string) (*domain.Config, error) {
 	info, err := s.Scan(projectRoot)
 	if err != nil {
 		return nil, err
 	}
 
-	config, err := s.Generate(info)
+	config, err := GenerateConfigWithPreset(info, presetName)
 	if err != nil {
 		return nil, err
 	}
 
 	if err := s.Write(config, outputPath); err != nil {
 		return nil, err
+	}
+
+	return config, nil
+}
+
+// InitWithPreset initializes a project configuration using a named preset.
+// It loads the preset via PresetService, generates a YAML file with a header comment,
+// and writes it to outputPath. If the file exists and force is false, returns an error.
+// Returns the generated configuration on success.
+func (s *InitService) InitWithPreset(presetName, outputPath string, force bool) (*domain.Config, error) {
+	if s.presetService == nil {
+		return nil, fmt.Errorf("preset service not configured")
+	}
+
+	// Check if file exists and force is not set
+	if !force && s.writer.Exists(outputPath) {
+		return nil, fmt.Errorf("configuration file already exists: %s (use force=true to overwrite)", outputPath)
+	}
+
+	// Load preset configuration
+	config, err := s.presetService.LoadPreset(presetName)
+	if err != nil {
+		return nil, fmt.Errorf("loading preset %q: %w", presetName, err)
+	}
+
+	// Serialize to YAML
+	yamlBytes, err := yaml.Marshal(config)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling config to YAML: %w", err)
+	}
+
+	// Generate header with preset info and timestamp
+	timestamp := time.Now().Format(time.RFC3339)
+	header := fmt.Sprintf(`# Arx Architecture Configuration
+# Preset: %s
+# Generated: %s
+# 
+# ⚠️  This is a starting point. Review and customize before running 'arx check'.
+
+`, presetName, timestamp)
+
+	content := append([]byte(header), yamlBytes...)
+
+	// Write file
+	if err := s.writer.Write(outputPath, content); err != nil {
+		return nil, fmt.Errorf("writing config file: %w", err)
 	}
 
 	return config, nil

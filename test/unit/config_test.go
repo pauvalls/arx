@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/pauvalls/arx/internal/domain"
 	"github.com/pauvalls/arx/internal/infrastructure/config"
 )
 
@@ -72,14 +73,15 @@ func TestYAMLReader_Validate(t *testing.T) {
 		Version: "1.0",
 		Layers: []domain.Layer{
 			{Name: "domain", Paths: []string{"internal/domain"}},
+			{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
 		},
 		Rules: []domain.Rule{
 			{
 				ID:       "test",
 				From:     "domain",
 				To:       []string{"infrastructure"},
-				Type:     "cannot",
-				Severity: "error",
+				Type:     domain.RuleTypeCannot,
+				Severity: domain.SeverityError,
 			},
 		},
 	}

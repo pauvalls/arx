@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
+	"github.com/pauvalls/arx/internal/domain"
 	"github.com/spf13/cobra"
 )
 
@@ -35,11 +37,13 @@ Example:
 var (
 	initOutput string
 	initForce  bool
+	initPreset string
 )
 
 func init() {
 	initCmd.Flags().StringVarP(&initOutput, "output", "o", "arx.yaml", "Output file path for the generated configuration")
 	initCmd.Flags().BoolVarP(&initForce, "force", "f", false, "Overwrite existing configuration file")
+	initCmd.Flags().StringVarP(&initPreset, "preset", "p", "", "Use preset template (clean, hexagonal, ddd)")
 	rootCmd.AddCommand(initCmd)
 }
 
@@ -68,15 +72,34 @@ func runInit(cmd *cobra.Command, args []string) error {
 		outputPath = filepath.Join(projectRoot, outputPath)
 	}
 
-	if _, err := os.Stat(outputPath); err == nil && !initForce {
-		return fmt.Errorf("configuration file already exists: %s\nUse --force to overwrite", outputPath)
-	}
-
 	// Create service and run init
 	service := newInitService()
-	config, err := service.Init(projectRoot, outputPath)
-	if err != nil {
-		return fmt.Errorf("failed to initialize configuration: %w", err)
+	
+	var config *domain.Config
+	var initErr error
+	if initPreset != "" {
+		// Validate preset name
+		validPresets := []string{"clean", "hexagonal", "ddd"}
+		isValid := false
+		for _, p := range validPresets {
+			if p == initPreset {
+				isValid = true
+				break
+			}
+		}
+		if !isValid {
+			return fmt.Errorf("unknown preset %q, available presets: %s", initPreset, strings.Join(validPresets, ", "))
+		}
+		
+		config, initErr = service.InitWithPreset(initPreset, outputPath, initForce)
+		if initErr != nil {
+			return fmt.Errorf("failed to initialize with preset: %w", initErr)
+		}
+	} else {
+		config, initErr = service.Init(projectRoot, outputPath)
+		if initErr != nil {
+			return fmt.Errorf("failed to initialize: %w", initErr)
+		}
 	}
 
 	// Print success message

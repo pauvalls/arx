@@ -8,6 +8,7 @@ import (
 
 	"github.com/pauvalls/arx/internal/domain"
 	"github.com/pauvalls/arx/internal/ports"
+	presetpkg "github.com/pauvalls/arx/internal/application/presets"
 	"gopkg.in/yaml.v3"
 )
 
@@ -270,10 +271,17 @@ func generateDefaultRules(layers []domain.Layer) []domain.Rule {
 
 	// Rule 6: No circular dependencies between layers
 	if len(layers) >= 2 {
+		// Only reference layers that actually exist in the config
+		var otherLayers []string
+		for _, l := range layers {
+			if l.Name != "domain" {
+				otherLayers = append(otherLayers, l.Name)
+			}
+		}
 		rules = append(rules, domain.Rule{
 			ID:          "layer-circular",
 			From:        "domain",
-			To:          []string{"application", "infrastructure", "presentation"},
+			To:          otherLayers,
 			Type:        domain.RuleTypeMustNotCircular,
 			Severity:    domain.SeverityError,
 			Explanation: GetExplanation("layer-circular"),
@@ -343,7 +351,7 @@ func WriteConfig(config *domain.Config, outputPath string, writer ports.FileWrit
 		return fmt.Errorf("failed to marshal config to YAML: %w", err)
 	}
 
-	// Add a header comment
+	// Add a header comment with preset info if applicable
 	header := "# Arx Architecture Configuration\n# Generated automatically — edit to customize\n\n"
 	content := append([]byte(header), yamlBytes...)
 
@@ -353,4 +361,32 @@ func WriteConfig(config *domain.Config, outputPath string, writer ports.FileWrit
 	}
 
 	return nil
+}
+
+// GenerateConfigWithPreset creates a configuration from a preset template.
+// If presetName is empty, falls back to GenerateConfig based on project detection.
+func GenerateConfigWithPreset(projectInfo *ProjectInfo, presetName string) (*domain.Config, error) {
+	if presetName == "" {
+		// No preset specified, use existing detection-based logic
+		return GenerateConfig(projectInfo)
+	}
+
+	// Load preset template
+	template, err := presetpkg.LoadPreset(presetName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load preset %q: %w", presetName, err)
+	}
+
+	// Apply preset with project-specific customization
+	config, err := presetpkg.ApplyPreset(template, projectInfo.Root)
+	if err != nil {
+		return nil, fmt.Errorf("failed to apply preset %q: %w", presetName, err)
+	}
+
+	// Add language overrides based on detected languages if not present in preset
+	if len(config.LanguageOverrides) == 0 && len(projectInfo.Languages) > 0 {
+		config.LanguageOverrides = generateLanguageOverrides(projectInfo.Languages)
+	}
+
+	return config, nil
 }

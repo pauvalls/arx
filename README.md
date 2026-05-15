@@ -74,6 +74,9 @@ arx check --ci
 | `arx init [path]` | Initialize arx.yaml configuration for a project |
 | `arx check [path]` | Run architecture audit against defined rules |
 | `arx check --ci` | JSON output for CI/CD pipelines (exit code 1 on violations) |
+| `arx audit [path]` | Run comprehensive architecture audit with health metrics |
+| `arx audit --trend` | Show trend comparison with previous audit |
+| `arx audit --since 2026-04-01` | Show audits since a specific date |
 | `arx explain <id>` | Show detailed guidance for a specific violation |
 | `arx --version` | Show version and build info |
 | `arx --help` | Show help for any command |

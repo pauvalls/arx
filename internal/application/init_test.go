@@ -1,6 +1,7 @@
 package application
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -352,4 +353,348 @@ func layerNames(layers []domain.Layer) []string {
 		names[i] = l.Name
 	}
 	return names
+}
+
+func TestGenerateConfigWithPreset_NoPreset(t *testing.T) {
+	// When no preset is specified, should fall back to detection-based logic
+	info := &ProjectInfo{
+		Root:      "/test",
+		Languages: []string{"go"},
+		SuggestedLayers: []domain.Layer{
+			{Name: "domain", Paths: []string{"internal/domain/**"}},
+			{Name: "application", Paths: []string{"internal/application/**"}},
+			{Name: "infrastructure", Paths: []string{"internal/infrastructure/**"}},
+			{Name: "presentation", Paths: []string{"cmd/**"}},
+		},
+	}
+
+	config, err := GenerateConfigWithPreset(info, "")
+	if err != nil {
+		t.Fatalf("GenerateConfigWithPreset() error = %v", err)
+	}
+
+	if config == nil {
+		t.Fatal("GenerateConfigWithPreset() returned nil config")
+	}
+
+	// Should have generated rules based on detected layers
+	if len(config.Rules) < 5 {
+		t.Errorf("GenerateConfigWithPreset() created %d rules, want at least 5", len(config.Rules))
+	}
+}
+
+func TestGenerateConfigWithPreset_CleanPreset(t *testing.T) {
+	info := &ProjectInfo{
+		Root:      "/test",
+		Languages: []string{"go"},
+		SuggestedLayers: []domain.Layer{},
+	}
+
+	config, err := GenerateConfigWithPreset(info, "clean")
+	if err != nil {
+		t.Fatalf("GenerateConfigWithPreset() error = %v", err)
+	}
+
+	if config == nil {
+		t.Fatal("GenerateConfigWithPreset() returned nil config")
+	}
+
+	// Verify clean architecture layers
+	layerNames := make(map[string]bool)
+	for _, layer := range config.Layers {
+		layerNames[layer.Name] = true
+	}
+
+	expectedLayers := []string{"domain", "application", "infrastructure", "presentation"}
+	for _, expected := range expectedLayers {
+		if !layerNames[expected] {
+			t.Errorf("GenerateConfigWithPreset(clean) missing layer: %s", expected)
+		}
+	}
+
+	// Verify config is valid
+	if err := config.Validate(); err != nil {
+		t.Errorf("Generated config is invalid: %v", err)
+	}
+}
+
+func TestGenerateConfigWithPreset_HexagonalPreset(t *testing.T) {
+	info := &ProjectInfo{
+		Root:      "/test",
+		Languages: []string{"go"},
+		SuggestedLayers: []domain.Layer{},
+	}
+
+	config, err := GenerateConfigWithPreset(info, "hexagonal")
+	if err != nil {
+		t.Fatalf("GenerateConfigWithPreset() error = %v", err)
+	}
+
+	// Verify hexagonal architecture layers (should have ports layer)
+	hasPorts := false
+	for _, layer := range config.Layers {
+		if layer.Name == "ports" {
+			hasPorts = true
+			break
+		}
+	}
+	if !hasPorts {
+		t.Errorf("GenerateConfigWithPreset(hexagonal) missing 'ports' layer")
+	}
+}
+
+func TestGenerateConfigWithPreset_DddPreset(t *testing.T) {
+	info := &ProjectInfo{
+		Root:      "/test",
+		Languages: []string{"go"},
+		SuggestedLayers: []domain.Layer{},
+	}
+
+	config, err := GenerateConfigWithPreset(info, "ddd")
+	if err != nil {
+		t.Fatalf("GenerateConfigWithPreset() error = %v", err)
+	}
+
+	// Verify DDD layers (should have interfaces layer)
+	hasInterfaces := false
+	for _, layer := range config.Layers {
+		if layer.Name == "interfaces" {
+			hasInterfaces = true
+			break
+		}
+	}
+	if !hasInterfaces {
+		t.Errorf("GenerateConfigWithPreset(ddd) missing 'interfaces' layer")
+	}
+}
+
+func TestGenerateConfigWithPreset_InvalidPreset(t *testing.T) {
+	info := &ProjectInfo{
+		Root:      "/test",
+		Languages: []string{"go"},
+	}
+
+	_, err := GenerateConfigWithPreset(info, "invalid")
+	if err == nil {
+		t.Fatal("GenerateConfigWithPreset(invalid) should return error")
+	}
+
+	if !strings.Contains(err.Error(), "unknown preset") {
+		t.Errorf("GenerateConfigWithPreset(invalid) error = %v, want 'unknown preset'", err)
+	}
+}
+
+func TestGenerateConfigWithPreset_AddsLanguageOverrides(t *testing.T) {
+	info := &ProjectInfo{
+		Root:      "/test",
+		Languages: []string{"go", "typescript"},
+	}
+
+	config, err := GenerateConfigWithPreset(info, "clean")
+	if err != nil {
+		t.Fatalf("GenerateConfigWithPreset() error = %v", err)
+	}
+
+	// Presets already have language overrides, but verify they're present
+	if len(config.LanguageOverrides) == 0 {
+		t.Error("GenerateConfigWithPreset() did not include language overrides")
+	}
+
+	if _, ok := config.LanguageOverrides["go"]; !ok {
+		t.Error("GenerateConfigWithPreset() missing Go language override")
+	}
+	if _, ok := config.LanguageOverrides["typescript"]; !ok {
+		t.Error("GenerateConfigWithPreset() missing TypeScript language override")
+	}
+}
+
+// mockPresetService implements ports.PresetService for testing
+type mockPresetService struct {
+	presets map[string]*domain.Config
+}
+
+func newMockPresetService() *mockPresetService {
+	return &mockPresetService{
+		presets: make(map[string]*domain.Config),
+	}
+}
+
+func (m *mockPresetService) LoadPreset(name string) (*domain.Config, error) {
+	cfg, ok := m.presets[name]
+	if !ok {
+		return nil, fmt.Errorf("unknown preset %q", name)
+	}
+	return cfg, nil
+}
+
+func (m *mockPresetService) ListPresets() []string {
+	names := make([]string, 0, len(m.presets))
+	for name := range m.presets {
+		names = append(names, name)
+	}
+	return names
+}
+
+func (m *mockPresetService) addPreset(name string, cfg *domain.Config) {
+	m.presets[name] = cfg
+}
+
+func TestInitService_InitWithPreset_Valid(t *testing.T) {
+	writer := newMockFileWriter()
+	presetService := newMockPresetService()
+	presetService.addPreset("clean", &domain.Config{
+		Version: "1.0",
+		Layers: []domain.Layer{
+			{Name: "domain", Paths: []string{"internal/domain/**"}},
+			{Name: "application", Paths: []string{"internal/application/**"}},
+			{Name: "infrastructure", Paths: []string{"internal/infrastructure/**"}},
+			{Name: "presentation", Paths: []string{"cmd/**"}},
+		},
+		Rules: []domain.Rule{
+			{ID: "R1", From: "domain", To: []string{"infrastructure"}, Type: domain.RuleTypeCannot},
+		},
+	})
+
+	service := NewInitServiceWithPreset(writer, presetService)
+
+	config, err := service.InitWithPreset("clean", "arx.yaml", false)
+	if err != nil {
+		t.Fatalf("InitWithPreset() error = %v", err)
+	}
+
+	if config == nil {
+		t.Fatal("InitWithPreset() returned nil config")
+	}
+
+	content, ok := writer.files["arx.yaml"]
+	if !ok {
+		t.Fatalf("InitWithPreset() did not write to arx.yaml")
+	}
+
+	// Verify header comment
+	contentStr := string(content)
+	if !strings.Contains(contentStr, "# Arx Architecture Configuration") {
+		t.Errorf("InitWithPreset() missing header comment")
+	}
+	if !strings.Contains(contentStr, "# Preset: clean") {
+		t.Errorf("InitWithPreset() missing preset name in header")
+	}
+	if !strings.Contains(contentStr, "# Generated:") {
+		t.Errorf("InitWithPreset() missing timestamp in header")
+	}
+	if !strings.Contains(contentStr, "⚠️  This is a starting point") {
+		t.Errorf("InitWithPreset() missing warning comment")
+	}
+
+	// Verify YAML content is valid
+	var parsed domain.Config
+	if err := yaml.Unmarshal(content, &parsed); err != nil {
+		t.Errorf("InitWithPreset() wrote invalid YAML: %v", err)
+	}
+
+	if parsed.Version != "1.0" {
+		t.Errorf("InitWithPreset() wrote version %q, want %q", parsed.Version, "1.0")
+	}
+}
+
+func TestInitService_InitWithPreset_FileExists_NoForce(t *testing.T) {
+	writer := newMockFileWriter()
+	writer.exists["arx.yaml"] = true
+
+	presetService := newMockPresetService()
+	presetService.addPreset("clean", &domain.Config{
+		Version: "1.0",
+		Layers:  []domain.Layer{{Name: "domain", Paths: []string{"internal/domain/**"}}},
+		Rules:   []domain.Rule{},
+	})
+
+	service := NewInitServiceWithPreset(writer, presetService)
+
+	config, err := service.InitWithPreset("clean", "arx.yaml", false)
+	if err == nil {
+		t.Errorf("InitWithPreset() with existing file and force=false should return error")
+	}
+
+	if config != nil {
+		t.Errorf("InitWithPreset() with existing file should return nil config")
+	}
+
+	if !strings.Contains(err.Error(), "already exists") {
+		t.Errorf("InitWithPreset() error = %v, want 'already exists'", err)
+	}
+}
+
+func TestInitService_InitWithPreset_FileExists_WithForce(t *testing.T) {
+	writer := newMockFileWriter()
+	writer.exists["arx.yaml"] = true
+
+	presetService := newMockPresetService()
+	presetService.addPreset("clean", &domain.Config{
+		Version: "1.0",
+		Layers:  []domain.Layer{{Name: "domain", Paths: []string{"internal/domain/**"}}},
+		Rules:   []domain.Rule{},
+	})
+
+	service := NewInitServiceWithPreset(writer, presetService)
+
+	config, err := service.InitWithPreset("clean", "arx.yaml", true)
+	if err != nil {
+		t.Fatalf("InitWithPreset() with force=true error = %v", err)
+	}
+
+	if config == nil {
+		t.Fatal("InitWithPreset() with force=true returned nil config")
+	}
+
+	// Verify file was written despite existing
+	content, ok := writer.files["arx.yaml"]
+	if !ok {
+		t.Fatalf("InitWithPreset() with force=true did not write to arx.yaml")
+	}
+
+	// Verify content is valid
+	var parsed domain.Config
+	if err := yaml.Unmarshal(content, &parsed); err != nil {
+		t.Errorf("InitWithPreset() wrote invalid YAML: %v", err)
+	}
+}
+
+func TestInitService_InitWithPreset_InvalidPreset(t *testing.T) {
+	writer := newMockFileWriter()
+	presetService := newMockPresetService()
+	// No presets added, so any preset name is invalid
+
+	service := NewInitServiceWithPreset(writer, presetService)
+
+	config, err := service.InitWithPreset("invalid", "arx.yaml", false)
+	if err == nil {
+		t.Errorf("InitWithPreset() with invalid preset should return error")
+	}
+
+	if config != nil {
+		t.Errorf("InitWithPreset() with invalid preset should return nil config")
+	}
+
+	if !strings.Contains(err.Error(), "unknown preset") {
+		t.Errorf("InitWithPreset() error = %v, want 'unknown preset'", err)
+	}
+}
+
+func TestInitService_InitWithPreset_NoPresetService(t *testing.T) {
+	writer := newMockFileWriter()
+	// Create service without preset service
+	service := NewInitService(writer)
+
+	config, err := service.InitWithPreset("clean", "arx.yaml", false)
+	if err == nil {
+		t.Errorf("InitWithPreset() without preset service should return error")
+	}
+
+	if config != nil {
+		t.Errorf("InitWithPreset() without preset service should return nil config")
+	}
+
+	if !strings.Contains(err.Error(), "preset service not configured") {
+		t.Errorf("InitWithPreset() error = %v, want 'preset service not configured'", err)
+	}
 }

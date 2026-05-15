@@ -1,0 +1,155 @@
+# Hexagonal Architecture Preset
+# Layers: domain, ports, adapters, infrastructure
+# Based on Ports and Adapters pattern by Alistair Cockburn
+
+version: "1.0"
+
+layers:
+  - name: domain
+    paths:
+      - "internal/domain/**"
+      - "domain/**"
+      - "core/**"
+    description: Domain layer containing business logic and enterprise rules
+    tags:
+      - core
+      - business-logic
+
+  - name: ports
+    paths:
+      - "internal/ports/**"
+      - "ports/**"
+      - "interfaces/**"
+    description: Ports defining contracts between domain and external world
+    tags:
+      - interfaces
+      - contracts
+
+  - name: adapters
+    paths:
+      - "internal/adapters/**"
+      - "adapters/**"
+      - "primary/**"
+      - "secondary/**"
+    description: Adapters implementing ports for specific technologies
+    tags:
+      - implementation
+      - bridges
+
+  - name: infrastructure
+    paths:
+      - "internal/infrastructure/**"
+      - "infrastructure/**"
+      - "persistence/**"
+      - "external/**"
+    description: Infrastructure layer providing technical capabilities
+    tags:
+      - technical
+      - external
+
+rules:
+  # Domain layer constraints - must be completely isolated
+  - id: domain-no-import-ports
+    from: domain
+    to:
+      - ports
+    type: cannot
+    severity: error
+    explanation: Domain must not depend on port interfaces - it defines them implicitly
+
+  - id: domain-no-import-adapters
+    from: domain
+    to:
+      - adapters
+    type: cannot
+    severity: error
+    explanation: Domain must remain independent from adapter implementations
+
+  - id: domain-no-import-infrastructure
+    from: domain
+    to:
+      - infrastructure
+    type: cannot
+    severity: error
+    explanation: Domain must not know about infrastructure concerns
+
+  # Ports layer constraints
+  - id: ports-no-import-adapters
+    from: ports
+    to:
+      - adapters
+    type: cannot
+    severity: error
+    explanation: Ports (interfaces) should not depend on adapter implementations
+
+  - id: ports-no-import-infrastructure
+    from: ports
+    to:
+      - infrastructure
+    type: cannot
+    severity: error
+    explanation: Port interfaces should not depend on infrastructure
+
+  # Adapters layer constraints
+  - id: adapters-no-import-infrastructure
+    from: adapters
+    to:
+      - infrastructure
+    type: cannot
+    severity: warning
+    explanation: Adapters should use infrastructure through abstractions when possible
+
+  # Allowed dependencies (informational)
+  - id: ports-can-import-domain
+    from: ports
+    to:
+      - domain
+    type: can
+    severity: info
+    explanation: Ports may reference domain types in interface definitions
+
+  - id: adapters-can-import-ports
+    from: adapters
+    to:
+      - ports
+    type: can
+    severity: info
+    explanation: Adapters implement port interfaces - this is the core of hexagonal architecture
+
+  - id: adapters-can-import-domain
+    from: adapters
+    to:
+      - domain
+    type: can
+    severity: info
+    explanation: Adapters may need to work with domain entities
+
+  - id: infrastructure-can-import-domain
+    from: infrastructure
+    to:
+      - domain
+    type: can
+    severity: info
+    explanation: Infrastructure implementations may reference domain types
+
+exclude:
+  - vendor/**
+  - node_modules/**
+  - .git/**
+  - dist/**
+  - build/**
+  - tmp/**
+  - testdata/**
+
+language_overrides:
+  go:
+    extensions:
+      - .go
+    comment: //
+    import: import
+  typescript:
+    extensions:
+      - .ts
+      - .tsx
+    comment: //
+    import: import

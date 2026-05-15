@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/pauvalls/arx/internal/application"
 	"github.com/pauvalls/arx/internal/domain"
 	godetector "github.com/pauvalls/arx/internal/infrastructure/detector/go"
 	"github.com/pauvalls/arx/internal/infrastructure/output"

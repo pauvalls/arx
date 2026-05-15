@@ -18,6 +18,13 @@ var explanations = map[string]string{
 
 	"presentation-imports-domain": "The presentation layer should delegate to application services rather than directly manipulating domain entities. This keeps your domain logic centralized and your presentation layer thin.",
 
+	// Wildcard patterns for generic layer violations
+	"domain-*": "The domain layer is the heart of your business logic. Any dependency that violates domain purity breaks the fundamental principle of Clean Architecture — domain must remain independent of external concerns.",
+
+	"application-*": "The application layer exists to orchestrate domain operations. It should depend on abstractions (ports), not concrete implementations. Review the dependency to ensure it follows the Dependency Inversion Principle.",
+
+	"infrastructure-*": "Infrastructure implements adapters and external integrations. It should not be imported by higher layers directly. Ensure dependencies flow through well-defined interfaces.",
+
 	// Circular dependency patterns
 	"domain-circular": "Circular dependencies create maintenance nightmares and prevent independent testing. If two domain concepts depend on each other, consider extracting a shared abstraction or rethinking your aggregate boundaries.",
 
@@ -26,6 +33,9 @@ var explanations = map[string]string{
 	"infrastructure-circular": "Circular dependencies in infrastructure often mean adapters are tightly coupled. Use dependency inversion: define interfaces in the application layer and inject implementations.",
 
 	"layer-circular": "Circular dependencies between layers violate the fundamental principle of layered architecture: dependencies should flow in one direction. Review your layer boundaries and apply the Dependency Inversion Principle.",
+
+	// Wildcard pattern for any circular dependency
+	"*-circular": "Circular dependencies between layers or modules create tight coupling that makes testing, refactoring, and independent deployment impossible. Draw your dependency diagram and identify the cycle to break it.",
 
 	// General patterns
 	"default": "This dependency violates an architectural rule. Review your layer boundaries and ensure dependencies flow in the correct direction according to your chosen architecture.",
@@ -69,6 +79,26 @@ var fixGuidance = map[string][]string{
 		"Keep domain logic encapsulated behind application services",
 	},
 
+	// Wildcard patterns for generic layer violations
+	"domain-*": {
+		"Move the infrastructure concern behind an interface defined in a lower layer",
+		"Use dependency injection to provide implementations at runtime",
+		"Ensure domain remains pure and independent of external concerns",
+	},
+
+	"application-*": {
+		"Define interfaces (ports) in the application layer for external concerns",
+		"Move concrete implementations to the appropriate layer",
+		"Inject implementations via constructor or dependency injection",
+	},
+
+	"infrastructure-*": {
+		"Ensure infrastructure dependencies flow through well-defined interfaces",
+		"Avoid direct coupling between infrastructure modules",
+		"Use the Adapter pattern to decouple implementations",
+	},
+
+	// Circular dependency patterns
 	"domain-circular": {
 		"Extract the shared logic into a third concept that both can depend on",
 		"Consider whether one aggregate should reference the other by ID instead of object",
@@ -91,6 +121,13 @@ var fixGuidance = map[string][]string{
 		"Draw your dependency diagram and identify the cycle",
 		"Apply the Dependency Inversion Principle: depend on abstractions, not concretions",
 		"Consider introducing an intermediate layer or shared kernel",
+	},
+
+	// Wildcard pattern for any circular dependency
+	"*-circular": {
+		"Draw your dependency diagram and identify the circular path",
+		"Apply the Dependency Inversion Principle to break the cycle",
+		"Consider introducing an intermediate abstraction layer",
 	},
 
 	"default": {

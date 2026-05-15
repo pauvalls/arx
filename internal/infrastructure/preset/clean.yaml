@@ -1,0 +1,150 @@
+# Clean Architecture Preset
+# Layers: domain, application, infrastructure, presentation
+# Based on Clean Architecture by Robert C. Martin
+
+version: "1.0"
+
+layers:
+  - name: domain
+    paths:
+      - "internal/domain/**"
+      - "domain/**"
+      - "entities/**"
+    description: Domain layer containing business logic, entities, and domain services
+    tags:
+      - core
+      - business-logic
+
+  - name: application
+    paths:
+      - "internal/application/**"
+      - "application/**"
+      - "usecases/**"
+      - "services/**"
+    description: Application layer orchestrating domain operations and use cases
+    tags:
+      - orchestration
+      - use-cases
+
+  - name: infrastructure
+    paths:
+      - "internal/infrastructure/**"
+      - "infrastructure/**"
+      - "adapters/**"
+      - "persistence/**"
+      - "repositories/**"
+    description: Infrastructure layer implementing external concerns and adapters
+    tags:
+      - adapters
+      - persistence
+
+  - name: presentation
+    paths:
+      - "cmd/**"
+      - "api/**"
+      - "handlers/**"
+      - "controllers/**"
+      - "presentation/**"
+    description: Presentation layer handling HTTP, CLI, and UI entry points
+    tags:
+      - entry-point
+      - http
+
+rules:
+  # Domain layer constraints
+  - id: domain-no-import-infrastructure
+    from: domain
+    to:
+      - infrastructure
+    type: cannot
+    severity: error
+    explanation: Domain layer must remain pure and independent from infrastructure concerns
+
+  - id: domain-no-import-application
+    from: domain
+    to:
+      - application
+    type: cannot
+    severity: error
+    explanation: Domain layer should not depend on application orchestration logic
+
+  - id: domain-no-import-presentation
+    from: domain
+    to:
+      - presentation
+    type: cannot
+    severity: error
+    explanation: Domain layer must not know about presentation concerns
+
+  # Application layer constraints
+  - id: application-no-import-infrastructure
+    from: application
+    to:
+      - infrastructure
+    type: cannot
+    severity: error
+    explanation: Application layer should depend on abstractions (ports), not infrastructure implementations
+
+  - id: application-no-import-presentation
+    from: application
+    to:
+      - presentation
+    type: cannot
+    severity: warning
+    explanation: Application layer should not depend on presentation layer
+
+  # Presentation layer constraints
+  - id: presentation-no-import-domain
+    from: presentation
+    to:
+      - domain
+    type: cannot
+    severity: warning
+    explanation: Presentation should interact through application layer, not directly with domain
+
+  # Allowed dependencies (informational)
+  - id: application-can-import-domain
+    from: application
+    to:
+      - domain
+    type: can
+    severity: info
+    explanation: Application services coordinate domain operations - this is the expected flow
+
+  - id: infrastructure-can-import-domain
+    from: infrastructure
+    to:
+      - domain
+    type: can
+    severity: info
+    explanation: Infrastructure adapters implement interfaces defined by the domain
+
+  - id: infrastructure-can-import-application
+    from: infrastructure
+    to:
+      - application
+    type: can
+    severity: info
+    explanation: Infrastructure may need to use application services for initialization
+
+exclude:
+  - vendor/**
+  - node_modules/**
+  - .git/**
+  - dist/**
+  - build/**
+  - tmp/**
+  - testdata/**
+
+language_overrides:
+  go:
+    extensions:
+      - .go
+    comment: //
+    import: import
+  typescript:
+    extensions:
+      - .ts
+      - .tsx
+    comment: //
+    import: import

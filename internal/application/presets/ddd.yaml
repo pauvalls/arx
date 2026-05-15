@@ -1,0 +1,187 @@
+# Domain-Driven Design Preset
+# Layers: domain, application, infrastructure, interfaces
+# Based on DDD strategic and tactical patterns
+
+version: "1.0"
+
+layers:
+  - name: domain
+    paths:
+      - "internal/domain/**"
+      - "domain/**"
+      - "aggregate/**"
+      - "entity/**"
+      - "valueobject/**"
+    description: Domain layer with aggregates, entities, value objects, and domain services
+    tags:
+      - aggregate
+      - entity
+      - value-object
+      - domain-service
+
+  - name: application
+    paths:
+      - "internal/application/**"
+      - "application/**"
+      - "app/**"
+      - "command/**"
+      - "query/**"
+      - "saga/**"
+    description: Application layer with use cases, commands, queries, and application services
+    tags:
+      - use-case
+      - command
+      - query
+      - application-service
+
+  - name: infrastructure
+    paths:
+      - "internal/infrastructure/**"
+      - "infrastructure/**"
+      - "persistence/**"
+      - "repository/**"
+      - "eventstore/**"
+    description: Infrastructure layer with repositories, event stores, and external integrations
+    tags:
+      - repository
+      - persistence
+      - event-store
+
+  - name: interfaces
+    paths:
+      - "internal/interfaces/**"
+      - "interfaces/**"
+      - "api/**"
+      - "cli/**"
+      - "web/**"
+      - "grpc/**"
+    description: Interface adapters layer handling external communication protocols
+    tags:
+      - api
+      - controller
+      - handler
+      - dto
+
+rules:
+  # Domain layer constraints - the heart of DDD
+  - id: domain-no-import-application
+    from: domain
+    to:
+      - application
+    type: cannot
+    severity: error
+    explanation: Domain must not depend on application services or use cases
+
+  - id: domain-no-import-infrastructure
+    from: domain
+    to:
+      - infrastructure
+    type: cannot
+    severity: error
+    explanation: Domain must not depend on infrastructure implementations
+
+  - id: domain-no-import-interfaces
+    from: domain
+    to:
+      - interfaces
+    type: cannot
+    severity: error
+    explanation: Domain must not know about interface adapters or DTOs
+
+  # Application layer constraints
+  - id: application-no-import-infrastructure
+    from: application
+    to:
+      - infrastructure
+    type: cannot
+    severity: error
+    explanation: Application should depend on repository interfaces, not implementations
+
+  - id: application-no-import-interfaces
+    from: application
+    to:
+      - interfaces
+    type: cannot
+    severity: error
+    explanation: Application must not depend on interface adapters
+
+  # Infrastructure layer constraints
+  - id: infrastructure-no-import-interfaces
+    from: infrastructure
+    to:
+      - interfaces
+    type: cannot
+    severity: warning
+    explanation: Infrastructure should not depend on interface layer
+
+  # Interface layer constraints
+  - id: interfaces-no-import-domain
+    from: interfaces
+    to:
+      - domain
+    type: cannot
+    severity: warning
+    explanation: Interfaces should interact through application layer, using DTOs
+
+  # Allowed dependencies (informational)
+  - id: application-can-import-domain
+    from: application
+    to:
+      - domain
+    type: can
+    severity: info
+    explanation: Application services orchestrate domain aggregates - this is correct
+
+  - id: infrastructure-can-import-domain
+    from: infrastructure
+    to:
+      - domain
+    type: can
+    severity: info
+    explanation: Repository implementations work with domain aggregates
+
+  - id: infrastructure-can-import-application
+    from: infrastructure
+    to:
+      - application
+    type: can
+    severity: info
+    explanation: Infrastructure may need application services for initialization
+
+  - id: interfaces-can-import-application
+    from: interfaces
+    to:
+      - application
+    type: can
+    severity: info
+    explanation: Interface adapters invoke application services - this is the expected flow
+
+  - id: interfaces-can-import-domain
+    from: interfaces
+    to:
+      - domain
+    type: can
+    severity: info
+    explanation: Interfaces may reference domain types for DTO mapping (use carefully)
+
+exclude:
+  - vendor/**
+  - node_modules/**
+  - .git/**
+  - dist/**
+  - build/**
+  - tmp/**
+  - testdata/**
+
+language_overrides:
+  go:
+    extensions:
+      - .go
+    comment: //
+    import: import
+  typescript:
+    extensions:
+      - .ts
+      - .tsx
+    comment: //
+    import: import

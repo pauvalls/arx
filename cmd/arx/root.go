@@ -40,10 +40,11 @@ func Execute() error {
 	return rootCmd.Execute()
 }
 
-// newInitService creates an InitService with the default file writer
+// newInitService creates an InitService with the default file writer and preset service
 func newInitService() *application.InitService {
 	writer := fs.NewWalker(nil)
-	return application.NewInitService(writer)
+	presetService := application.NewPresetService()
+	return application.NewInitServiceWithPreset(writer, presetService)
 }
 
 // newCheckService creates a CheckService with all dependencies wired
