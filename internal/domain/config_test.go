@@ -158,6 +158,90 @@ func TestConfig_Validate(t *testing.T) {
 	}
 }
 
+func TestConfig_Validate_Pattern(t *testing.T) {
+	tests := []struct {
+		name    string
+		config  Config
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name: "valid config with pattern-only rule",
+			config: Config{
+				Version: "1.0.0",
+				Layers: []Layer{
+					{Name: "domain", Paths: []string{"internal/domain"}},
+					{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
+				},
+				Rules: []Rule{
+					{
+						ID:       "R-P1",
+						Pattern:  `com/legacy/.*`,
+						Type:     RuleTypeCannot,
+						Severity: SeverityError,
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid config with combined pattern+from/to rule",
+			config: Config{
+				Version: "1.0.0",
+				Layers: []Layer{
+					{Name: "domain", Paths: []string{"internal/domain"}},
+					{Name: "application", Paths: []string{"internal/application"}},
+				},
+				Rules: []Rule{
+					{
+						ID:       "R-P2",
+						From:     "domain",
+						To:       []string{"application"},
+						Pattern:  `com/legacy/.*`,
+						Type:     RuleTypeCannot,
+						Severity: SeverityError,
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid regex in rule pattern fails with rule ID in error",
+			config: Config{
+				Version: "1.0.0",
+				Layers: []Layer{
+					{Name: "domain", Paths: []string{"internal/domain"}},
+					{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
+				},
+				Rules: []Rule{
+					{
+						ID:       "R-BAD",
+						Pattern:  `[invalid`,
+						Type:     RuleTypeCannot,
+						Severity: SeverityError,
+					},
+				},
+			},
+			wantErr: true,
+			errMsg:  "invalid pattern",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.config.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Config.Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr && tt.errMsg != "" {
+				if err == nil {
+					t.Errorf("Config.Validate() expected error containing %q, got nil", tt.errMsg)
+				}
+			}
+		})
+	}
+}
+
 func TestConfig_Hash(t *testing.T) {
 	tests := []struct {
 		name   string

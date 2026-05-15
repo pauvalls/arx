@@ -114,6 +114,8 @@ arx diagram -o deps.dot        # Export to file
 | `arx init --preset {clean,hexagonal,ddd}` | Initialize with a preset template |
 | `arx check [path]` | Run architecture audit against defined rules |
 | `arx check --ci` | JSON output for CI/CD pipelines (exit code 1 on violations) |
+| `arx check --watch` | Watch mode for continuous feedback on file changes |
+| `arx check --interval 500ms` | Watch polling/debounce interval |
 | `arx check --no-cache` | Bypass performance cache |
 | `arx check --no-baseline` | Ignore baseline, report all violations |
 | `arx baseline [path]` | Create baseline to suppress existing violations |
@@ -124,6 +126,8 @@ arx diagram -o deps.dot        # Export to file
 | `arx audit --trend` | Show trend comparison with previous audit |
 | `arx audit --since 2026-04-01` | Show audits since a specific date |
 | `arx explain <id>` | Show detailed guidance for a specific violation |
+| `arx hook install` | Install git pre-commit hook (blocks new violations) |
+| `arx hook uninstall` | Remove pre-commit hook |
 | `arx --version` | Show version and build info |
 | `arx --help` | Show help for any command |
 
@@ -133,6 +137,10 @@ arx diagram -o deps.dot        # Export to file
 arx check --config custom.yaml    # Use custom config file
 arx check --format json           # Explicit JSON output
 arx check --verbose               # Show detailed dependency info
+arx check --watch                 # Watch mode (re-runs on file changes)
+arx check --interval 1s           # Watch debounce interval (default 500ms)
+arx check --no-cache              # Bypass performance cache
+arx check --no-baseline           # Ignore baseline, report all violations
 arx init --output config/arx.yaml # Write config to custom path
 arx init --force                  # Overwrite existing config
 arx init --preset clean           # Use Clean Architecture preset

@@ -2,15 +2,20 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
+	"time"
 
 	"github.com/pauvalls/arx/internal/application"
 	"github.com/pauvalls/arx/internal/domain"
 	arxcache "github.com/pauvalls/arx/internal/infrastructure/cache"
 	arxbaseline "github.com/pauvalls/arx/internal/infrastructure/baseline"
 	"github.com/pauvalls/arx/internal/infrastructure/output"
+	"github.com/pauvalls/arx/internal/infrastructure/watcher"
 	"github.com/pauvalls/arx/internal/ports"
 	"github.com/spf13/cobra"
 )
@@ -38,13 +43,20 @@ When a baseline exists (.arx-baseline.json):
   0 - No NEW violations found (baseline violations are suppressed)
   1 - NEW violations found
 
+Watch mode (--watch):
+  Runs an initial check, then monitors file changes and re-runs automatically.
+  Changes are debounced (default 500ms) to avoid rapid re-runs.
+  Press Ctrl+C to stop.
+
 Example:
   arx check                    # Check current directory
   arx check ./my-project       # Check specific directory
   arx check --ci               # JSON output for CI/CD
   arx check --format json      # Explicit JSON output
   arx check --verbose          # Show detailed dependency info
-  arx check --no-baseline      # Ignore baseline, report all violations`,
+  arx check --no-baseline      # Ignore baseline, report all violations
+  arx check --watch            # Watch mode: re-run on file changes
+  arx check --watch --interval 1s  # Watch mode with 1s debounce`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runCheck,
 }
@@ -56,6 +68,8 @@ var (
 	checkVerbose    bool
 	checkNoCache    bool
 	checkNoBaseline bool
+	checkWatch      bool
+	checkInterval   time.Duration
 )
 
 func init() {
@@ -65,9 +79,23 @@ func init() {
 	checkCmd.Flags().BoolVarP(&checkVerbose, "verbose", "v", false, "Show detailed dependency information")
 	checkCmd.Flags().BoolVar(&checkNoCache, "no-cache", false, "Disable the performance cache")
 	checkCmd.Flags().BoolVar(&checkNoBaseline, "no-baseline", false, "Ignore baseline file and report all violations")
+	checkCmd.Flags().BoolVar(&checkWatch, "watch", false, "Watch mode: re-run check on file changes")
+	checkCmd.Flags().DurationVar(&checkInterval, "interval", 500*time.Millisecond, "Debounce interval for watch mode")
 	rootCmd.AddCommand(checkCmd)
 }
 
+// checkResult holds the output of a single check run.
+type checkResult struct {
+	violations      []domain.Violation
+	suppressedCount int
+	config          *domain.Config
+	configHash      string
+	projectRoot     string
+	format          ports.OutputFormat
+	duration        time.Duration
+}
+
+// runCheck is the entry point for the check command.
 func runCheck(cmd *cobra.Command, args []string) error {
 	// Determine project root
 	projectRoot := "."
@@ -124,9 +152,7 @@ func runCheck(cmd *cobra.Command, args []string) error {
 		fmt.Fprintln(os.Stderr)
 	}
 
-	// Run the check steps manually so we can determine exit code
-	ctx := context.Background()
-
+	// Load config
 	config, err := service.Load(configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
@@ -149,74 +175,234 @@ func runCheck(cmd *cobra.Command, args []string) error {
 		cache = fileCache
 	}
 
-	// Re-create service with cache
-	service = newCheckService(format, cache)
+	// Run initial check
+	result := runCheckWithService(service, config, configHash, projectRoot, format, checkVerbose, checkNoBaseline, cache)
+
+	// Report initial result
+	printCheckResult(result, format, false)
+
+	// In single-shot mode, exit based on violations
+	if !checkWatch {
+		if len(result.violations) > 0 {
+			os.Exit(output.ExitCode(result.violations))
+		}
+		// Print baseline summary if applicable
+		if result.suppressedCount > 0 {
+			fmt.Fprintf(os.Stderr, "%d violations suppressed by baseline\n", result.suppressedCount)
+		}
+		return nil
+	}
+
+	// --- Watch mode ---
+	return watchMode(service, config, configHash, projectRoot, format, result)
+}
+
+// runCheckWithService performs a single check run using the provided service.
+func runCheckWithService(service *application.CheckService, config *domain.Config, configHash, projectRoot string,
+	format ports.OutputFormat, verbose, noBaseline bool, cache ports.Cache) checkResult {
+
+	start := time.Now()
+	ctx := context.Background()
+
+	// Re-create service with cache if needed
+	if cache != nil {
+		service = newCheckService(format, cache)
+	}
 
 	dependencies, err := service.DetectCached(ctx, projectRoot, config.Layers)
 	if err != nil {
-		return fmt.Errorf("detection failed: %w", err)
+		fmt.Fprintf(os.Stderr, "Warning: detection failed: %v\n", err)
+		return checkResult{projectRoot: projectRoot, format: format}
 	}
 
 	violations := service.Evaluate(dependencies, config.Rules, config.Layers)
 
-	// Baseline filtering: load baseline and suppress known violations
+	// Baseline filtering
 	baselinePath := filepath.Join(projectRoot, application.DefaultBaselineFile)
-	var baseline *domain.Baseline
 	var suppressedCount int
 
-	if !checkNoBaseline {
+	if !noBaseline {
 		baselineStorage := arxbaseline.NewStorage()
 		if baselineStorage.Exists(baselinePath) {
 			loaded, err := baselineStorage.Load(baselinePath)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: failed to load baseline: %v\n", err)
 			} else if loaded != nil {
-				// Check if baseline is stale (config changed)
 				if loaded.IsStale(configHash) {
 					fmt.Fprintf(os.Stderr, "Warning: baseline is stale (config changed). Using baseline anyway.\n")
 				}
-
-				// Count suppressed violations before filtering
 				totalCount := len(violations)
 				violations = loaded.Filter(violations)
 				suppressedCount = totalCount - len(violations)
 
-				if checkVerbose && suppressedCount > 0 {
+				if verbose && suppressedCount > 0 {
 					fmt.Fprintf(os.Stderr, "%d violations suppressed by baseline\n", suppressedCount)
 				}
-				baseline = loaded
 			}
 		}
 	}
 
-	// Cache violations for arx explain command (cache ALL violations, not just new ones)
+	// Cache violations for arx explain command
 	if err := output.CacheViolations(violations, projectRoot); err != nil {
-		// Log warning but don't fail the check
 		fmt.Fprintf(os.Stderr, "Warning: failed to cache violations: %v\n", err)
 	}
 
-	// Report violations
-	// For JSON output with baseline, use a reporter that includes suppressed count
+	return checkResult{
+		violations:      violations,
+		suppressedCount: suppressedCount,
+		config:          config,
+		configHash:      configHash,
+		projectRoot:     projectRoot,
+		format:          format,
+		duration:        time.Since(start),
+	}
+}
+
+// printCheckResult outputs the violations to the terminal or as JSON.
+func printCheckResult(result checkResult, format ports.OutputFormat, isWatchUpdate bool) {
+	service := newCheckService(format, nil)
+	violations := result.violations
+	suppressedCount := result.suppressedCount
+
+	if isWatchUpdate {
+		// Watch mode updates are printed to stderr
+		if format == ports.OutputFormatJSON && len(violations) > 0 {
+			// Skip full report for watch JSON — handled by watch loop
+		} else if format == ports.OutputFormatJSON {
+			// No violations: output empty array
+			json.NewEncoder(os.Stdout).Encode(violations)
+		}
+		return
+	}
+
+	// Initial check report
 	if format == ports.OutputFormatJSON && suppressedCount > 0 {
 		reporter := output.NewJSONReporterWithBaseline(suppressedCount)
 		if err := reporter.Report(violations, format); err != nil {
-			return fmt.Errorf("report generation failed: %w", err)
+			fmt.Fprintf(os.Stderr, "Warning: report generation failed: %v\n", err)
 		}
 	} else {
 		if err := service.Report(violations, format); err != nil {
-			return fmt.Errorf("report generation failed: %w", err)
+			fmt.Fprintf(os.Stderr, "Warning: report generation failed: %v\n", err)
 		}
 	}
+}
 
-	// Exit with code 1 if NEW violations found
-	if len(violations) > 0 {
-		os.Exit(output.ExitCode(violations))
+// watchMode runs the watch loop: monitors file changes and re-runs checks.
+func watchMode(service *application.CheckService, config *domain.Config, configHash, projectRoot string,
+	format ports.OutputFormat, initialResult checkResult) error {
+
+	dirs := []string{projectRoot}
+	w, err := watcher.NewWatcher(dirs, checkInterval)
+	if err != nil {
+		return fmt.Errorf("failed to create watcher: %w", err)
+	}
+	defer w.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Handle graceful shutdown via signals
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigCh
+		fmt.Fprintln(os.Stderr, "\nShutting down watch mode...")
+		cancel()
+	}()
+
+	// Keep track of previous violations for diff
+	prevViolations := initialResult.violations
+
+	// Print initial watch status
+	if checkVerbose {
+		fmt.Fprintf(os.Stderr, "Watching %s for changes (debounce: %s)...\n", projectRoot, checkInterval)
 	}
 
-	// If baseline exists and there were suppressed violations, print summary
-	if baseline != nil && suppressedCount > 0 {
-		fmt.Fprintf(os.Stderr, "%d violations suppressed by baseline\n", suppressedCount)
+	// Start watcher
+	go func() {
+		if err := w.Start(ctx); err != nil && err != context.Canceled {
+			fmt.Fprintf(os.Stderr, "Watcher error: %v\n", err)
+		}
+	}()
+
+	// Event loop
+	for {
+		select {
+		case evt := <-w.Events():
+			// In verbose mode, print each file change event
+			if checkVerbose {
+				fmt.Fprintf(os.Stderr, "Change detected: %s (%s)\n", evt.Path, opToString(evt.Op))
+			}
+
+			// Re-run check
+			result := runCheckWithService(service, config, configHash, projectRoot, format, checkVerbose, checkNoBaseline, nil)
+
+			// Diff with previous run
+			watchResult := domain.DiffViolations(prevViolations, result.violations)
+			watchResult.Elapsed = result.duration
+
+			// Print diff summary
+			if format == ports.OutputFormatJSON {
+				outputJSONWatchResult(watchResult)
+			} else {
+				printWatchResultSummary(watchResult)
+			}
+
+			// Update previous violations
+			prevViolations = result.violations
+
+		case err := <-w.Errors():
+			fmt.Fprintf(os.Stderr, "Watcher error: %v\n", err)
+
+		case <-ctx.Done():
+			return nil
+		}
+	}
+}
+
+// printWatchResultSummary prints the watch result summary to stderr.
+func printWatchResultSummary(r domain.WatchResult) {
+	summary := r.Summary()
+
+	// Color code: red for added, green for resolved
+	var prefix string
+	if len(r.Added) > 0 && len(r.Resolved) > 0 {
+		prefix = "📋 "
+	} else if len(r.Added) > 0 {
+		prefix = "🔴 "
+	} else if len(r.Resolved) > 0 {
+		prefix = "🟢 "
+	} else {
+		prefix = "  "
 	}
 
-	return nil
+	fmt.Fprintf(os.Stderr, "%s%s\n", prefix, summary)
+}
+
+// outputJSONWatchResult outputs the watch result as JSON.
+func outputJSONWatchResult(r domain.WatchResult) {
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(r); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to encode watch result: %v\n", err)
+	}
+}
+
+// opToString returns a human-readable string for an operation type.
+func opToString(op watcher.Op) string {
+	switch op {
+	case watcher.Create:
+		return "created"
+	case watcher.Write:
+		return "modified"
+	case watcher.Remove:
+		return "deleted"
+	case watcher.Rename:
+		return "renamed"
+	case watcher.Chmod:
+		return "permissions changed"
+	default:
+		return "unknown"
+	}
 }

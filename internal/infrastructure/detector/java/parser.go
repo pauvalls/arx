@@ -2,7 +2,8 @@ package java
 
 import (
 	"regexp"
-	"strings"
+
+	"github.com/pauvalls/arx/internal/infrastructure/detector/shared"
 )
 
 // Regex patterns for Java import statements
@@ -54,29 +55,9 @@ func extractPackage(line string) string {
 	return ""
 }
 
-// importMatchesLayer checks if an import path matches a layer pattern
+// importMatchesLayer delegates to the shared MatchImportToLayer utility.
+// This wrapper preserves the unexported name so existing callers in the
+// java package and its tests work without changes.
 func importMatchesLayer(importPath, layerPattern string) bool {
-	// Convert glob pattern to regex
-	// First escape all regex metacharacters
-	escaped := regexp.QuoteMeta(layerPattern)
-
-	// Replace /** with (/.*)? (matches zero or more path segments, including no segments)
-	// Must do this BEFORE replacing single * to avoid conflicts
-	escaped = strings.ReplaceAll(escaped, `/\*\*`, "(/.*)?")
-
-	// Replace any remaining ** (without leading /) with .*
-	escaped = strings.ReplaceAll(escaped, `\*\*`, ".*")
-
-	// Replace escaped * with [^/]* (matches anything except /)
-	escaped = strings.ReplaceAll(escaped, `\*`, "[^/]*")
-
-	// Build final regex pattern
-	pattern := "^" + escaped + "$"
-
-	matched, err := regexp.MatchString(pattern, importPath)
-	if err != nil {
-		return false
-	}
-
-	return matched
+	return shared.MatchImportToLayer(importPath, layerPattern)
 }

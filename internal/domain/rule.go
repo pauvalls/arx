@@ -2,6 +2,7 @@ package domain
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -72,12 +73,30 @@ func (s *Severity) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 // Rule represents an architectural rule between layers
 type Rule struct {
-	ID          string   `json:"id" yaml:"id"`
-	From        string   `json:"from" yaml:"from"`
-	To          []string `json:"to" yaml:"to"`
-	Type        RuleType `json:"type" yaml:"type"`
-	Severity    Severity `json:"severity" yaml:"severity"`
-	Explanation string   `json:"explanation,omitempty" yaml:"explanation,omitempty"`
+	ID              string          `json:"id" yaml:"id"`
+	From            string          `json:"from" yaml:"from"`
+	To              []string        `json:"to" yaml:"to"`
+	Type            RuleType        `json:"type" yaml:"type"`
+	Severity        Severity        `json:"severity" yaml:"severity"`
+	Explanation     string          `json:"explanation,omitempty" yaml:"explanation,omitempty"`
+	Pattern         string          `json:"pattern,omitempty" yaml:"pattern,omitempty"`
+	compiledPattern *regexp.Regexp  `json:"-" yaml:"-"`
+}
+
+// CompilePattern compiles the Pattern field into a cached *regexp.Regexp.
+// Returns nil if Pattern is empty.
+func (r *Rule) CompilePattern() error {
+	if r.Pattern == "" {
+		r.compiledPattern = nil
+		return nil
+	}
+	re, err := regexp.Compile(r.Pattern)
+	if err != nil {
+		r.compiledPattern = nil
+		return err
+	}
+	r.compiledPattern = re
+	return nil
 }
 
 // Validate checks if the rule configuration is valid
@@ -85,6 +104,30 @@ func (r *Rule) Validate() error {
 	if r.ID == "" {
 		return fmt.Errorf("rule ID is required")
 	}
+
+	// Compile pattern if set
+	if err := r.CompilePattern(); err != nil {
+		return fmt.Errorf("rule %q: invalid pattern: %w", r.ID, err)
+	}
+
+	// Pattern-only rules don't require from/to
+	if r.Pattern != "" && r.From == "" && len(r.To) == 0 {
+		// Validate type and severity only
+		switch r.Type {
+		case RuleTypeCannot, RuleTypeMust, RuleTypeCan, RuleTypeMustNotCircular:
+			// valid
+		default:
+			return fmt.Errorf("rule %q: invalid rule type %q", r.ID, r.Type)
+		}
+		switch r.Severity {
+		case SeverityError, SeverityWarning, SeverityInfo, "":
+			// valid
+		default:
+			return fmt.Errorf("rule %q: invalid severity %q", r.ID, r.Severity)
+		}
+		return nil
+	}
+
 	if r.From == "" {
 		return fmt.Errorf("rule %q: 'from' field is required", r.ID)
 	}
@@ -108,6 +151,28 @@ func (r *Rule) Validate() error {
 
 // Violates checks if a dependency from sourceLayer to targetLayer violates this rule
 func (r *Rule) Violates(importPath, sourceLayer, targetLayer string) bool {
+	// Check pattern if compiled
+	if r.compiledPattern != nil {
+		if !r.compiledPattern.MatchString(importPath) {
+			return false
+		}
+		// Pattern-only rule (no from/to): pattern match determines violation
+		if r.From == "" {
+			switch r.Type {
+			case RuleTypeCannot, RuleTypeMustNotCircular:
+				return true
+			default:
+				return false
+			}
+		}
+		// Combined rule: pattern matched, proceed to from/to check
+	}
+
+	// If no pattern and no from, can't determine
+	if r.From == "" {
+		return false
+	}
+
 	// Check if the rule applies to this source layer
 	if r.From != sourceLayer {
 		return false

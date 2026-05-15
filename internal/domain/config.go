@@ -57,9 +57,11 @@ func (c *Config) Validate() error {
 		if err := c.Rules[i].Validate(); err != nil {
 			return fmt.Errorf("rule[%d]: %w", i, err)
 		}
-		// Check that rule references valid layers
-		if !layerNames[c.Rules[i].From] {
-			return fmt.Errorf("rule[%d]: 'from' references unknown layer %q", i, c.Rules[i].From)
+		// Check that rule references valid layers (skip pattern-only rules)
+		if c.Rules[i].From != "" {
+			if !layerNames[c.Rules[i].From] {
+				return fmt.Errorf("rule[%d]: 'from' references unknown layer %q", i, c.Rules[i].From)
+			}
 		}
 		for _, to := range c.Rules[i].To {
 			if !layerNames[to] {
