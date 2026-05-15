@@ -83,6 +83,51 @@ func TestLayer_MatchesPath(t *testing.T) {
 			filePath: "internal/domain/user.go",
 			want:     false,
 		},
+		{
+			name: "double asterisk matches nested paths",
+			layer: Layer{
+				Name:  "domain",
+				Paths: []string{"internal/domain/**"},
+			},
+			filePath: "internal/domain/user.go",
+			want:     true,
+		},
+		{
+			name: "double asterisk matches deeply nested paths",
+			layer: Layer{
+				Name:  "domain",
+				Paths: []string{"internal/domain/**"},
+			},
+			filePath: "internal/domain/entity/valueobject/User.java",
+			want:     true,
+		},
+		{
+			name: "double asterisk matches full absolute paths",
+			layer: Layer{
+				Name:  "domain",
+				Paths: []string{"com/wedding/domain/**"},
+			},
+			filePath: "/tmp/project/src/main/java/com/wedding/domain/guest/Guest.java",
+			want:     false, // Pattern doesn't include full path prefix
+		},
+		{
+			name: "double asterisk with partial match",
+			layer: Layer{
+				Name:  "domain",
+				Paths: []string{"**/domain/**"},
+			},
+			filePath: "src/main/java/com/wedding/domain/guest/Guest.java",
+			want:     true,
+		},
+		{
+			name: "double asterisk no match different base",
+			layer: Layer{
+				Name:  "domain",
+				Paths: []string{"internal/domain/**"},
+			},
+			filePath: "internal/infrastructure/user.go",
+			want:     false,
+		},
 	}
 
 	for _, tt := range tests {
