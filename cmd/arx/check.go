@@ -6,6 +6,10 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/pauvalls/arx/internal/application"
+	"github.com/pauvalls/arx/internal/domain"
+	arxcache "github.com/pauvalls/arx/internal/infrastructure/cache"
+	arxbaseline "github.com/pauvalls/arx/internal/infrastructure/baseline"
 	"github.com/pauvalls/arx/internal/infrastructure/output"
 	"github.com/pauvalls/arx/internal/ports"
 	"github.com/spf13/cobra"
@@ -30,21 +34,28 @@ Exit codes:
   0 - No violations found (or only info/warnings with --ci)
   1 - Violations found or error occurred
 
+When a baseline exists (.arx-baseline.json):
+  0 - No NEW violations found (baseline violations are suppressed)
+  1 - NEW violations found
+
 Example:
   arx check                    # Check current directory
   arx check ./my-project       # Check specific directory
   arx check --ci               # JSON output for CI/CD
   arx check --format json      # Explicit JSON output
-  arx check --verbose          # Show detailed dependency info`,
+  arx check --verbose          # Show detailed dependency info
+  arx check --no-baseline      # Ignore baseline, report all violations`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runCheck,
 }
 
 var (
-	checkConfig  string
-	checkCI      bool
-	checkFormat  string
-	checkVerbose bool
+	checkConfig     string
+	checkCI         bool
+	checkFormat     string
+	checkVerbose    bool
+	checkNoCache    bool
+	checkNoBaseline bool
 )
 
 func init() {
@@ -52,6 +63,8 @@ func init() {
 	checkCmd.Flags().BoolVar(&checkCI, "ci", false, "Machine-readable JSON output for CI/CD (shorthand for --format json)")
 	checkCmd.Flags().StringVarP(&checkFormat, "format", "f", "terminal", "Output format: terminal|json|sarif|md")
 	checkCmd.Flags().BoolVarP(&checkVerbose, "verbose", "v", false, "Show detailed dependency information")
+	checkCmd.Flags().BoolVar(&checkNoCache, "no-cache", false, "Disable the performance cache")
+	checkCmd.Flags().BoolVar(&checkNoBaseline, "no-baseline", false, "Ignore baseline file and report all violations")
 	rootCmd.AddCommand(checkCmd)
 }
 
@@ -95,8 +108,8 @@ func runCheck(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Create service and run check
-	service := newCheckService(format)
+	// Create service with nil cache for initial config load
+	service := newCheckService(format, nil)
 
 	// If verbose, print config info
 	if checkVerbose {
@@ -119,27 +132,90 @@ func runCheck(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
-	dependencies, err := service.Detect(ctx, projectRoot, config.Layers)
+	// Compute config hash for cache invalidation
+	configHash, err := config.Hash()
+	if err != nil {
+		return fmt.Errorf("failed to compute config hash: %w", err)
+	}
+
+	// Set up cache (unless --no-cache)
+	var cache ports.Cache
+	if !checkNoCache {
+		cacheDir := filepath.Join(projectRoot, ".arx-cache")
+		fileCache := arxcache.NewFileCache(cacheDir)
+		if err := fileCache.SetConfigHash(configHash); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to set cache config hash: %v\n", err)
+		}
+		cache = fileCache
+	}
+
+	// Re-create service with cache
+	service = newCheckService(format, cache)
+
+	dependencies, err := service.DetectCached(ctx, projectRoot, config.Layers)
 	if err != nil {
 		return fmt.Errorf("detection failed: %w", err)
 	}
 
 	violations := service.Evaluate(dependencies, config.Rules, config.Layers)
 
-	// Cache violations for arx explain command
+	// Baseline filtering: load baseline and suppress known violations
+	baselinePath := filepath.Join(projectRoot, application.DefaultBaselineFile)
+	var baseline *domain.Baseline
+	var suppressedCount int
+
+	if !checkNoBaseline {
+		baselineStorage := arxbaseline.NewStorage()
+		if baselineStorage.Exists(baselinePath) {
+			loaded, err := baselineStorage.Load(baselinePath)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to load baseline: %v\n", err)
+			} else if loaded != nil {
+				// Check if baseline is stale (config changed)
+				if loaded.IsStale(configHash) {
+					fmt.Fprintf(os.Stderr, "Warning: baseline is stale (config changed). Using baseline anyway.\n")
+				}
+
+				// Count suppressed violations before filtering
+				totalCount := len(violations)
+				violations = loaded.Filter(violations)
+				suppressedCount = totalCount - len(violations)
+
+				if checkVerbose && suppressedCount > 0 {
+					fmt.Fprintf(os.Stderr, "%d violations suppressed by baseline\n", suppressedCount)
+				}
+				baseline = loaded
+			}
+		}
+	}
+
+	// Cache violations for arx explain command (cache ALL violations, not just new ones)
 	if err := output.CacheViolations(violations, projectRoot); err != nil {
 		// Log warning but don't fail the check
 		fmt.Fprintf(os.Stderr, "Warning: failed to cache violations: %v\n", err)
 	}
 
 	// Report violations
-	if err := service.Report(violations, format); err != nil {
-		return fmt.Errorf("report generation failed: %w", err)
+	// For JSON output with baseline, use a reporter that includes suppressed count
+	if format == ports.OutputFormatJSON && suppressedCount > 0 {
+		reporter := output.NewJSONReporterWithBaseline(suppressedCount)
+		if err := reporter.Report(violations, format); err != nil {
+			return fmt.Errorf("report generation failed: %w", err)
+		}
+	} else {
+		if err := service.Report(violations, format); err != nil {
+			return fmt.Errorf("report generation failed: %w", err)
+		}
 	}
 
-	// Exit with code 1 if violations found
+	// Exit with code 1 if NEW violations found
 	if len(violations) > 0 {
 		os.Exit(output.ExitCode(violations))
+	}
+
+	// If baseline exists and there were suppressed violations, print summary
+	if baseline != nil && suppressedCount > 0 {
+		fmt.Fprintf(os.Stderr, "%d violations suppressed by baseline\n", suppressedCount)
 	}
 
 	return nil

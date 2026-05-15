@@ -47,8 +47,9 @@ func newInitService() *application.InitService {
 	return application.NewInitServiceWithPreset(writer, presetService)
 }
 
-// newCheckService creates a CheckService with all dependencies wired
-func newCheckService(format ports.OutputFormat) *application.CheckService {
+// newCheckService creates a CheckService with all dependencies wired.
+// If cache is nil, caching is disabled.
+func newCheckService(format ports.OutputFormat, cache ports.Cache) *application.CheckService {
 	reader := config.NewYAMLReader()
 	detectors := detector.GetDetectors()
 
@@ -64,7 +65,7 @@ func newCheckService(format ports.OutputFormat) *application.CheckService {
 		reporter = output.NewTerminalReporter()
 	}
 
-	return application.NewCheckService(reader, detectors, reporter)
+	return application.NewCheckServiceWithCache(reader, detectors, reporter, cache)
 }
 
 // printError prints a user-friendly error message

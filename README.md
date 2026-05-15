@@ -114,6 +114,12 @@ arx diagram -o deps.dot        # Export to file
 | `arx init --preset {clean,hexagonal,ddd}` | Initialize with a preset template |
 | `arx check [path]` | Run architecture audit against defined rules |
 | `arx check --ci` | JSON output for CI/CD pipelines (exit code 1 on violations) |
+| `arx check --no-cache` | Bypass performance cache |
+| `arx check --no-baseline` | Ignore baseline, report all violations |
+| `arx baseline [path]` | Create baseline to suppress existing violations |
+| `arx baseline --reset` | Regenerate baseline from current state |
+| `arx diff [ref-before] [ref-after]` | Compare architecture between git refs |
+| `arx diff --format json` | Machine-readable diff output |
 | `arx audit [path]` | Run comprehensive architecture audit with health metrics |
 | `arx audit --trend` | Show trend comparison with previous audit |
 | `arx audit --since 2026-04-01` | Show audits since a specific date |

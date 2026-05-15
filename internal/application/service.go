@@ -125,6 +125,7 @@ type CheckService struct {
 	reader    ports.ConfigReader
 	detectors []ports.Detector
 	reporter  ports.Reporter
+	cache     ports.Cache
 }
 
 // NewCheckService creates a new CheckService with the given dependencies.
@@ -136,6 +137,16 @@ func NewCheckService(reader ports.ConfigReader, detectors []ports.Detector, repo
 	}
 }
 
+// NewCheckServiceWithCache creates a new CheckService with an optional cache.
+func NewCheckServiceWithCache(reader ports.ConfigReader, detectors []ports.Detector, reporter ports.Reporter, cache ports.Cache) *CheckService {
+	return &CheckService{
+		reader:    reader,
+		detectors: detectors,
+		reporter:  reporter,
+		cache:     cache,
+	}
+}
+
 // Load reads and validates the configuration.
 func (s *CheckService) Load(configPath string) (*domain.Config, error) {
 	return LoadConfig(configPath, s.reader)
@@ -144,6 +155,12 @@ func (s *CheckService) Load(configPath string) (*domain.Config, error) {
 // Detect runs all applicable detectors and returns aggregated dependencies.
 func (s *CheckService) Detect(ctx context.Context, projectRoot string, layers []domain.Layer) ([]domain.Dependency, error) {
 	return RunDetectors(ctx, projectRoot, layers, s.detectors)
+}
+
+// DetectCached runs all applicable detectors with caching support.
+// If cache is nil, falls back to Detect (backward compatible).
+func (s *CheckService) DetectCached(ctx context.Context, projectRoot string, layers []domain.Layer) ([]domain.Dependency, error) {
+	return RunDetectorsCached(ctx, projectRoot, layers, s.detectors, s.cache)
 }
 
 // Evaluate checks dependencies against rules and returns violations.

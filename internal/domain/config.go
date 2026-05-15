@@ -1,6 +1,11 @@
 package domain
 
-import "fmt"
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+)
 
 // LanguageOverride allows language-specific configuration overrides
 type LanguageOverride struct {
@@ -64,4 +69,15 @@ func (c *Config) Validate() error {
 	}
 
 	return nil
+}
+
+// Hash returns a SHA-256 hex digest of the marshaled JSON config.
+// Used for cache invalidation and baseline staleness checks.
+func (c *Config) Hash() (string, error) {
+	data, err := json.Marshal(c)
+	if err != nil {
+		return "", err
+	}
+	h := sha256.Sum256(data)
+	return hex.EncodeToString(h[:]), nil
 }
