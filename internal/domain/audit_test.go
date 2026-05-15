@@ -207,6 +207,186 @@ func TestAudit_EvaluateRules(t *testing.T) {
 	}
 }
 
+func TestAudit_EvaluateRules_Overrides(t *testing.T) {
+	tests := []struct {
+		name           string
+		dependencies   []Dependency
+		rules          []Rule
+		layers         []Layer
+		wantCount      int
+		wantSeverity   Severity
+		wantOverridden bool
+	}{
+		{
+			name: "rule disabled for path skips violation",
+			dependencies: []Dependency{
+				{
+					SourceFile:    "internal/legacy/file.go",
+					SourceLine:    10,
+					ImportPath:    "github.com/example/arx/internal/infrastructure/db",
+					ResolvedLayer: "infrastructure",
+				},
+			},
+			rules: []Rule{
+				{
+					ID:       "R1",
+					From:     "legacy",
+					To:       []string{"infrastructure"},
+					Type:     RuleTypeCannot,
+					Severity: SeverityError,
+					Overrides: []RuleOverride{
+						{Path: "internal/legacy/", Enabled: boolPtr(false)},
+					},
+				},
+			},
+			layers: []Layer{
+				{Name: "legacy", Paths: []string{"internal/legacy"}},
+				{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
+			},
+			wantCount: 0,
+		},
+		{
+			name: "severity override changes violation severity",
+			dependencies: []Dependency{
+				{
+					SourceFile:    "internal/legacy/file.go",
+					SourceLine:    10,
+					ImportPath:    "github.com/example/arx/internal/infrastructure/db",
+					ResolvedLayer: "infrastructure",
+				},
+			},
+			rules: []Rule{
+				{
+					ID:       "R1",
+					From:     "legacy",
+					To:       []string{"infrastructure"},
+					Type:     RuleTypeCannot,
+					Severity: SeverityError,
+					Overrides: []RuleOverride{
+						{Path: "internal/legacy/", Severity: SeverityWarning},
+					},
+				},
+			},
+			layers: []Layer{
+				{Name: "legacy", Paths: []string{"internal/legacy"}},
+				{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
+			},
+			wantCount:      1,
+			wantSeverity:   SeverityWarning,
+			wantOverridden: true,
+		},
+		{
+			name: "no override leaves violation unaffected",
+			dependencies: []Dependency{
+				{
+					SourceFile:    "internal/domain/user.go",
+					SourceLine:    10,
+					ImportPath:    "github.com/example/arx/internal/infrastructure/db",
+					ResolvedLayer: "infrastructure",
+				},
+			},
+			rules: []Rule{
+				{
+					ID:       "R1",
+					From:     "domain",
+					To:       []string{"infrastructure"},
+					Type:     RuleTypeCannot,
+					Severity: SeverityError,
+					Overrides: []RuleOverride{
+						{Path: "internal/legacy/", Severity: SeverityWarning},
+					},
+				},
+			},
+			layers: []Layer{
+				{Name: "domain", Paths: []string{"internal/domain"}},
+				{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
+			},
+			wantCount:      1,
+			wantSeverity:   SeverityError,
+			wantOverridden: false,
+		},
+		{
+			name: "override with both severity and enabled=false disables",
+			dependencies: []Dependency{
+				{
+					SourceFile:    "internal/legacy/file.go",
+					SourceLine:    10,
+					ImportPath:    "github.com/example/arx/internal/infrastructure/db",
+					ResolvedLayer: "infrastructure",
+				},
+			},
+			rules: []Rule{
+				{
+					ID:       "R1",
+					From:     "legacy",
+					To:       []string{"infrastructure"},
+					Type:     RuleTypeCannot,
+					Severity: SeverityError,
+					Overrides: []RuleOverride{
+						{Path: "internal/legacy/", Severity: SeverityWarning, Enabled: boolPtr(false)},
+					},
+				},
+			},
+			layers: []Layer{
+				{Name: "legacy", Paths: []string{"internal/legacy"}},
+				{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
+			},
+			// Disabled takes precedence — no violation
+			wantCount: 0,
+		},
+		{
+			name: "multiple overrides - disabled wins over severity override",
+			dependencies: []Dependency{
+				{
+					SourceFile:    "internal/legacy/deep/file.go",
+					SourceLine:    10,
+					ImportPath:    "github.com/example/arx/internal/infrastructure/db",
+					ResolvedLayer: "infrastructure",
+				},
+			},
+			rules: []Rule{
+				{
+					ID:       "R1",
+					From:     "legacy",
+					To:       []string{"infrastructure"},
+					Type:     RuleTypeCannot,
+					Severity: SeverityError,
+					Overrides: []RuleOverride{
+						{Path: "internal/legacy/", Severity: SeverityWarning},
+						{Path: "internal/legacy/deep/", Enabled: boolPtr(false)},
+					},
+				},
+			},
+			layers: []Layer{
+				{Name: "legacy", Paths: []string{"internal/legacy"}},
+				{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
+			},
+			// Disabled by more specific override
+			wantCount: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			violations := EvaluateRules(tt.dependencies, tt.rules, tt.layers)
+
+			if len(violations) != tt.wantCount {
+				t.Errorf("EvaluateRules() returned %d violations, want %d", len(violations), tt.wantCount)
+			}
+
+			if tt.wantCount > 0 && len(violations) > 0 {
+				v := violations[0]
+				if v.Severity != tt.wantSeverity {
+					t.Errorf("Violation.Severity = %q, want %q", v.Severity, tt.wantSeverity)
+				}
+				if v.Overridden != tt.wantOverridden {
+					t.Errorf("Violation.Overridden = %v, want %v", v.Overridden, tt.wantOverridden)
+				}
+			}
+		})
+	}
+}
+
 func TestGenerateViolationID(t *testing.T) {
 	tests := []struct {
 		name  string

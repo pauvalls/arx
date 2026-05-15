@@ -561,3 +561,98 @@ func TestRule_Validate_Pattern(t *testing.T) {
 		}
 	})
 }
+
+func TestRule_Validate_Overrides(t *testing.T) {
+	tests := []struct {
+		name    string
+		rule    Rule
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name: "valid severity override",
+			rule: Rule{
+				ID:       "R1",
+				From:     "domain",
+				To:       []string{"infrastructure"},
+				Type:     RuleTypeCannot,
+				Severity: SeverityError,
+				Overrides: []RuleOverride{
+					{Path: "internal/legacy/", Severity: SeverityWarning},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid disabled override",
+			rule: Rule{
+				ID:       "R1",
+				From:     "domain",
+				To:       []string{"infrastructure"},
+				Type:     RuleTypeCannot,
+				Severity: SeverityError,
+				Overrides: []RuleOverride{
+					{Path: "internal/legacy/", Enabled: boolPtr(false)},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid override with both severity and enabled",
+			rule: Rule{
+				ID:       "R1",
+				From:     "domain",
+				To:       []string{"infrastructure"},
+				Type:     RuleTypeCannot,
+				Severity: SeverityError,
+				Overrides: []RuleOverride{
+					{Path: "internal/legacy/", Severity: SeverityWarning, Enabled: boolPtr(true)},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid empty path override (match all)",
+			rule: Rule{
+				ID:       "R1",
+				From:     "domain",
+				To:       []string{"infrastructure"},
+				Type:     RuleTypeCannot,
+				Severity: SeverityError,
+				Overrides: []RuleOverride{
+					{Path: "", Severity: SeverityInfo},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid override severity",
+			rule: Rule{
+				ID:       "R1",
+				From:     "domain",
+				To:       []string{"infrastructure"},
+				Type:     RuleTypeCannot,
+				Severity: SeverityError,
+				Overrides: []RuleOverride{
+					{Path: "internal/legacy/", Severity: "critical"},
+				},
+			},
+			wantErr: true,
+			errMsg:  "invalid severity",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.rule.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Rule.Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr && tt.errMsg != "" {
+				if err == nil {
+					t.Errorf("Rule.Validate() expected error containing %q, got nil", tt.errMsg)
+				}
+			}
+		})
+	}
+}

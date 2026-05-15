@@ -5,6 +5,7 @@ import (
 	javadetector "github.com/pauvalls/arx/internal/infrastructure/detector/java"
 	kotlindetector "github.com/pauvalls/arx/internal/infrastructure/detector/kotlin"
 	pydetector "github.com/pauvalls/arx/internal/infrastructure/detector/python"
+	rustdetector "github.com/pauvalls/arx/internal/infrastructure/detector/rust"
 	tsdetector "github.com/pauvalls/arx/internal/infrastructure/detector/typescript"
 	"github.com/pauvalls/arx/internal/ports"
 )
@@ -18,5 +19,6 @@ func GetDetectors() []ports.Detector {
 		pydetector.New(),
 		javadetector.New(),
 		kotlindetector.New(),
+		rustdetector.New(),
 	}
 }

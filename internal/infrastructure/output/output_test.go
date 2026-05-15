@@ -244,6 +244,203 @@ func TestMarkdownReporter_Report(t *testing.T) {
 	}
 }
 
+func TestExitCode_Overrides(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		violations []domain.Violation
+		want       int
+	}{
+		{
+			name:       "no violations returns 0",
+			violations: []domain.Violation{},
+			want:       0,
+		},
+		{
+			name: "all overridden violations returns 0",
+			violations: []domain.Violation{
+				{ID: "V1", Severity: domain.SeverityWarning, Overridden: true},
+				{ID: "V2", Severity: domain.SeverityInfo, Overridden: true},
+			},
+			want: 0,
+		},
+		{
+			name: "mixed overridden and non-overridden returns 1",
+			violations: []domain.Violation{
+				{ID: "V1", Severity: domain.SeverityError, Overridden: true},
+				{ID: "V2", Severity: domain.SeverityError, Overridden: false},
+			},
+			want: 1,
+		},
+		{
+			name: "no overridden violations returns 1",
+			violations: []domain.Violation{
+				{ID: "V1", Severity: domain.SeverityError, Overridden: false},
+				{ID: "V2", Severity: domain.SeverityWarning, Overridden: false},
+			},
+			want: 1,
+		},
+		{
+			name: "single non-overridden violation returns 1",
+			violations: []domain.Violation{
+				{ID: "V1", Severity: domain.SeverityError, Overridden: false},
+			},
+			want: 1,
+		},
+		{
+			name: "single overridden violation returns 0",
+			violations: []domain.Violation{
+				{ID: "V1", Severity: domain.SeverityWarning, Overridden: true},
+			},
+			want: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := ExitCode(tt.violations)
+			if got != tt.want {
+				t.Errorf("ExitCode() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSummary_OverriddenCount_JSON(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		summary Summary
+		want    string
+	}{
+		{
+			name: "with overridden count",
+			summary: Summary{
+				Total:           5,
+				Errors:          3,
+				Warnings:        1,
+				Info:            1,
+				OverriddenCount: 2,
+			},
+			want: `"overridden_count":2`,
+		},
+		{
+			name: "zero overridden count omitted",
+			summary: Summary{
+				Total:    2,
+				Errors:   1,
+				Warnings: 1,
+				Info:     0,
+			},
+			want: `"overridden_count"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			data, err := json.Marshal(tt.summary)
+			if err != nil {
+				t.Fatalf("Failed to marshal Summary: %v", err)
+			}
+
+			if tt.summary.OverriddenCount > 0 {
+				if !strings.Contains(string(data), tt.want) {
+					t.Errorf("JSON missing overridden_count: got %s", string(data))
+				}
+			} else {
+				if strings.Contains(string(data), tt.want) {
+					t.Errorf("JSON should omit overridden_count when 0: got %s", string(data))
+				}
+			}
+		})
+	}
+}
+
+func TestJSONViolation_OverriddenField(t *testing.T) {
+	t.Parallel()
+
+	reporter := NewJSONReporter()
+	violations := []domain.Violation{
+		{
+			ID:               "D-01",
+			RuleID:           "domain-cannot-depend-on-infrastructure",
+			Severity:         domain.SeverityError,
+			OriginalSeverity: domain.SeverityError,
+			Overridden:       true,
+			File:             "internal/domain/order.go",
+			Line:             14,
+			SourceLayer:      "domain",
+			TargetLayer:      "infrastructure",
+			Import:           "github.com/example/app/internal/infrastructure/postgres",
+			Message:          "Domain should not depend on infrastructure",
+		},
+	}
+
+	// Marshal the JSONOutput
+	jsonViolations := make([]JSONViolation, 0, len(violations))
+	for _, v := range violations {
+		jsonViolations = append(jsonViolations, JSONViolation{
+			ID:          v.ID,
+			RuleID:      v.RuleID,
+			Severity:    string(v.Severity),
+			File:        v.File,
+			Line:        v.Line,
+			SourceLayer: v.SourceLayer,
+			TargetLayer: v.TargetLayer,
+			Import:      v.Import,
+			Message:     v.Message,
+			Overridden:  v.Overridden,
+		})
+	}
+
+	output := JSONOutput{
+		Version:    reporter.version,
+		Tool:       reporter.tool,
+		Violations: jsonViolations,
+		Summary: Summary{
+			Total:           1,
+			Errors:          1,
+			OverriddenCount: 1,
+		},
+	}
+
+	data, err := json.MarshalIndent(output, "", "  ")
+	if err != nil {
+		t.Fatalf("Failed to marshal JSONOutput: %v", err)
+	}
+
+	jsonStr := string(data)
+
+	// Verify overridden field is present in violation
+	if !strings.Contains(jsonStr, `"overridden": true`) {
+		t.Errorf("JSON output missing overridden field for violation:\n%s", jsonStr)
+	}
+
+	// Verify overridden_count is present in summary
+	if !strings.Contains(jsonStr, `"overridden_count": 1`) {
+		t.Errorf("JSON output missing overridden_count in summary:\n%s", jsonStr)
+	}
+
+	// Verify round-trip unmarshal
+	var parsed JSONOutput
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("Failed to unmarshal JSON: %v", err)
+	}
+
+	if parsed.Summary.OverriddenCount != 1 {
+		t.Errorf("Summary.OverriddenCount = %d, want 1", parsed.Summary.OverriddenCount)
+	}
+
+	if len(parsed.Violations) != 1 || !parsed.Violations[0].Overridden {
+		t.Error("Violation.Overridden should be true after round-trip")
+	}
+}
+
 func TestMarkdownReporter_GenerateCommitMessage(t *testing.T) {
 	t.Parallel()
 

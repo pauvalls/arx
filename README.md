@@ -250,6 +250,38 @@ exclude:
 | `warning` | 0 | Architectural concerns, not blocking |
 | `info` | 0 | Informational, never fails |
 
+### Overrides
+
+Per-directory overrides let you customize rule behavior for specific paths:
+
+```yaml
+rules:
+  - id: domain-cannot-depend-on-infrastructure
+    from: domain
+    to:
+      - infrastructure
+    type: Cannot
+    severity: error
+    overrides:
+      - path: internal/legacy/
+        severity: warning       # Downgrade to warning for legacy code
+      - path: internal/migration/
+        enabled: false          # Disable rule entirely for migration code
+```
+
+| Field | Description |
+|-------|-------------|
+| `path` | Directory prefix — longest match wins for severity |
+| `severity` | Override severity (`error`, `warning`, `info`) |
+| `enabled` | Set `false` to disable the rule for matching paths |
+
+Overrides use **prefix matching**: `internal/legacy/` applies to all files under that tree.
+If `enabled: false` matches, the rule is disabled regardless of severity overrides.
+Overrides are `omitempty` — existing configs without them work unchanged.
+
+**Exit code behavior**: When all violations are overridden, `arx check` exits with code 0
+(only non-overridden violations trigger a failure).
+
 ---
 
 ## Output Formats
@@ -319,9 +351,9 @@ arx check --ci > results.json
 |----------|----------|--------|--------|
 | Go | `go/ast` | AST parsing | ✅ MVP |
 | TypeScript | Regex + path aliases | Pattern matching | ✅ MVP |
-| Python | Planned | `ast` module | 🔜 v0.3.0 |
-| Java | Planned | `package` + `import` | 🔜 v0.3.0 |
-| Rust | Planned | `use` statements | 🔜 v0.3.0 |
+| Python | `ast` module | AST parsing | ✅ v0.4.0 |
+| Java | `package` + `import` | Pattern matching | ✅ v0.6.0 |
+| Rust | `use` statements | Regex + Cargo.toml | ✅ v0.9.0 |
 
 ---
 
@@ -370,7 +402,15 @@ architecture-audit:
 
 ## Roadmap
 
-### ✅ v0.5.0 (Current — Presets + Diagrams)
+### ✅ v0.9.0 (Current — Overrides, Rust, GitHub Action)
+
+- [x] `overrides[]` per-rule — Path-based severity downgrade and rule disable
+- [x] Rust detector — `Cargo.toml` detection, `use` statement parsing
+- [x] `.github/actions/arx-action/` — Docker-based GitHub Action for CI/CD
+- [x] Override-aware exit code — 0 when only overridden violations remain
+- [x] JSON `overridden_count` in summary
+
+### ✅ v0.5.0 (Presets + Diagrams)
 
 - [x] `arx init --preset {clean,hexagonal,ddd}` — Configuration presets
 - [x] `arx diagram` — Dependency graph (ASCII + Graphviz DOT)
@@ -378,17 +418,17 @@ architecture-audit:
 - [x] Violation highlighting in diagrams (red edges, [!] markers)
 - [x] 3 preset templates: Clean, Hexagonal, DDD
 
-### 🔜 v0.6.0 (Next — Integration & Performance)
+### ✅ v0.6.0 (Java Detector)
 
 **Target:** Q3 2026
 
 #### Java Detector
-**Status:** 🟡 Planned | **Priority:** High | **Effort:** Medium
+**Status:** ✅ v0.6.0 | **Priority:** High | **Effort:** Medium
 
-Add support for Java projects via package and import statement parsing.
+Support for Java projects via package and import statement parsing.
 
 ```bash
-# Will work automatically on Java projects
+# Works automatically on Java projects
 arx init --preset clean
 arx check
 ```
@@ -404,30 +444,6 @@ arx check
 - Bytecode analysis (source-only)
 
 **Track Progress:** [#42](https://github.com/pauvalls/arx/issues/42)
-
----
-
-#### GitHub Action Wrapper
-**Status:** 🟡 Planned | **Priority:** High | **Effort:** Low
-
-Official GitHub Action for seamless CI/CD integration.
-
-```yaml
-# .github/workflows/architecture.yml
-- uses: pauvalls/arx-action@v1
-  with:
-    preset: clean
-    format: sarif
-    fail-on: error
-```
-
-**Features:**
-- Pre-built Docker container with Arx + Graphviz
-- SARIF upload to GitHub Code Scanning
-- Diagram artifact generation
-- Configurable fail thresholds
-
-**Track Progress:** [#45](https://github.com/pauvalls/arx/issues/45)
 
 ---
 
@@ -488,19 +504,19 @@ Target:   50k LOC → 20s
 
 ---
 
-### 🔜 Future (v0.7.0+)
+### 🔜 Future (v0.10.0+)
 
 **Target:** Q4 2026 - Q1 2027
 
-#### Rust Detector
+#### C# Detector
 **Status:** ⚪ Backlog | **Priority:** Low
 
-Support for Rust projects via `use` statement parsing.
+Support for C# projects via `using` statement parsing.
 
 **Scope:**
-- Parse `use`, `mod`, `extern crate` statements
-- Handle workspace members (`Cargo.toml`)
-- Skip `target/` directory
+- Parse `using` directives
+- Handle `.csproj` project files
+- Skip `bin/` and `obj/` directories
 
 **Track Progress:** [#55](https://github.com/pauvalls/arx/issues/55)
 
@@ -603,6 +619,7 @@ Open an issue with:
 
 | Version | Date | Features | Breaking Changes |
 |---------|------|----------|------------------|
+| v0.9.0 | July 2026 | Per-directory overrides, Rust detector, GitHub Action | No |
 | v0.5.0 | May 2026 | Presets, Diagrams | No |
 | v0.4.0 | Apr 2026 | Python detector | No |
 | v0.3.0 | Mar 2026 | Explain, Circular detection | No |
@@ -622,7 +639,7 @@ Open an issue with:
 
 | Problem | Traditional Tools | Arx |
 |---------|------------------|-----|
-| Language lock-in | ArchUnit (Java), Deptrac (PHP) | Cross-language (Go, TS, Python, Java, Rust) |
+| Language lock-in | ArchUnit (Java), Deptrac (PHP) | Cross-language (Go, TS, Python, Java, Kotlin, Rust) |
 | Silent violations | Linters only flag style | Fails CI on architectural violations |
 | No teaching | "Remove this dependency" | Explains WHY + HOW to fix |
 | Static docs | ADRs in wikis, disconnected | Executable architecture rules |
@@ -636,6 +653,7 @@ Arx itself follows Hexagonal Architecture:
 
 ```
 arx/
+├── .github/actions/arx-action/  # Docker-based GitHub Action
 ├── cmd/arx/                 # CLI adapter (Cobra commands)
 ├── internal/
 │   ├── domain/              # Pure business logic
@@ -650,6 +668,7 @@ arx/
 │   ├── infrastructure/      # I/O implementations
 │   │   ├── detector/go/     # Go AST detector
 │   │   ├── detector/ts/     # TypeScript regex detector
+│   │   ├── detector/rust/   # Rust regex detector
 │   │   ├── config/yaml.go   # YAML config parser
 │   │   ├── output/terminal.go # Colored terminal output
 │   │   └── output/json.go   # JSON CI output

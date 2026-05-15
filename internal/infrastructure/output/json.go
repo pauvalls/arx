@@ -53,14 +53,16 @@ type JSONViolation struct {
 	TargetLayer  string `json:"target_layer"`
 	Import       string `json:"import"`
 	Message      string `json:"message"`
+	Overridden   bool   `json:"overridden,omitempty"`
 }
 
 // Summary represents the summary statistics
 type Summary struct {
-	Total    int `json:"total"`
-	Errors   int `json:"errors"`
-	Warnings int `json:"warnings"`
-	Info     int `json:"info"`
+	Total           int `json:"total"`
+	Errors          int `json:"errors"`
+	Warnings        int `json:"warnings"`
+	Info            int `json:"info"`
+	OverriddenCount int `json:"overridden_count,omitempty"`
 }
 
 // Report outputs violations in JSON format suitable for CI/CD
@@ -74,22 +76,25 @@ func (r *JSONReporter) Report(violations []domain.Violation, format ports.Output
 	errors := 0
 	warnings := 0
 	info := 0
+	overriddenCount := 0
 
 	for _, v := range violations {
-		// Determine severity
-		severity := "error"
-		if v.Message != "" {
-			// Try to infer severity from the violation
-			// In the future, Violation should have a Severity field
-			if containsWarning(v.RuleID) {
-				severity = "warning"
-				warnings++
-			} else if containsInfo(v.RuleID) {
-				severity = "info"
-				info++
-			} else {
-				errors++
-			}
+		// Determine severity from the violation's Severity field
+		var severity string
+		switch v.Severity {
+		case domain.SeverityWarning:
+			severity = "warning"
+			warnings++
+		case domain.SeverityInfo:
+			severity = "info"
+			info++
+		default:
+			severity = "error"
+			errors++
+		}
+
+		if v.Overridden {
+			overriddenCount++
 		}
 
 		jsonViolations = append(jsonViolations, JSONViolation{
@@ -102,6 +107,7 @@ func (r *JSONReporter) Report(violations []domain.Violation, format ports.Output
 			TargetLayer: v.TargetLayer,
 			Import:      v.Import,
 			Message:     v.Message,
+			Overridden:  v.Overridden,
 		})
 	}
 
@@ -111,10 +117,11 @@ func (r *JSONReporter) Report(violations []domain.Violation, format ports.Output
 		Tool:                    r.tool,
 		Violations:              jsonViolations,
 		Summary: Summary{
-			Total:    len(violations),
-			Errors:   errors,
-			Warnings: warnings,
-			Info:     info,
+			Total:           len(violations),
+			Errors:          errors,
+			Warnings:        warnings,
+			Info:            info,
+			OverriddenCount: overriddenCount,
 		},
 		BaselineSuppressedCount: r.baselineSuppressedCount,
 	}

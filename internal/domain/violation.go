@@ -11,8 +11,10 @@ type Violation struct {
 	SourceLayer string   `json:"source_layer" yaml:"source_layer"`
 	TargetLayer string   `json:"target_layer" yaml:"target_layer"`
 	Import      string   `json:"import" yaml:"import"`
-	Message     string   `json:"message" yaml:"message"`
-	Severity    Severity `json:"severity" yaml:"severity"`
+	Message          string   `json:"message" yaml:"message"`
+	Severity         Severity `json:"severity" yaml:"severity"`
+	OriginalSeverity Severity `json:"original_severity,omitempty" yaml:"original_severity,omitempty"`
+	Overridden       bool     `json:"overridden,omitempty" yaml:"overridden,omitempty"`
 }
 
 // String returns a human-readable representation of the violation for terminal output

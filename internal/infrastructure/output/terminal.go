@@ -68,7 +68,7 @@ func (r *TerminalReporter) Report(violations []domain.Violation, format ports.Ou
 			var severityStyle lipgloss.Style
 			var severityIcon string
 
-			switch domain.Severity(v.Message) {
+			switch v.Severity {
 			case domain.SeverityWarning:
 				severityStyle = warningStyle
 				severityIcon = "⚠️"
@@ -83,12 +83,19 @@ func (r *TerminalReporter) Report(violations []domain.Violation, format ports.Ou
 				totalErrors++
 			}
 
+			// Override tag for violations whose severity was changed by a rule override
+			overrideTag := ""
+			if v.Overridden && v.OriginalSeverity != "" {
+				overrideTag = fmt.Sprintf(" (overridden from %s)", v.OriginalSeverity)
+			}
+
 			// Violation header
-			fmt.Println(severityStyle.Render(fmt.Sprintf("%s [%s] %s:%d",
+			fmt.Println(severityStyle.Render(fmt.Sprintf("%s [%s] %s:%d%s",
 				severityIcon,
 				v.ID,
 				v.File,
 				v.Line,
+				overrideTag,
 			)))
 
 			// Rule info
@@ -123,6 +130,18 @@ func (r *TerminalReporter) Report(violations []domain.Violation, format ports.Ou
 		summary := fmt.Sprintf("Found %d violation", len(violations))
 		if len(violations) > 1 {
 			summary += "s"
+		}
+
+		// Count overridden violations
+		overriddenCount := 0
+		for _, v := range violations {
+			if v.Overridden {
+				overriddenCount++
+			}
+		}
+
+		if overriddenCount > 0 {
+			summary += fmt.Sprintf(" (%d overridden)", overriddenCount)
 		}
 
 		details := fmt.Sprintf(" (%d errors, %d warnings, %d info)", totalErrors, totalWarnings, totalInfo)
@@ -269,17 +288,19 @@ func findSubstring(s, substr string) bool {
 // Ensure TerminalReporter implements ports.Reporter interface
 var _ ports.Reporter = (*TerminalReporter)(nil)
 
-// ExitCode returns the appropriate exit code based on violations
+// ExitCode returns the appropriate exit code based on violations.
+// Returns 0 if no violations exist or all remaining violations are overridden.
+// Returns 1 if any non-overridden violation exists.
 func ExitCode(violations []domain.Violation) int {
 	if len(violations) == 0 {
 		return 0
 	}
 
-	// Check if any violations are errors (not just warnings/info)
-	for range violations {
-		// For now, treat all violations as errors for exit code purposes
-		// In the future, this could check severity levels
-		return 1
+	// Return 0 only if ALL violations are overridden
+	for _, v := range violations {
+		if !v.Overridden {
+			return 1
+		}
 	}
 
 	return 0

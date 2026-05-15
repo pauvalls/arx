@@ -1,0 +1,50 @@
+name: "Arx Architecture Audit"
+description: "Run architecture audit with arx to enforce architectural rules in your project"
+
+author: "pauvalls"
+
+inputs:
+  path:
+    description: "Project path to audit (defaults to repository root)"
+    required: false
+    default: "."
+  config:
+    description: "Path to arx configuration file, relative to project root"
+    required: false
+    default: "arx.yaml"
+  format:
+    description: "Output format: sarif (default), json, terminal, md"
+    required: false
+    default: "sarif"
+  baseline:
+    description: "Path to an existing baseline file to suppress known violations"
+    required: false
+    default: ""
+  diagram:
+    description: "Generate architecture diagram and upload as artifact"
+    required: false
+    default: "false"
+
+runs:
+  using: "composite"
+  steps:
+    - name: "Build arx binary"
+      shell: bash
+      run: |
+        echo "::group::Build arx"
+        cd "${GITHUB_ACTION_PATH}/../../.."
+        go build -o "${GITHUB_WORKSPACE}/.arx-bin/arx" ./cmd/arx
+        echo "Binary built to ${GITHUB_WORKSPACE}/.arx-bin/arx"
+        echo "::endgroup::"
+
+    - name: "Run arx architecture audit"
+      id: arx-audit
+      shell: bash
+      env:
+        INPUT_PATH: ${{ inputs.path }}
+        INPUT_CONFIG: ${{ inputs.config }}
+        INPUT_FORMAT: ${{ inputs.format }}
+        INPUT_BASELINE: ${{ inputs.baseline }}
+        INPUT_DIAGRAM: ${{ inputs.diagram }}
+        ARX_BIN: ${{ github.workspace }}/.arx-bin/arx
+      run: "${GITHUB_ACTION_PATH}/entrypoint.sh"

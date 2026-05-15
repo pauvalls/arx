@@ -29,8 +29,13 @@ func EvaluateRules(dependencies []Dependency, rules []Rule, layers []Layer) []Vi
 		// Check against each rule
 		for _, rule := range rules {
 			if rule.Violates(dep.ImportPath, sourceLayer, targetLayer) {
+				// Check if rule is disabled for this file path
+				if !rule.IsEnabledFor(dep.SourceFile) {
+					continue
+				}
+
 				violationIndex++
-				violations = append(violations, Violation{
+				v := Violation{
 					ID:          GenerateViolationID(rule, violationIndex),
 					RuleID:      rule.ID,
 					File:        dep.SourceFile,
@@ -39,7 +44,17 @@ func EvaluateRules(dependencies []Dependency, rules []Rule, layers []Layer) []Vi
 					TargetLayer: targetLayer,
 					Import:      dep.ImportPath,
 					Message:     buildViolationMessage(rule, sourceLayer, targetLayer, dep.ImportPath),
-				})
+					Severity:    rule.Severity,
+				}
+
+				// Apply severity override if matching
+				if overrideSev, ok := rule.GetEffectiveSeverity(dep.SourceFile); ok {
+					v.OriginalSeverity = v.Severity // save original before override
+					v.Severity = overrideSev
+					v.Overridden = true
+				}
+
+				violations = append(violations, v)
 			}
 		}
 	}

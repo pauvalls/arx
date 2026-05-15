@@ -71,6 +71,13 @@ func (s *Severity) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return nil
 }
 
+// RuleOverride represents a per-directory override for a rule
+type RuleOverride struct {
+	Path     string   `yaml:"path" json:"path"`
+	Severity Severity `yaml:"severity,omitempty" json:"severity,omitempty"`
+	Enabled  *bool    `yaml:"enabled,omitempty" json:"enabled,omitempty"`
+}
+
 // Rule represents an architectural rule between layers
 type Rule struct {
 	ID              string          `json:"id" yaml:"id"`
@@ -80,6 +87,7 @@ type Rule struct {
 	Severity        Severity        `json:"severity" yaml:"severity"`
 	Explanation     string          `json:"explanation,omitempty" yaml:"explanation,omitempty"`
 	Pattern         string          `json:"pattern,omitempty" yaml:"pattern,omitempty"`
+	Overrides       []RuleOverride  `json:"overrides,omitempty" yaml:"overrides,omitempty"`
 	compiledPattern *regexp.Regexp  `json:"-" yaml:"-"`
 }
 
@@ -146,7 +154,75 @@ func (r *Rule) Validate() error {
 	default:
 		return fmt.Errorf("rule %q: invalid severity %q", r.ID, r.Severity)
 	}
+
+	// Validate overrides
+	for i, o := range r.Overrides {
+		if o.Severity != "" {
+			switch o.Severity {
+			case SeverityError, SeverityWarning, SeverityInfo:
+				// valid
+			default:
+				return fmt.Errorf("rule %q: override[%d] invalid severity %q", r.ID, i, o.Severity)
+			}
+		}
+	}
+
 	return nil
+}
+
+// matchesOverridePath checks if an override path matches a file path.
+// Uses prefix matching — a path like "internal/legacy/" matches any file under that tree.
+// If the override path has no trailing slash, it matches as a directory prefix.
+// An empty override path matches everything.
+func matchesOverridePath(overridePath, filePath string) bool {
+	if overridePath == "" {
+		return true
+	}
+	if strings.HasSuffix(overridePath, "/") {
+		return strings.HasPrefix(filePath, overridePath)
+	}
+	// Without trailing slash, match as directory prefix or exact file match
+	return filePath == overridePath || strings.HasPrefix(filePath, overridePath+"/")
+}
+
+// GetEffectiveSeverity returns the override severity for the given file path.
+// Uses longest-prefix match: the most specific matching override wins.
+// Returns the override severity and true if an override matched, or the rule's
+// own severity and false if no override matched.
+func (r *Rule) GetEffectiveSeverity(filePath string) (Severity, bool) {
+	var bestSeverity Severity
+	bestPathLen := -1
+	found := false
+
+	for _, o := range r.Overrides {
+		if o.Severity == "" {
+			continue
+		}
+		if matchesOverridePath(o.Path, filePath) {
+			if len(o.Path) > bestPathLen {
+				bestSeverity = o.Severity
+				bestPathLen = len(o.Path)
+				found = true
+			}
+		}
+	}
+
+	if found {
+		return bestSeverity, true
+	}
+	return r.Severity, false
+}
+
+// IsEnabledFor checks whether the rule is enabled for the given file path.
+// Returns false if any override matches the path and has Enabled explicitly set to false.
+// If no override sets Enabled=false, the rule is enabled (true) by default.
+func (r *Rule) IsEnabledFor(filePath string) bool {
+	for _, o := range r.Overrides {
+		if o.Enabled != nil && !*o.Enabled && matchesOverridePath(o.Path, filePath) {
+			return false
+		}
+	}
+	return true
 }
 
 // Violates checks if a dependency from sourceLayer to targetLayer violates this rule
