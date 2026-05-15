@@ -67,11 +67,51 @@ arx check --ci
 
 ---
 
+## 🆕 v0.5.0 New Features
+
+### Configuration Presets
+
+Start with battle-tested architecture templates:
+
+```bash
+arx init --preset clean        # Clean Architecture
+arx init --preset hexagonal    # Ports & Adapters
+arx init --preset ddd          # Domain-Driven Design
+```
+
+📚 **[Full Presets Guide →](docs/presets/README.md)**
+
+### Dependency Diagrams
+
+Visualize your architecture:
+
+```bash
+arx diagram                    # ASCII in terminal
+arx diagram --format dot       # Graphviz DOT
+arx diagram -o deps.dot        # Export to file
+```
+
+📚 **[Full Diagrams Guide →](docs/diagrams/README.md)**
+
+---
+
+## Documentation
+
+| Topic | Description |
+|-------|-------------|
+| **[Presets](docs/presets/README.md)** | Configuration presets for Clean, Hexagonal, and DDD architectures |
+| **[Diagrams](docs/diagrams/README.md)** | Generate and render dependency diagrams |
+| **[Commands](#commands)** | CLI reference |
+| **[Configuration](#configuration)** | arx.yaml format and examples |
+
+---
+
 ## Commands
 
 | Command | Description |
 |---------|-------------|
 | `arx init [path]` | Initialize arx.yaml configuration for a project |
+| `arx init --preset {clean,hexagonal,ddd}` | Initialize with a preset template |
 | `arx check [path]` | Run architecture audit against defined rules |
 | `arx check --ci` | JSON output for CI/CD pipelines (exit code 1 on violations) |
 | `arx audit [path]` | Run comprehensive architecture audit with health metrics |
@@ -89,7 +129,34 @@ arx check --format json           # Explicit JSON output
 arx check --verbose               # Show detailed dependency info
 arx init --output config/arx.yaml # Write config to custom path
 arx init --force                  # Overwrite existing config
+arx init --preset clean           # Use Clean Architecture preset
+arx diagram --format dot          # Output Graphviz DOT format
+arx diagram -o deps.dot           # Write diagram to file
 ```
+
+---
+
+## Presets
+
+Arx includes three architecture presets based on established patterns. See **[Presets Guide](docs/presets/README.md)** for complete documentation.
+
+### Quick Reference
+
+| Preset | Best For | Layers |
+|--------|----------|--------|
+| **clean** | Web apps, services | domain, application, infrastructure, interface |
+| **hexagonal** | Testability, adapter swapping | domain, ports, adapters, infrastructure |
+| **ddd** | Complex business domains | domain, application, infrastructure, interfaces |
+
+### Usage
+
+```bash
+arx init --preset clean
+arx init --preset hexagonal
+arx init --preset ddd
+```
+
+Presets are starting points — review and customize the generated `arx.yaml` to match your architecture.
 
 ---
 
@@ -289,38 +356,249 @@ architecture-audit:
 
 ## Roadmap
 
-### ✅ v0.1.0 (Current — MVP)
+### ✅ v0.5.0 (Current — Presets + Diagrams)
 
-- [x] `arx init` — Project scanning, language detection, config generation
-- [x] `arx check` — Rule evaluation with terminal output
-- [x] `arx check --ci` — JSON output for CI/CD
-- [x] Go detector (AST-based)
-- [x] TypeScript detector (regex-based)
-- [x] Built-in explanations library (12+ patterns)
-- [x] Hexagonal architecture (clean separation)
+- [x] `arx init --preset {clean,hexagonal,ddd}` — Configuration presets
+- [x] `arx diagram` — Dependency graph (ASCII + Graphviz DOT)
+- [x] `arx diagram -o file.dot` — Export to Graphviz format
+- [x] Violation highlighting in diagrams (red edges, [!] markers)
+- [x] 3 preset templates: Clean, Hexagonal, DDD
 
-### 🔜 v0.2.0
+### 🔜 v0.6.0 (Next — Integration & Performance)
 
-- [ ] `arx explain <id>` — Full detailed violation guidance
-- [ ] SARIF output format (GitHub code scanning integration)
-- [ ] Markdown report output
-- [ ] Circular dependency detection
-- [ ] Warning severity level support
+**Target:** Q3 2026
 
-### 🔜 v0.3.0
+#### Java Detector
+**Status:** 🟡 Planned | **Priority:** High | **Effort:** Medium
 
-- [ ] Python detector
-- [ ] Java detector
-- [ ] `arx diagram` — Dependency graph (Graphviz DOT)
-- [ ] `arx audit` — Health report with trend tracking
+Add support for Java projects via package and import statement parsing.
+
+```bash
+# Will work automatically on Java projects
+arx init --preset clean
+arx check
+```
+
+**Scope:**
+- Parse `package` and `import` statements
+- Support Maven (`pom.xml`) and Gradle (`build.gradle`) module detection
+- Handle static imports and wildcard imports
+- Skip generated sources (`target/`, `build/`)
+
+**Not included:**
+- Annotation processing
+- Bytecode analysis (source-only)
+
+**Track Progress:** [#42](https://github.com/pauvalls/arx/issues/42)
+
+---
+
+#### GitHub Action Wrapper
+**Status:** 🟡 Planned | **Priority:** High | **Effort:** Low
+
+Official GitHub Action for seamless CI/CD integration.
+
+```yaml
+# .github/workflows/architecture.yml
+- uses: pauvalls/arx-action@v1
+  with:
+    preset: clean
+    format: sarif
+    fail-on: error
+```
+
+**Features:**
+- Pre-built Docker container with Arx + Graphviz
+- SARIF upload to GitHub Code Scanning
+- Diagram artifact generation
+- Configurable fail thresholds
+
+**Track Progress:** [#45](https://github.com/pauvalls/arx/issues/45)
+
+---
+
+#### Arx Audit (Health Reports)
+**Status:** ⚪ Proposed | **Priority:** Medium | **Effort:** Medium
+
+Generate architecture health reports with trend tracking.
+
+```bash
+arx audit --output report.md
+arx audit --trend --since 2026-01-01
+```
+
+**Features:**
+- Violation trends over time (improving vs degrading)
+- Layer coupling matrix (which layers depend on which)
+- Technical debt estimation (hours to fix violations)
+- Comparison with industry benchmarks
+
+**Output Example:**
+```
+Architecture Health Score: 78/100 (+5 from last month)
+
+Trends:
+  ✓ Violations decreased by 12% (23 → 20)
+  ✓ Domain purity improved (3 → 1 violations)
+  ⚠ Application coupling increased (2 → 4 violations)
+
+Top Issues:
+  1. domain → infrastructure (1 violation, 2h to fix)
+  2. application → infrastructure (4 violations, 8h to fix)
+```
+
+**Track Progress:** [#48](https://github.com/pauvalls/arx/issues/48)
+
+---
+
+#### Performance Optimization
+**Status:** ⚪ Proposed | **Priority:** Medium | **Effort:** High
+
+Optimize for large codebases (>10k LOC, >100 files).
+
+**Goals:**
+- `arx check` completes in <5s for 10k LOC
+- Parallel detector execution
+- Incremental analysis (only changed files)
+- Memory-efficient AST parsing
+
+**Benchmarks:**
+```
+Current:  10k LOC → 15s
+Target:   10k LOC → 5s
+Current:  50k LOC → 60s
+Target:   50k LOC → 20s
+```
+
+**Track Progress:** [#51](https://github.com/pauvalls/arx/issues/51)
+
+---
+
+### 🔜 Future (v0.7.0+)
+
+**Target:** Q4 2026 - Q1 2027
+
+#### Rust Detector
+**Status:** ⚪ Backlog | **Priority:** Low
+
+Support for Rust projects via `use` statement parsing.
+
+**Scope:**
+- Parse `use`, `mod`, `extern crate` statements
+- Handle workspace members (`Cargo.toml`)
+- Skip `target/` directory
+
+**Track Progress:** [#55](https://github.com/pauvalls/arx/issues/55)
+
+---
+
+#### Arx Watch (Continuous Monitoring)
+**Status:** ⚪ Backlog | **Priority:** Low
+
+File watcher for real-time architecture validation.
+
+```bash
+arx watch
+# Runs arx check on every file save
+# Notifications via terminal, desktop, or Slack
+```
+
+**Features:**
+- File system watcher (fsnotify)
+- Incremental re-check (only affected files)
+- Desktop notifications
+- Slack/Discord webhooks
+
+**Track Progress:** [#58](https://github.com/pauvalls/arx/issues/58)
+
+---
+
+#### Custom Rule DSL
+**Status:** ⚪ Backlog | **Priority:** Low
+
+Domain-specific language for complex architectural rules.
+
+```yaml
+# Example: Layer coupling limit
+rule: layer-coupling-limit
+  description: "No layer can depend on more than 3 other layers"
+  check: |
+    for layer in layers:
+      if count(layer.dependencies) > 3:
+        violation(layer, "excessive coupling")
+```
+
+**Features:**
+- JavaScript/TypeScript-based rule engine
+- Access to full dependency graph
+- Custom violation messages
+- Rule testing framework
+
+**Track Progress:** [#62](https://github.com/pauvalls/arx/issues/62)
+
+---
+
+#### Arx Server (Web UI)
+**Status:** ⚪ Backlog | **Priority:** Low
+
+Web interface for architecture visualization and tracking.
+
+```bash
+arx server --port 8080
+# Opens web UI at http://localhost:8080
+```
+
+**Features:**
+- Interactive dependency graph (D3.js)
+- Violation timeline and trends
+- Team collaboration (comments, assignments)
+- Integration with Jira, Linear, GitHub Issues
+
+**Track Progress:** [#65](https://github.com/pauvalls/arx/issues/65)
+
+---
+
+## How to Contribute
+
+### Vote on Features
+
+Add 👍 reactions to issues you want prioritized:
+- [Java Detector](https://github.com/pauvalls/arx/issues/42)
+- [GitHub Action](https://github.com/pauvalls/arx/issues/45)
+- [Audit Reports](https://github.com/pauvalls/arx/issues/48)
+
+### Implement Features
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for:
+- How to write a new detector
+- Adding explanation patterns
+- Testing guidelines
+- Code style and conventions
+
+### Request Features
+
+Open an issue with:
+- **Use case:** What problem are you solving?
+- **Current workaround:** How do you handle this today?
+- **Expected behavior:** What should Arx do?
+- **Example:** CLI syntax or config example
+
+---
+
+## Release History
+
+| Version | Date | Features | Breaking Changes |
+|---------|------|----------|------------------|
+| v0.5.0 | May 2026 | Presets, Diagrams | No |
+| v0.4.0 | Apr 2026 | Python detector | No |
+| v0.3.0 | Mar 2026 | Explain, Circular detection | No |
+| v0.2.0 | Feb 2026 | SARIF, Markdown, Cache | No |
+| v0.1.0 | Jan 2026 | MVP (Go, TS detectors) | N/A |
+
+**Release Notes:** See [Releases](https://github.com/pauvalls/arx/releases) for detailed changelogs.
+
+---
 - [ ] Layer coupling matrix visualization
-
-### 🔜 v0.4.0
-
-- [ ] `arx rules suggest` — Auto-suggest rules from project structure
-- [ ] GitHub Action wrapper
-- [ ] Git diff tracking (PR-only checks)
-- [ ] Configuration presets (Clean, Hexagonal, DDD)
 
 ---
 
