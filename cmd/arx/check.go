@@ -75,7 +75,7 @@ var (
 func init() {
 	checkCmd.Flags().StringVarP(&checkConfig, "config", "c", "arx.yaml", "Config file path")
 	checkCmd.Flags().BoolVar(&checkCI, "ci", false, "Machine-readable JSON output for CI/CD (shorthand for --format json)")
-	checkCmd.Flags().StringVarP(&checkFormat, "format", "f", "terminal", "Output format: terminal|json|sarif|md")
+	checkCmd.Flags().StringVarP(&checkFormat, "format", "f", "terminal", "Output format: terminal|json|sarif|md|junit|annotations")
 	checkCmd.Flags().BoolVarP(&checkVerbose, "verbose", "v", false, "Show detailed dependency information")
 	checkCmd.Flags().BoolVar(&checkNoCache, "no-cache", false, "Disable the performance cache")
 	checkCmd.Flags().BoolVar(&checkNoBaseline, "no-baseline", false, "Ignore baseline file and report all violations")
@@ -133,6 +133,10 @@ func runCheck(cmd *cobra.Command, args []string) error {
 			format = ports.OutputFormatSARIF
 		case "md", "markdown":
 			format = ports.OutputFormatMarkdown
+		case "junit":
+			format = ports.OutputFormatJUnit
+		case "annotations":
+			format = ports.OutputFormatGitHubAnnotations
 		}
 	}
 

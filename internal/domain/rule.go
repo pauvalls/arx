@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 // RuleType defines the type of architectural rule
@@ -27,7 +30,8 @@ func (rt *RuleType) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		return err
 	}
 	// Normalize to title case for comparison
-	switch strings.Title(strings.ToLower(s)) {
+	titleCaser := cases.Title(language.Und)
+	switch titleCaser.String(strings.ToLower(s)) {
 	case "Cannot":
 		*rt = RuleTypeCannot
 	case "Must":

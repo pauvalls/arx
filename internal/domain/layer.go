@@ -35,7 +35,7 @@ func (l *Layer) MatchesPath(filePath string) bool {
 			if strings.HasPrefix(filePath, pattern) {
 				return true
 			}
-		} else if filepath.HasPrefix(filePath, pattern) {
+		} else if strings.HasPrefix(filePath, pattern) {
 			// Exact or prefix matching
 			return true
 		}

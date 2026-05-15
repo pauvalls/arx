@@ -61,6 +61,10 @@ func newCheckService(format ports.OutputFormat, cache ports.Cache) *application.
 		reporter = output.NewSARIFReporter()
 	case ports.OutputFormatMarkdown:
 		reporter = output.NewMarkdownReporter()
+	case ports.OutputFormatJUnit:
+		reporter = output.NewJUnitReporter()
+	case ports.OutputFormatGitHubAnnotations:
+		reporter = output.NewGitHubAnnotationsReporter()
 	default:
 		reporter = output.NewTerminalReporter()
 	}

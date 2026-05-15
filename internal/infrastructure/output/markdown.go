@@ -5,6 +5,9 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
+
 	"github.com/pauvalls/arx/internal/domain"
 	"github.com/pauvalls/arx/internal/ports"
 )
@@ -97,7 +100,8 @@ func (r *MarkdownReporter) buildMarkdownReport(violations []domain.Violation) st
 		sb.WriteString(fmt.Sprintf("### %s\n\n", v.ID))
 		sb.WriteString(fmt.Sprintf("**File:** `%s:%d`\n\n", v.File, v.Line))
 		sb.WriteString(fmt.Sprintf("**Rule:** `%s`\n\n", v.RuleID))
-		sb.WriteString(fmt.Sprintf("**Severity:** %s\n\n", strings.Title(strings.ToLower(string(v.Severity)))))
+		titleCaser := cases.Title(language.Und)
+	sb.WriteString(fmt.Sprintf("**Severity:** %s\n\n", titleCaser.String(strings.ToLower(string(v.Severity)))))
 		sb.WriteString(fmt.Sprintf("**Import:** `%s`\n\n", v.Import))
 
 		sb.WriteString("**Why This Matters:**\n\n")

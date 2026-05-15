@@ -14,6 +14,10 @@ const (
 	OutputFormatSARIF OutputFormat = "sarif"
 	// OutputFormatMarkdown outputs violations in Markdown format
 	OutputFormatMarkdown OutputFormat = "markdown"
+	// OutputFormatJUnit outputs violations in JUnit XML format
+	OutputFormatJUnit OutputFormat = "junit"
+	// OutputFormatGitHubAnnotations outputs violations as GitHub Actions workflow commands
+	OutputFormatGitHubAnnotations OutputFormat = "annotations"
 )
 
 // Reporter defines the interface for reporting violations

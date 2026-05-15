@@ -1,6 +1,7 @@
 package detector
 
 import (
+	csharpdetector "github.com/pauvalls/arx/internal/infrastructure/detector/csharp"
 	godetector "github.com/pauvalls/arx/internal/infrastructure/detector/go"
 	javadetector "github.com/pauvalls/arx/internal/infrastructure/detector/java"
 	kotlindetector "github.com/pauvalls/arx/internal/infrastructure/detector/kotlin"
@@ -20,5 +21,6 @@ func GetDetectors() []ports.Detector {
 		javadetector.New(),
 		kotlindetector.New(),
 		rustdetector.New(),
+		csharpdetector.New(),
 	}
 }
