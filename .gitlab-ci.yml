@@ -1,0 +1,56 @@
+# Arx CI/CD Pipeline
+# Runs architectural linting and auditing on every push and merge request
+
+stages:
+  - check
+  - audit
+
+variables:
+  GO_VERSION: "1.23"
+  ARX_CACHE_DIR: ".arx-cache"
+
+.cache-config: &cache-config
+  cache:
+    key: "${CI_COMMIT_REF_SLUG}"
+    paths:
+      - go.mod
+      - go.sum
+      - ${ARX_CACHE_DIR}/
+
+# Check job: Runs arx check with JUnit output
+# Produces test report for GitLab merge request widgets
+check:
+  stage: check
+  image: golang:${GO_VERSION}-alpine
+  <<: *cache-config
+  script:
+    - go install github.com/pauvalls/arx/cmd/arx@latest
+    - arx check --format junit --output arx-junit.xml
+  artifacts:
+    when: always
+    reports:
+      junit: arx-junit.xml
+    paths:
+      - arx-junit.xml
+    expire_in: 30 days
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# Audit job: Runs arx audit with JSON output
+# Produces downloadable artifact with full audit report
+audit:
+  stage: audit
+  image: golang:${GO_VERSION}-alpine
+  <<: *cache-config
+  script:
+    - go install github.com/pauvalls/arx/cmd/arx@latest
+    - arx audit --format json --output arx-audit.json
+  artifacts:
+    when: always
+    paths:
+      - arx-audit.json
+    expire_in: 30 days
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

@@ -18,6 +18,8 @@ const (
 	OutputFormatJUnit OutputFormat = "junit"
 	// OutputFormatGitHubAnnotations outputs violations as GitHub Actions workflow commands
 	OutputFormatGitHubAnnotations OutputFormat = "annotations"
+	// OutputFormatHTML outputs violations in HTML format
+	OutputFormatHTML OutputFormat = "html"
 )
 
 // Reporter defines the interface for reporting violations

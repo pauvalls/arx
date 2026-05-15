@@ -53,6 +53,7 @@ Example:
   arx check ./my-project       # Check specific directory
   arx check --ci               # JSON output for CI/CD
   arx check --format json      # Explicit JSON output
+  arx check --format html      # HTML report for browsers
   arx check --verbose          # Show detailed dependency info
   arx check --no-baseline      # Ignore baseline, report all violations
   arx check --watch            # Watch mode: re-run on file changes
@@ -75,7 +76,7 @@ var (
 func init() {
 	checkCmd.Flags().StringVarP(&checkConfig, "config", "c", "arx.yaml", "Config file path")
 	checkCmd.Flags().BoolVar(&checkCI, "ci", false, "Machine-readable JSON output for CI/CD (shorthand for --format json)")
-	checkCmd.Flags().StringVarP(&checkFormat, "format", "f", "terminal", "Output format: terminal|json|sarif|md|junit|annotations")
+	checkCmd.Flags().StringVarP(&checkFormat, "format", "f", "terminal", "Output format: terminal|json|sarif|md|junit|annotations|html")
 	checkCmd.Flags().BoolVarP(&checkVerbose, "verbose", "v", false, "Show detailed dependency information")
 	checkCmd.Flags().BoolVar(&checkNoCache, "no-cache", false, "Disable the performance cache")
 	checkCmd.Flags().BoolVar(&checkNoBaseline, "no-baseline", false, "Ignore baseline file and report all violations")
@@ -137,6 +138,8 @@ func runCheck(cmd *cobra.Command, args []string) error {
 			format = ports.OutputFormatJUnit
 		case "annotations":
 			format = ports.OutputFormatGitHubAnnotations
+		case "html":
+			format = ports.OutputFormatHTML
 		}
 	}
 

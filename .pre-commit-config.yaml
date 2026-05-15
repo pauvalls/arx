@@ -1,0 +1,15 @@
+# Pre-commit framework configuration for arx
+# Install: pip install pre-commit && pre-commit install
+
+repos:
+  - repo: local
+    hooks:
+      - id: arx-check
+        name: arx check
+        entry: arx check --no-cache
+        language: system
+        types: [file]
+        pass_filenames: false
+        description: |
+          Runs architectural linting with arx check.
+          Requires arx to be installed: go install github.com/pauvalls/arx/cmd/arx@latest
