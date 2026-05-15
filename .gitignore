@@ -46,3 +46,4 @@ temp/
 # Environment
 .env
 .env.local
+.arx-cache/
