@@ -72,6 +72,7 @@ var (
 	checkNoBaseline bool
 	checkWatch      bool
 	checkInterval   time.Duration
+	checkSeverity   string
 )
 
 func init() {
@@ -83,6 +84,7 @@ func init() {
 	checkCmd.Flags().BoolVar(&checkNoBaseline, "no-baseline", false, "Ignore baseline file and report all violations")
 	checkCmd.Flags().BoolVar(&checkWatch, "watch", false, "Watch mode: re-run check on file changes")
 	checkCmd.Flags().DurationVar(&checkInterval, "interval", 500*time.Millisecond, "Debounce interval for watch mode")
+	checkCmd.Flags().StringVar(&checkSeverity, "severity", "", "Filter by severity: error|warning|info")
 	rootCmd.AddCommand(checkCmd)
 }
 
@@ -290,6 +292,17 @@ func runCheckWithService(service *application.CheckService, config *domain.Confi
 func printCheckResult(result checkResult, format ports.OutputFormat, isWatchUpdate bool) {
 	violations := result.violations
 	suppressedCount := result.suppressedCount
+
+	// Filter by severity if flag is set
+	if checkSeverity != "" {
+		var filtered []domain.Violation
+		for _, v := range violations {
+			if string(v.Severity) == checkSeverity {
+				filtered = append(filtered, v)
+			}
+		}
+		violations = filtered
+	}
 
 	if isWatchUpdate {
 		// Watch mode updates are printed to stderr

@@ -1,6 +1,12 @@
 # Roadmap
 
-## ✅ v0.21.0 (Current — Audit HTML Improvements, JSON Metadata, Quality)
+## ✅ v0.22.0 (Current — Config CLI, Severity Filter)
+
+- [x] `arx config get/set` — Read/modify arx.yaml from CLI
+- [x] `arx check --severity <level>` — Filter violations by severity
+- [x] Backward compatible flags with all existing features
+
+## ✅ v0.21.0 (Audit HTML Improvements, JSON Metadata, Quality)
 
 - [x] Full HTML audit report — coupling matrix, debt score, trend sections
 - [x] JSON check output — coupling matrix + detector metadata
