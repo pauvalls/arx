@@ -63,6 +63,8 @@ arx baseline
 | Java | Regex | `package` + `import` | v0.6.0 |
 | Kotlin | Regex | Package + alias | v0.8.0 |
 | Rust | Regex | `use` statements | v0.9.0 |
+| C# | Regex | `using` directives | v0.10.0 |
+| Ruby | Regex | `require` / `require_relative` | v0.13.0 |
 
 ## Quick Config Example
 
