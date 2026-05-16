@@ -2,6 +2,7 @@ package output
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/pauvalls/arx/internal/application"
@@ -52,7 +53,7 @@ func GenerateDOT(result *application.DiagramResult) string {
 	for name := range layerFiles {
 		layerNames = append(layerNames, name)
 	}
-	sortStrings(layerNames)
+	sort.Strings(layerNames)
 
 	for _, layerName := range layerNames {
 		files := layerFiles[layerName]
@@ -152,17 +153,6 @@ func contains(slice []string, val string) bool {
 		}
 	}
 	return false
-}
-
-// sortStrings sorts a slice of strings
-func sortStrings(slice []string) {
-	for i := 0; i < len(slice)-1; i++ {
-		for j := i + 1; j < len(slice); j++ {
-			if slice[i] > slice[j] {
-				slice[i], slice[j] = slice[j], slice[i]
-			}
-		}
-	}
 }
 
 // matchPattern checks if a file path matches a glob pattern

@@ -1,6 +1,14 @@
 # Roadmap
 
-## ✅ v0.15.0 (Current — Man Pages, .arxignore, Fuzz Coverage)
+## ✅ v0.16.0 (Current — Audit HTML, More Presets, Quality)
+
+- [x] `arx audit --format html` — HTML output for audit command
+- [x] `arx init --preset layered` — Layered Architecture preset
+- [x] `arx init --preset onion` — Onion Architecture preset
+- [x] Shell completion install instructions (bash/zsh/fish/powershell)
+- [x] Quality pass — replaced deprecated bubble sort with `sort.Strings()`
+
+## ✅ v0.15.0 (Man Pages, .arxignore, Fuzz Coverage)
 
 - [x] `arx man` — Man page generation for Linux distros
 - [x] `.editorconfig` — Editor settings for contributors

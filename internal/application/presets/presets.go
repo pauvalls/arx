@@ -21,7 +21,7 @@ type PresetTemplate struct {
 
 // AvailablePresets returns a list of available preset names
 func AvailablePresets() []string {
-	return []string{"clean", "hexagonal", "ddd"}
+	return []string{"clean", "hexagonal", "ddd", "layered", "onion"}
 }
 
 // LoadPreset loads a preset template by name (clean, hexagonal, ddd)
@@ -117,6 +117,10 @@ func getPresetDescription(name string) string {
 		return "Hexagonal/Ports-Adapters: domain, ports, adapters, infrastructure layers"
 	case "ddd":
 		return "Domain-Driven Design: domain, application, infrastructure, interfaces layers"
+	case "layered":
+		return "Layered Architecture (N-tier): presentation, business, persistence, infrastructure layers"
+	case "onion":
+		return "Onion Architecture (ports and adapters): domain, application, ports, infrastructure layers"
 	default:
 		return "Unknown preset"
 	}

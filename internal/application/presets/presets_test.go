@@ -6,17 +6,19 @@ import (
 )
 
 func TestAvailablePresets(t *testing.T) {
-	t.Run("returns three presets", func(t *testing.T) {
+	t.Run("returns five presets", func(t *testing.T) {
 		presets := AvailablePresets()
 
-		if len(presets) != 3 {
-			t.Fatalf("expected 3 presets, got %d", len(presets))
+		if len(presets) != 5 {
+			t.Fatalf("expected 5 presets, got %d", len(presets))
 		}
 
 		expected := map[string]bool{
 			"clean":       true,
 			"hexagonal":   true,
 			"ddd":         true,
+			"layered":     true,
+			"onion":       true,
 		}
 
 		for _, p := range presets {

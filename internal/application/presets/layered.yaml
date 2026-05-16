@@ -1,0 +1,133 @@
+# Layered Architecture Preset (traditional N-tier)
+# Layers: presentation, business, persistence, infrastructure
+
+version: "1.0"
+
+layers:
+  - name: presentation
+    paths:
+      - "presentation/**"
+      - "interfaces/**"
+      - "api/**"
+      - "web/**"
+    description: Presentation layer handling UI, HTTP, and external interfaces
+
+  - name: business
+    paths:
+      - "business/**"
+      - "service/**"
+      - "domain/**"
+    description: Business layer containing core business logic and services
+
+  - name: persistence
+    paths:
+      - "persistence/**"
+      - "data/**"
+      - "repository/**"
+    description: Persistence layer managing data access and storage
+
+  - name: infrastructure
+    paths:
+      - "infrastructure/**"
+      - "crosscutting/**"
+      - "common/**"
+    description: Infrastructure layer providing cross-cutting concerns and utilities
+
+rules:
+  # Presentation layer constraints
+  - id: presentation-no-import-persistence
+    from: presentation
+    to:
+      - persistence
+    type: cannot
+    severity: error
+    explanation: Presentation should not directly access persistence; go through business layer
+
+  - id: presentation-no-import-infrastructure
+    from: presentation
+    to:
+      - infrastructure
+    type: cannot
+    severity: warning
+    explanation: Presentation should not depend on infrastructure directly
+
+  # Business layer constraints
+  - id: business-no-import-infrastructure
+    from: business
+    to:
+      - infrastructure
+    type: cannot
+    severity: error
+    explanation: Business logic must remain independent of infrastructure concerns
+
+  - id: business-no-import-presentation
+    from: business
+    to:
+      - presentation
+    type: cannot
+    severity: error
+    explanation: Business layer must not depend on presentation concerns
+
+  # Persistence layer constraints
+  - id: persistence-no-import-presentation
+    from: persistence
+    to:
+      - presentation
+    type: cannot
+    severity: error
+    explanation: Persistence must not know about presentation layer
+
+  # Allowed dependencies (informational)
+  - id: presentation-can-import-business
+    from: presentation
+    to:
+      - business
+    type: can
+    severity: info
+    explanation: Presentation orchestrates business services - this is the expected flow
+
+  - id: business-can-import-persistence
+    from: business
+    to:
+      - persistence
+    type: can
+    severity: info
+    explanation: Business layer uses persistence for data access - expected dependency
+
+  - id: persistence-can-import-infrastructure
+    from: persistence
+    to:
+      - infrastructure
+    type: can
+    severity: info
+    explanation: Persistence may use infrastructure utilities for data access
+
+  - id: presentation-can-import-infrastructure
+    from: presentation
+    to:
+      - infrastructure
+    type: can
+    severity: info
+    explanation: Presentation may use infrastructure for configuration or logging
+
+exclude:
+  - vendor/**
+  - node_modules/**
+  - .git/**
+  - dist/**
+  - build/**
+  - tmp/**
+  - testdata/**
+
+language_overrides:
+  go:
+    extensions:
+      - .go
+    comment: //
+    import: import
+  typescript:
+    extensions:
+      - .ts
+      - .tsx
+    comment: //
+    import: import

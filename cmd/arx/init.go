@@ -43,7 +43,7 @@ var (
 func init() {
 	initCmd.Flags().StringVarP(&initOutput, "output", "o", "arx.yaml", "Output file path for the generated configuration")
 	initCmd.Flags().BoolVarP(&initForce, "force", "f", false, "Overwrite existing configuration file")
-	initCmd.Flags().StringVarP(&initPreset, "preset", "p", "", "Use preset template (clean, hexagonal, ddd)")
+	initCmd.Flags().StringVarP(&initPreset, "preset", "p", "", "Use preset template (clean, hexagonal, ddd, layered, onion)")
 	rootCmd.AddCommand(initCmd)
 }
 
@@ -79,7 +79,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	var initErr error
 	if initPreset != "" {
 		// Validate preset name
-		validPresets := []string{"clean", "hexagonal", "ddd"}
+		validPresets := []string{"clean", "hexagonal", "ddd", "layered", "onion"}
 		isValid := false
 		for _, p := range validPresets {
 			if p == initPreset {
