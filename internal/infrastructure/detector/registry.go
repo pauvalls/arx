@@ -5,9 +5,11 @@ import (
 	godetector "github.com/pauvalls/arx/internal/infrastructure/detector/go"
 	javadetector "github.com/pauvalls/arx/internal/infrastructure/detector/java"
 	kotlindetector "github.com/pauvalls/arx/internal/infrastructure/detector/kotlin"
+	phpdetector "github.com/pauvalls/arx/internal/infrastructure/detector/php"
 	pydetector "github.com/pauvalls/arx/internal/infrastructure/detector/python"
 	rubydetector "github.com/pauvalls/arx/internal/infrastructure/detector/ruby"
 	rustdetector "github.com/pauvalls/arx/internal/infrastructure/detector/rust"
+	swiftdetector "github.com/pauvalls/arx/internal/infrastructure/detector/swift"
 	tsdetector "github.com/pauvalls/arx/internal/infrastructure/detector/typescript"
 	"github.com/pauvalls/arx/internal/ports"
 )
@@ -24,5 +26,7 @@ func GetDetectors() []ports.Detector {
 		rustdetector.New(),
 		csharpdetector.New(),
 		rubydetector.New(),
+		swiftdetector.New(),
+		phpdetector.New(),
 	}
 }

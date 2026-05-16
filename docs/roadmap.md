@@ -1,6 +1,13 @@
 # Roadmap
 
-## ✅ v0.13.0 (Current — Ruby Detector + Fuzz Tests)
+## ✅ v0.14.0 (Current — PHP + Swift Detectors)
+
+- [x] PHP detector — `composer.json` detection, `use`/`use as`/`use function` parsing
+- [x] Swift detector — `Package.swift` detection, `import`/`@_exported import` parsing
+- [x] PHP/Swift test fixtures + integration tests
+- [x] E2E tests for all 10 languages
+
+## ✅ v0.13.0 (Ruby Detector + Fuzz Tests)
 
 - [x] Ruby detector — `Gemfile` detection, `require`/`require_relative` parsing
 - [x] Parser fuzz tests — Java, C#, Rust, Ruby (170k+ execs, 0 crashes)

@@ -155,6 +155,64 @@ func TestE2E_RubyProject(t *testing.T) {
 	t.Logf("Ruby E2E: violations detected ✅")
 }
 
+// TestE2E_PHPProject verifies arx detects violations in the PHP fixture
+func TestE2E_PHPProject(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping E2E test in short mode")
+	}
+
+	fixturePath := getFixtureAbsPath("php-project")
+	if _, err := os.Stat(fixturePath); os.IsNotExist(err) {
+		t.Skipf("PHP fixture not found at %s", fixturePath)
+	}
+
+	binaryPath := buildArxBinary(t)
+	cmd := exec.Command(binaryPath, "check", fixturePath)
+	output, err := cmd.CombinedOutput()
+	outStr := string(output)
+
+	if err != nil {
+		exitErr, ok := err.(*exec.ExitError)
+		if !ok || exitErr.ExitCode() != 1 {
+			t.Fatalf("unexpected error: %v\nOutput: %s", err, outStr)
+		}
+	}
+
+	if !strings.Contains(outStr, "violation") {
+		t.Errorf("Expected violations in PHP project, got:\n%s", outStr)
+	}
+	t.Logf("PHP E2E: violations detected ✅")
+}
+
+// TestE2E_SwiftProject verifies arx detects violations in the Swift fixture
+func TestE2E_SwiftProject(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping E2E test in short mode")
+	}
+
+	fixturePath := getFixtureAbsPath("swift-project")
+	if _, err := os.Stat(fixturePath); os.IsNotExist(err) {
+		t.Skipf("Swift fixture not found at %s", fixturePath)
+	}
+
+	binaryPath := buildArxBinary(t)
+	cmd := exec.Command(binaryPath, "check", fixturePath)
+	output, err := cmd.CombinedOutput()
+	outStr := string(output)
+
+	if err != nil {
+		exitErr, ok := err.(*exec.ExitError)
+		if !ok || exitErr.ExitCode() != 1 {
+			t.Fatalf("unexpected error: %v\nOutput: %s", err, outStr)
+		}
+	}
+
+	if !strings.Contains(outStr, "violation") {
+		t.Errorf("Expected violations in Swift project, got:\n%s", outStr)
+	}
+	t.Logf("Swift E2E: violations detected ✅")
+}
+
 // TestE2E_AllFormats verifies all output formats work on a Go project
 func TestE2E_AllFormats(t *testing.T) {
 	if testing.Short() {

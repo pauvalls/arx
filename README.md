@@ -65,6 +65,8 @@ arx baseline
 | Rust | Regex | `use` statements | v0.9.0 |
 | C# | Regex | `using` directives | v0.10.0 |
 | Ruby | Regex | `require` / `require_relative` | v0.13.0 |
+| PHP | Regex | `use` / `use as` / `use function` | v0.14.0 |
+| Swift | Regex | `import` / `@_exported import` | v0.14.0 |
 
 ## Quick Config Example
 
