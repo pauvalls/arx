@@ -3,6 +3,8 @@ package domain
 import (
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestConfig_Validate(t *testing.T) {
@@ -965,5 +967,65 @@ func TestConfig_SeverityMapping_OverrideRemapped(t *testing.T) {
 	}
 	if config.Rules[0].Overrides[0].Severity != SeverityWarning {
 		t.Errorf("override severity: expected %q, got %q", SeverityWarning, config.Rules[0].Overrides[0].Severity)
+	}
+}
+
+// ─── $schema Field Tests ─────────────────────────────────────────────────────
+
+func TestConfig_SchemaField_MarshalsYAML(t *testing.T) {
+	config := Config{
+		Schema:  "./arx-schema.json",
+		Version: "1.0",
+		Layers:  []Layer{{Name: "domain", Paths: []string{"internal/domain/**"}}},
+		Rules:   []Rule{},
+	}
+
+	data, err := yaml.Marshal(&config)
+	if err != nil {
+		t.Fatalf("yaml.Marshal error = %v", err)
+	}
+
+	content := string(data)
+	if !strings.Contains(content, "$schema:") {
+		t.Errorf("YAML output missing $schema field:\n%s", content)
+	}
+	if !strings.Contains(content, "./arx-schema.json") {
+		t.Errorf("YAML output missing schema URL:\n%s", content)
+	}
+}
+
+func TestConfig_SchemaField_UnmarshalsYAML(t *testing.T) {
+	yamlContent := `
+$schema: "./arx-schema.json"
+version: "1.0"
+layers:
+  - name: domain
+    paths: ["internal/domain/**"]
+rules: []
+`
+	var config Config
+	if err := yaml.Unmarshal([]byte(yamlContent), &config); err != nil {
+		t.Fatalf("yaml.Unmarshal error = %v", err)
+	}
+
+	if config.Schema != "./arx-schema.json" {
+		t.Errorf("Schema = %q, want %q", config.Schema, "./arx-schema.json")
+	}
+}
+
+func TestConfig_SchemaField_OmittedWhenEmpty(t *testing.T) {
+	config := Config{
+		Version: "1.0",
+		Layers:  []Layer{{Name: "domain", Paths: []string{"internal/domain/**"}}},
+		Rules:   []Rule{},
+	}
+
+	data, err := yaml.Marshal(&config)
+	if err != nil {
+		t.Fatalf("yaml.Marshal error = %v", err)
+	}
+
+	if strings.Contains(string(data), "$schema") {
+		t.Errorf("YAML output should not contain $schema when empty:\n%s", string(data))
 	}
 }

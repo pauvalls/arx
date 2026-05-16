@@ -47,6 +47,83 @@ func init() {
 	rootCmd.AddCommand(initCmd)
 }
 
+// isDefaultConfigPath returns true when the output path is the default arx.yaml
+// or a path ending in "/arx.yaml", indicating the schema reference should be injected.
+func isDefaultConfigPath(path string) bool {
+	base := filepath.Base(path)
+	return base == "arx.yaml"
+}
+
+// ensureGitignoreEntries appends arx-specific entries to .gitignore if the
+// project is a git repository and the entries are not already present.
+// It is a no-op outside git repos.
+func ensureGitignoreEntries(projectRoot string) error {
+	gitDir := filepath.Join(projectRoot, ".git")
+	if _, err := os.Stat(gitDir); os.IsNotExist(err) {
+		return nil // Not a git repo, skip
+	}
+
+	entries := []string{".arx-cache/", ".arx-history/"}
+	gitignorePath := filepath.Join(projectRoot, ".gitignore")
+
+	// Read existing content
+	var existing string
+	if data, err := os.ReadFile(gitignorePath); err == nil {
+		existing = string(data)
+	}
+
+	// Check which entries are missing
+	var missing []string
+	for _, entry := range entries {
+		if !containsGitignoreEntry(existing, entry) {
+			missing = append(missing, entry)
+		}
+	}
+
+	if len(missing) == 0 {
+		return nil // All entries already present
+	}
+
+	// Build content to append
+	var buf strings.Builder
+	if existing != "" && !strings.HasSuffix(existing, "\n") {
+		buf.WriteString("\n")
+	}
+	buf.WriteString("\n# Arx\n")
+	for _, entry := range missing {
+		buf.WriteString(entry + "\n")
+	}
+
+	// Append to .gitignore (create if not exists)
+	f, err := os.OpenFile(gitignorePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open .gitignore: %w", err)
+	}
+	defer f.Close()
+
+	if _, err := f.WriteString(buf.String()); err != nil {
+		return fmt.Errorf("failed to write .gitignore: %w", err)
+	}
+
+	return nil
+}
+
+// containsGitignoreEntry checks if a .gitignore content string already contains
+// the given entry (exact line match, ignoring comments and blank lines).
+func containsGitignoreEntry(content, entry string) bool {
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		// Skip comments and blank lines
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if line == entry {
+			return true
+		}
+	}
+	return false
+}
+
 func runInit(cmd *cobra.Command, args []string) error {
 	// Determine project root
 	projectRoot := "."
@@ -69,12 +146,12 @@ func runInit(cmd *cobra.Command, args []string) error {
 	// Check if output file already exists
 	outputPath := initOutput
 	if !filepath.IsAbs(outputPath) {
-		outputPath = filepath.Join(projectRoot, outputPath)
+		outputPath = filepath.Join(projectRoot, initOutput)
 	}
 
 	// Create service and run init
 	service := newInitService()
-	
+
 	var config *domain.Config
 	var initErr error
 	if initPreset != "" {
@@ -90,7 +167,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		if !isValid {
 			return fmt.Errorf("unknown preset %q, available presets: %s", initPreset, strings.Join(validPresets, ", "))
 		}
-		
+
 		config, initErr = service.InitWithPreset(initPreset, outputPath, initForce)
 		if initErr != nil {
 			return fmt.Errorf("failed to initialize with preset: %w", initErr)
@@ -99,6 +176,13 @@ func runInit(cmd *cobra.Command, args []string) error {
 		config, initErr = service.Init(projectRoot, outputPath)
 		if initErr != nil {
 			return fmt.Errorf("failed to initialize: %w", initErr)
+		}
+	}
+
+	// Inject $schema reference into the written arx.yaml when using default config path
+	if isDefaultConfigPath(initOutput) {
+		if err := injectSchemaField(outputPath, "./arx-schema.json"); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to add $schema to config: %v\n", err)
 		}
 	}
 
@@ -117,5 +201,36 @@ func runInit(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 	fmt.Println("Review and adjust the configuration before running 'arx check'.")
 
+	// Manage .gitignore entries (only in git repos)
+	if err := ensureGitignoreEntries(projectRoot); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to update .gitignore: %v\n", err)
+	}
+
 	return nil
+}
+
+// injectSchemaField reads a YAML file and prepends the $schema field.
+// Uses simple string insertion to avoid YAML round-trip issues.
+func injectSchemaField(filePath, schemaURL string) error {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return err
+	}
+
+	// Prepend $schema line after any leading comments/blank lines
+	lines := strings.Split(string(data), "\n")
+	var result []string
+	injected := false
+	for _, line := range lines {
+		if !injected && line != "" && !strings.HasPrefix(strings.TrimSpace(line), "#") {
+			result = append(result, fmt.Sprintf("$schema: %s", schemaURL))
+			injected = true
+		}
+		result = append(result, line)
+	}
+	if !injected {
+		result = append([]string{fmt.Sprintf("$schema: %s", schemaURL)}, result...)
+	}
+
+	return os.WriteFile(filePath, []byte(strings.Join(result, "\n")), 0644)
 }

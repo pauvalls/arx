@@ -218,6 +218,142 @@ func TestRunDetectors_UsesPortInterface(t *testing.T) {
 	var _ ports.Detector = (*mockDetector)(nil)
 }
 
+func TestRunDetectorsWithStatus_ReturnsStatusForAllDetectors(t *testing.T) {
+	ctx := context.Background()
+	goDetector := &mockDetector{
+		name:         "go",
+		detectResult: true,
+		extractDeps: []domain.Dependency{
+			{SourceFile: "main.go", SourceLine: 5, ImportPath: "fmt"},
+			{SourceFile: "main.go", SourceLine: 6, ImportPath: "os"},
+		},
+	}
+	tsDetector := &mockDetector{
+		name:         "typescript",
+		detectResult: false,
+	}
+
+	result, err := RunDetectorsWithStatus(ctx, "/test", []domain.Layer{}, []ports.Detector{goDetector, tsDetector})
+	if err != nil {
+		t.Fatalf("RunDetectorsWithStatus() error = %v", err)
+	}
+
+	if len(result.Dependencies) != 2 {
+		t.Errorf("RunDetectorsWithStatus() returned %d deps, want 2", len(result.Dependencies))
+	}
+
+	if len(result.Statuses) != 2 {
+		t.Fatalf("RunDetectorsWithStatus() returned %d statuses, want 2", len(result.Statuses))
+	}
+
+	// Go detector should be applicable with 2 deps
+	if result.Statuses[0].Name != "go" {
+		t.Errorf("Status[0].Name = %q, want %q", result.Statuses[0].Name, "go")
+	}
+	if !result.Statuses[0].Applicable {
+		t.Error("Status[0].Applicable should be true")
+	}
+	if result.Statuses[0].DepCount != 2 {
+		t.Errorf("Status[0].DepCount = %d, want 2", result.Statuses[0].DepCount)
+	}
+	if result.Statuses[0].Error != "" {
+		t.Errorf("Status[0].Error = %q, want empty", result.Statuses[0].Error)
+	}
+
+	// TypeScript detector should not be applicable
+	if result.Statuses[1].Name != "typescript" {
+		t.Errorf("Status[1].Name = %q, want %q", result.Statuses[1].Name, "typescript")
+	}
+	if result.Statuses[1].Applicable {
+		t.Error("Status[1].Applicable should be false")
+	}
+	if result.Statuses[1].DepCount != 0 {
+		t.Errorf("Status[1].DepCount = %d, want 0", result.Statuses[1].DepCount)
+	}
+}
+
+func TestRunDetectorsWithStatus_CaptureDetectError(t *testing.T) {
+	ctx := context.Background()
+	detector := &mockDetector{
+		name:         "go",
+		detectResult: false,
+		detectErr:    errors.New("no go.mod found"),
+	}
+
+	result, err := RunDetectorsWithStatus(ctx, "/test", []domain.Layer{}, []ports.Detector{detector})
+	if err == nil {
+		t.Fatal("RunDetectorsWithStatus() should return error for detect failure")
+	}
+
+	if len(result.Statuses) != 1 {
+		t.Fatalf("RunDetectorsWithStatus() returned %d statuses, want 1", len(result.Statuses))
+	}
+
+	if result.Statuses[0].Error == "" {
+		t.Error("Status[0].Error should contain the detection error")
+	}
+	if result.Statuses[0].Applicable {
+		t.Error("Status[0].Applicable should be false on detect error")
+	}
+}
+
+func TestRunDetectorsWithStatus_CaptureExtractError(t *testing.T) {
+	ctx := context.Background()
+	detector := &mockDetector{
+		name:         "go",
+		detectResult: true,
+		extractErr:   errors.New("parse error"),
+	}
+
+	result, err := RunDetectorsWithStatus(ctx, "/test", []domain.Layer{}, []ports.Detector{detector})
+	if err == nil {
+		t.Fatal("RunDetectorsWithStatus() should return error for extract failure")
+	}
+
+	if len(result.Statuses) != 1 {
+		t.Fatalf("RunDetectorsWithStatus() returned %d statuses, want 1", len(result.Statuses))
+	}
+
+	if result.Statuses[0].Error == "" {
+		t.Error("Status[0].Error should contain the extraction error")
+	}
+	if result.Statuses[0].Applicable {
+		// Applicable is set before extraction, so it should be true even if extraction fails
+		t.Log("Note: Applicable is set before extraction runs")
+	}
+}
+
+func TestRunDetectorsWithStatus_NoDetectors(t *testing.T) {
+	ctx := context.Background()
+	_, err := RunDetectorsWithStatus(ctx, "/test", []domain.Layer{}, []ports.Detector{})
+	if err == nil {
+		t.Errorf("RunDetectorsWithStatus() with no detectors should return error")
+	}
+}
+
+func TestRunDetectorsWithStatus_SkipsNilDetector(t *testing.T) {
+	ctx := context.Background()
+	detector := &mockDetector{
+		name:         "go",
+		detectResult: true,
+		extractDeps:  []domain.Dependency{},
+	}
+
+	result, err := RunDetectorsWithStatus(ctx, "/test", []domain.Layer{}, []ports.Detector{nil, detector})
+	if err != nil {
+		t.Fatalf("RunDetectorsWithStatus() error = %v", err)
+	}
+
+	// Nil detector slot should be empty (zero-value status)
+	if result.Statuses[0].Name != "" {
+		t.Errorf("Status[0].Name = %q, want empty for nil detector", result.Statuses[0].Name)
+	}
+
+	if result.Statuses[1].Name != "go" {
+		t.Errorf("Status[1].Name = %q, want %q", result.Statuses[1].Name, "go")
+	}
+}
+
 // mockBlockingDetector is a detector that blocks until a channel is closed.
 // Used to test concurrent execution.
 type mockBlockingDetector struct {

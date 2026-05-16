@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -94,6 +95,7 @@ type checkResult struct {
 	projectRoot     string
 	format          ports.OutputFormat
 	duration        time.Duration
+	detectorStatuses []application.DetectorStatus
 }
 
 // runCheck is the entry point for the check command.
@@ -216,10 +218,28 @@ func runCheckWithService(service *application.CheckService, config *domain.Confi
 		service = newCheckService(format, cache)
 	}
 
-	dependencies, err := service.DetectCached(ctx, projectRoot, config.Layers)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: detection failed: %v\n", err)
-		return checkResult{projectRoot: projectRoot, format: format}
+	var dependencies []domain.Dependency
+	var detectorStatuses []application.DetectorStatus
+
+	if verbose {
+		result, err := service.DetectCachedWithStatus(ctx, projectRoot, config.Layers)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: detection failed: %v\n", err)
+			// Still return whatever statuses we collected
+			if result != nil {
+				detectorStatuses = result.Statuses
+			}
+			return checkResult{projectRoot: projectRoot, format: format, detectorStatuses: detectorStatuses}
+		}
+		dependencies = result.Dependencies
+		detectorStatuses = result.Statuses
+	} else {
+		var err error
+		dependencies, err = service.DetectCached(ctx, projectRoot, config.Layers)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: detection failed: %v\n", err)
+			return checkResult{projectRoot: projectRoot, format: format}
+		}
 	}
 
 	violations := service.Evaluate(dependencies, config.Rules, config.Layers)
@@ -262,6 +282,7 @@ func runCheckWithService(service *application.CheckService, config *domain.Confi
 		projectRoot:     projectRoot,
 		format:          format,
 		duration:        time.Since(start),
+		detectorStatuses: detectorStatuses,
 	}
 }
 
@@ -280,6 +301,9 @@ func printCheckResult(result checkResult, format ports.OutputFormat, isWatchUpda
 		}
 		return
 	}
+
+	// Print detector status in verbose mode
+	printDetectorStatuses(result.detectorStatuses)
 
 	// Initial check report
 	if format == ports.OutputFormatJSON {
@@ -428,4 +452,32 @@ func opToString(op watcher.Op) string {
 	default:
 		return "unknown"
 	}
+}
+
+// printDetectorStatus outputs per-detector status in verbose mode.
+// Only prints if there are statuses to show. Output goes to stderr.
+func printDetectorStatuses(statuses []application.DetectorStatus) {
+	if len(statuses) == 0 {
+		return
+	}
+
+	fmt.Fprintln(os.Stderr, "Detectors:")
+	for _, s := range statuses {
+		if s.Error != "" {
+			fmt.Fprintf(os.Stderr, "  ✗ %s: %s\n", capitalize(s.Name), s.Error)
+		} else if s.Applicable {
+			fmt.Fprintf(os.Stderr, "  ✓ %s: %d dependencies\n", capitalize(s.Name), s.DepCount)
+		} else {
+			fmt.Fprintf(os.Stderr, "  ✗ %s: no project files found\n", capitalize(s.Name))
+		}
+	}
+	fmt.Fprintln(os.Stderr)
+}
+
+// capitalize returns the string with the first letter uppercased.
+func capitalize(s string) string {
+	if len(s) == 0 {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
 }

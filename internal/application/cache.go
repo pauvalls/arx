@@ -14,6 +14,81 @@ import (
 	"github.com/pauvalls/arx/internal/ports"
 )
 
+// RunDetectorsCachedWithStatus executes all applicable detectors with caching and returns per-detector status.
+// If cache is nil, falls back to RunDetectorsWithStatus (backward compatible).
+func RunDetectorsCachedWithStatus(ctx context.Context, projectRoot string, layers []domain.Layer, detectors []ports.Detector, cache ports.Cache) (*DetectorResult, error) {
+	if len(detectors) == 0 {
+		return nil, fmt.Errorf("no detectors provided")
+	}
+
+	// If no cache, fall back to original behavior
+	if cache == nil {
+		return RunDetectorsWithStatus(ctx, projectRoot, layers, detectors)
+	}
+
+	var allDependencies []domain.Dependency
+	statuses := make([]DetectorStatus, len(detectors))
+
+	for i, detector := range detectors {
+		if detector == nil {
+			continue
+		}
+
+		idx := i
+		status := DetectorStatus{Name: detector.Name()}
+
+		// Check if this detector is applicable
+		applicable, err := detector.Detect(ctx, projectRoot)
+		if err != nil {
+			status.Error = err.Error()
+			statuses[idx] = status
+			return &DetectorResult{Dependencies: allDependencies, Statuses: statuses}, fmt.Errorf("detector %q detection failed: %w", detector.Name(), err)
+		}
+
+		status.Applicable = applicable
+
+		if !applicable {
+			statuses[idx] = status
+			continue
+		}
+
+		// Compute combined hash of all source files for this detector
+		projectHash, err := hashProjectFiles(projectRoot, detector.Name())
+		if err != nil {
+			status.Error = err.Error()
+			statuses[idx] = status
+			return &DetectorResult{Dependencies: allDependencies, Statuses: statuses}, fmt.Errorf("detector %q file hashing failed: %w", detector.Name(), err)
+		}
+
+		// Check cache
+		if cached, ok := cache.Get(projectHash, detector.Name()); ok {
+			status.DepCount = len(cached)
+			statuses[idx] = status
+			allDependencies = append(allDependencies, cached...)
+			continue
+		}
+
+		// Cache miss: call detector
+		deps, err := detector.ExtractImports(ctx, projectRoot, layers)
+		if err != nil {
+			status.Error = err.Error()
+			statuses[idx] = status
+			return &DetectorResult{Dependencies: allDependencies, Statuses: statuses}, fmt.Errorf("detector %q extraction failed: %w", detector.Name(), err)
+		}
+
+		// Store in cache
+		if err := cache.Put(projectHash, detector.Name(), deps); err != nil {
+			// Log but don't fail on cache write errors
+		}
+
+		status.DepCount = len(deps)
+		statuses[idx] = status
+		allDependencies = append(allDependencies, deps...)
+	}
+
+	return &DetectorResult{Dependencies: allDependencies, Statuses: statuses}, nil
+}
+
 // RunDetectorsCached executes all applicable detectors with caching.
 // For each detector, it computes a combined hash of all relevant source files,
 // checks cache, and on miss calls ExtractImports and stores the result.

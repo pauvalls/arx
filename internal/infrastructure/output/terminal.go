@@ -2,12 +2,35 @@ package output
 
 import (
 	"fmt"
+	"os"
 	"sort"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/pauvalls/arx/internal/domain"
 	"github.com/pauvalls/arx/internal/ports"
 )
+
+// noColor disables all ANSI styling when NO_COLOR env var is set (per https://no-color.org/).
+var noColor bool
+
+func init() {
+	v := os.Getenv("NO_COLOR")
+	noColor = v != "" && v != "0"
+}
+
+// SetNoColor overrides the noColor flag for testing purposes.
+func SetNoColor(val bool) { noColor = val }
+
+// GetNoColor returns the current noColor state (for testing).
+func GetNoColor() bool { return noColor }
+
+// style applies a lipgloss style to text, returning plain text when noColor is true.
+func style(s lipgloss.Style, text string) string {
+	if noColor {
+		return text
+	}
+	return s.Render(text)
+}
 
 // TerminalReporter implements the ports.Reporter interface for terminal output
 type TerminalReporter struct {
@@ -59,9 +82,9 @@ func (r *TerminalReporter) Report(violations []domain.Violation, format ports.Ou
 
 	// Output header
 	fmt.Println()
-	fmt.Println(headerStyle.Render("╔═══════════════════════════════════════════════════════════╗"))
-	fmt.Println(headerStyle.Render("║         ARCHITECTURE VIOLATIONS DETECTED                  ║"))
-	fmt.Println(headerStyle.Render("╚═══════════════════════════════════════════════════════════╝"))
+	fmt.Println(style(headerStyle, "╔═══════════════════════════════════════════════════════════╗"))
+	fmt.Println(style(headerStyle, "║         ARCHITECTURE VIOLATIONS DETECTED                  ║"))
+	fmt.Println(style(headerStyle, "╚═══════════════════════════════════════════════════════════╝"))
 	fmt.Println()
 
 	// Output violations
@@ -99,7 +122,7 @@ func (r *TerminalReporter) Report(violations []domain.Violation, format ports.Ou
 			}
 
 			// Violation header
-			fmt.Println(severityStyle.Render(fmt.Sprintf("%s [%s] %s:%d%s",
+			fmt.Println(style(severityStyle, fmt.Sprintf("%s [%s] %s:%d%s",
 				severityIcon,
 				v.ID,
 				v.File,
@@ -108,20 +131,20 @@ func (r *TerminalReporter) Report(violations []domain.Violation, format ports.Ou
 			)))
 
 			// Rule info
-			fmt.Println(borderStyle.Render("   ───────────────────────────────────────────────────────"))
-			fmt.Println(dimStyle.Render(fmt.Sprintf("   Rule: %q → %q", v.SourceLayer, v.TargetLayer)))
-			fmt.Println(dimStyle.Render(fmt.Sprintf("   Import: %s", v.Import)))
+			fmt.Println(style(borderStyle, "   ───────────────────────────────────────────────────────"))
+			fmt.Println(style(dimStyle, fmt.Sprintf("   Rule: %q → %q", v.SourceLayer, v.TargetLayer)))
+			fmt.Println(style(dimStyle, fmt.Sprintf("   Import: %s", v.Import)))
 			fmt.Println()
 
 			// Explanation (Why this matters)
-			fmt.Println(headerStyle.Render("   Why this matters:"))
+			fmt.Println(style(headerStyle, "   Why this matters:"))
 			fmt.Println(r.wrapText(v.Message, 70, dimStyle))
 			fmt.Println()
 
 			// How to fix (if available from built-in explanations)
 			fixGuidance := r.getFixGuidance(v)
 			if fixGuidance != "" {
-				fmt.Println(headerStyle.Render("   How to fix:"))
+				fmt.Println(style(headerStyle, "   How to fix:"))
 				fmt.Println(r.wrapText(fixGuidance, 70, dimStyle))
 				fmt.Println()
 			}
@@ -130,11 +153,11 @@ func (r *TerminalReporter) Report(violations []domain.Violation, format ports.Ou
 
 	// Summary
 	fmt.Println()
-	fmt.Println(borderStyle.Render("═══════════════════════════════════════════════════════════"))
+	fmt.Println(style(borderStyle, "═══════════════════════════════════════════════════════════"))
 
 	if len(violations) == 0 {
 		successStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("46")).Bold(true)
-		fmt.Println(successStyle.Render("✓ No violations found!"))
+		fmt.Println(style(successStyle, "✓ No violations found!"))
 	} else {
 		summary := fmt.Sprintf("Found %d violation", len(violations))
 		if len(violations) > 1 {
@@ -159,18 +182,18 @@ func (r *TerminalReporter) Report(violations []domain.Violation, format ports.Ou
 		}
 
 		details := fmt.Sprintf(" (%d errors, %d warnings, %d info)", totalErrors, totalWarnings, totalInfo)
-		fmt.Println(errorStyle.Render(summary + dimStyle.Render(details)))
+		fmt.Println(style(errorStyle, summary+style(dimStyle, details)))
 
 		uniqueFiles := len(violationsByFile)
 		fileText := "file"
 		if uniqueFiles > 1 {
 			fileText = "files"
 		}
-		fmt.Println(dimStyle.Render(fmt.Sprintf("Across %d %s", uniqueFiles, fileText)))
+		fmt.Println(style(dimStyle, fmt.Sprintf("Across %d %s", uniqueFiles, fileText)))
 	}
 
 	fmt.Println()
-	fmt.Println(dimStyle.Render("Run `arx explain <violation-id>` for detailed guidance."))
+	fmt.Println(style(dimStyle, "Run `arx explain <violation-id>` for detailed guidance."))
 	fmt.Println()
 
 	return nil
@@ -210,7 +233,11 @@ func (r *TerminalReporter) wrapText(text string, width int, style lipgloss.Style
 		if i > 0 {
 			indent = "   "
 		}
-		result += indent + style.Render(line) + "\n"
+		if noColor {
+			result += indent + line + "\n"
+		} else {
+			result += indent + style.Render(line) + "\n"
+		}
 	}
 
 	return result

@@ -1,0 +1,201 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Arx Architecture Configuration",
+  "description": "Schema for arx.yaml — Arx architecture linter configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference for IDE autocompletion",
+      "format": "uri"
+    },
+    "version": {
+      "type": "string",
+      "description": "Configuration format version (e.g. \"1.0\")"
+    },
+    "layers": {
+      "type": "array",
+      "description": "Architectural layers in the system",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Unique layer identifier"
+          },
+          "paths": {
+            "type": "array",
+            "description": "Glob patterns matching files in this layer",
+            "items": {
+              "type": "string"
+            }
+          },
+          "description": {
+            "type": "string",
+            "description": "Human-readable description of the layer"
+          },
+          "tags": {
+            "type": "array",
+            "description": "Semantic tags for the layer",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["name", "paths"]
+      }
+    },
+    "rules": {
+      "type": "array",
+      "description": "Architectural rules to enforce between layers",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique rule identifier"
+          },
+          "from": {
+            "type": "string",
+            "description": "Source layer name (references a layer)"
+          },
+          "to": {
+            "type": "array",
+            "description": "Target layer names (references layers)",
+            "items": {
+              "type": "string"
+            }
+          },
+          "type": {
+            "type": "string",
+            "description": "Rule type: Cannot, Must, Can, MustNotCircular",
+            "enum": ["Cannot", "Must", "Can", "MustNotCircular", "cannot", "must", "can", "mustnotcircular"]
+          },
+          "severity": {
+            "type": "string",
+            "description": "Violation severity: error, warning, info",
+            "enum": ["error", "warning", "info"]
+          },
+          "explanation": {
+            "type": "string",
+            "description": "Human-readable explanation of the rule"
+          },
+          "pattern": {
+            "type": "string",
+            "description": "Regex pattern for import-path matching (pattern-only rule)"
+          },
+          "template": {
+            "type": "string",
+            "description": "Template name (max-deps, no-leak, layer-balance)"
+          },
+          "params": {
+            "type": "object",
+            "description": "Parameters for template rules"
+          },
+          "check": {
+            "type": "string",
+            "description": "Expression for check-based rules"
+          },
+          "overrides": {
+            "type": "array",
+            "description": "Per-directory severity/enabled overrides",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Directory path prefix for the override"
+                },
+                "severity": {
+                  "type": "string",
+                  "description": "Override severity: error, warning, info",
+                  "enum": ["error", "warning", "info"]
+                },
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Whether the rule is enabled for this path"
+                }
+              },
+              "required": ["path"]
+            }
+          },
+          "exclude": {
+            "type": "array",
+            "description": "Per-rule file exclusion patterns (glob)",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["id"]
+      }
+    },
+    "language_overrides": {
+      "type": "object",
+      "description": "Language-specific import/comment configuration",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "extensions": {
+            "type": "array",
+            "description": "File extensions for this language",
+            "items": {
+              "type": "string"
+            }
+          },
+          "comment": {
+            "type": "string",
+            "description": "Comment prefix (e.g. //, #)"
+          },
+          "import": {
+            "type": "string",
+            "description": "Import keyword (e.g. import, use, require)"
+          }
+        }
+      }
+    },
+    "exclude": {
+      "type": "array",
+      "description": "Global file exclusion patterns (glob)",
+      "items": {
+        "type": "string"
+      }
+    },
+    "severity_config": {
+      "type": "object",
+      "description": "Per-severity behavior configuration",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "fail_build": {
+            "type": "boolean",
+            "description": "Whether this severity causes build failure"
+          },
+          "show_in_ui": {
+            "type": "boolean",
+            "description": "Whether to display in UI output"
+          }
+        }
+      }
+    },
+    "max_violations": {
+      "type": "integer",
+      "description": "Maximum allowed violations before failing (0 = unlimited)",
+      "minimum": 0
+    },
+    "severity_mapping": {
+      "type": "object",
+      "description": "Map custom severity names to standard ones (error, warning, info)",
+      "additionalProperties": {
+        "type": "string",
+        "enum": ["error", "warning", "info"]
+      }
+    }
+  }
+}

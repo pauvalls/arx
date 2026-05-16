@@ -22,6 +22,7 @@ type SeverityConfig struct {
 
 // Config represents the complete Arx configuration
 type Config struct {
+	Schema         string                      `json:"$schema,omitempty" yaml:"$schema,omitempty"`
 	Version        string                      `json:"version" yaml:"version"`
 	Layers         []Layer                     `json:"layers" yaml:"layers"`
 	Rules          []Rule                      `json:"rules" yaml:"rules"`

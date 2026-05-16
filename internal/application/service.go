@@ -157,10 +157,21 @@ func (s *CheckService) Detect(ctx context.Context, projectRoot string, layers []
 	return RunDetectors(ctx, projectRoot, layers, s.detectors)
 }
 
+// DetectWithStatus runs all detectors and returns per-detector status along with aggregated dependencies.
+func (s *CheckService) DetectWithStatus(ctx context.Context, projectRoot string, layers []domain.Layer) (*DetectorResult, error) {
+	return RunDetectorsWithStatus(ctx, projectRoot, layers, s.detectors)
+}
+
 // DetectCached runs all applicable detectors with caching support.
 // If cache is nil, falls back to Detect (backward compatible).
 func (s *CheckService) DetectCached(ctx context.Context, projectRoot string, layers []domain.Layer) ([]domain.Dependency, error) {
 	return RunDetectorsCached(ctx, projectRoot, layers, s.detectors, s.cache)
+}
+
+// DetectCachedWithStatus runs all applicable detectors with caching and returns per-detector status.
+// If cache is nil, falls back to DetectWithStatus (backward compatible).
+func (s *CheckService) DetectCachedWithStatus(ctx context.Context, projectRoot string, layers []domain.Layer) (*DetectorResult, error) {
+	return RunDetectorsCachedWithStatus(ctx, projectRoot, layers, s.detectors, s.cache)
 }
 
 // Evaluate checks dependencies against rules and returns violations.

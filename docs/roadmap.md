@@ -1,6 +1,14 @@
 # Roadmap
 
-## ✅ v0.19.0 (Current — Extended Expressions, TS Parser, Python Fixtures)
+## ✅ v0.20.0 (Current — Maturity Release)
+
+- [x] JSON Schema for arx.yaml — IDE autocompletion (`$schema` field)
+- [x] NO_COLOR support — Respects `NO_COLOR` env var per no-color.org standard
+- [x] Smart `arx init` — Auto-adds `.arx-cache/` and `.arx-history/` to `.gitignore`
+- [x] Verbose check — `arx check --verbose` shows per-detector status
+- [x] Bug fix: YAML injectSchemaField no longer corrupts config on init
+
+## ✅ v0.19.0 (Extended Expressions, TS Parser, Python Fixtures)
 
 - [x] Extended expression functions: `files()`, `ratio()`, `violations()`, `threshold()`
 - [x] TypeScript parser: `import type`, `export { X } from`, dynamic `import()` patterns

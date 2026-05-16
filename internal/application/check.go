@@ -28,10 +28,23 @@ func LoadConfig(configPath string, reader ports.ConfigReader) (*domain.Config, e
 	return config, nil
 }
 
-// RunDetectors executes all applicable detectors concurrently and aggregates their dependencies.
-// A detector is considered applicable if its Detect() method returns true for the project.
-// Detectors run in parallel; an error in one detector cancels the context for others.
-func RunDetectors(ctx context.Context, projectRoot string, layers []domain.Layer, detectors []ports.Detector) ([]domain.Dependency, error) {
+// DetectorStatus holds the result of a single detector's execution.
+type DetectorStatus struct {
+	Name       string
+	Applicable bool
+	DepCount   int
+	Error      string // empty if no error
+}
+
+// DetectorResult aggregates dependencies and per-detector statuses.
+type DetectorResult struct {
+	Dependencies []domain.Dependency
+	Statuses     []DetectorStatus
+}
+
+// RunDetectorsWithStatus executes all detectors concurrently and returns per-detector results.
+// Unlike RunDetectors, this returns status for every detector regardless of applicability.
+func RunDetectorsWithStatus(ctx context.Context, projectRoot string, layers []domain.Layer, detectors []ports.Detector) (*DetectorResult, error) {
 	if len(detectors) == 0 {
 		return nil, fmt.Errorf("no detectors provided")
 	}
@@ -39,32 +52,52 @@ func RunDetectors(ctx context.Context, projectRoot string, layers []domain.Layer
 	g, ctx := errgroup.WithContext(ctx)
 	var mu sync.Mutex
 	var allDependencies []domain.Dependency
+	statuses := make([]DetectorStatus, len(detectors))
 
-	for _, detector := range detectors {
+	for i, detector := range detectors {
 		if detector == nil {
 			continue
 		}
 
+		idx := i
 		d := detector // capture loop variable
 		g.Go(func() error {
+			status := DetectorStatus{Name: d.Name()}
+
 			// Check if this detector is applicable
 			applicable, err := d.Detect(ctx, projectRoot)
 			if err != nil {
+				status.Error = err.Error()
+				mu.Lock()
+				statuses[idx] = status
+				mu.Unlock()
 				return fmt.Errorf("detector %q detection failed: %w", d.Name(), err)
 			}
 
+			status.Applicable = applicable
+
 			if !applicable {
+				mu.Lock()
+				statuses[idx] = status
+				mu.Unlock()
 				return nil
 			}
 
 			// Extract dependencies
 			deps, err := d.ExtractImports(ctx, projectRoot, layers)
 			if err != nil {
+				status.Error = err.Error()
+				mu.Lock()
+				statuses[idx] = status
+				mu.Unlock()
 				return fmt.Errorf("detector %q extraction failed: %w", d.Name(), err)
 			}
 
+			status.DepCount = len(deps)
+
 			mu.Lock()
 			allDependencies = append(allDependencies, deps...)
+			statuses[idx] = status
 			mu.Unlock()
 
 			return nil
@@ -72,10 +105,24 @@ func RunDetectors(ctx context.Context, projectRoot string, layers []domain.Layer
 	}
 
 	if err := g.Wait(); err != nil {
-		return nil, err
+		return &DetectorResult{Dependencies: allDependencies, Statuses: statuses}, err
 	}
 
-	return allDependencies, nil
+	return &DetectorResult{Dependencies: allDependencies, Statuses: statuses}, nil
+}
+
+// RunDetectors executes all applicable detectors concurrently and aggregates their dependencies.
+// A detector is considered applicable if its Detect() method returns true for the project.
+// Detectors run in parallel; an error in one detector cancels the context for others.
+func RunDetectors(ctx context.Context, projectRoot string, layers []domain.Layer, detectors []ports.Detector) ([]domain.Dependency, error) {
+	result, err := RunDetectorsWithStatus(ctx, projectRoot, layers, detectors)
+	if err != nil {
+		if result != nil {
+			return result.Dependencies, err
+		}
+		return nil, err
+	}
+	return result.Dependencies, nil
 }
 
 // EvaluateArchitecture checks dependencies against architectural rules and returns violations.
