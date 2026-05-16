@@ -69,6 +69,28 @@ func EvaluateRules(dependencies []Dependency, rules []Rule, layers []Layer) []Vi
 		}
 	}
 
+	// Evaluate template-based rules
+	for i := range rules {
+		rule := &rules[i]
+		if rule.Template == "" {
+			continue
+		}
+		fn, ok := TemplateRegistry[rule.Template]
+		if !ok {
+			continue // should have been caught by validation
+		}
+		templateViolations := fn(rule.Params, dependencies, layers)
+		for _, tv := range templateViolations {
+			violationIndex++
+			tv.ID = GenerateTemplateViolationID(violationIndex)
+			tv.RuleID = rule.ID
+			if tv.Severity == "" {
+				tv.Severity = rule.Severity
+			}
+			violations = append(violations, tv)
+		}
+	}
+
 	// Check for circular dependencies
 	circularViolations := EvaluateCircularDependencies(dependencies, rules, layers)
 	violations = append(violations, circularViolations...)
@@ -79,6 +101,11 @@ func EvaluateRules(dependencies []Dependency, rules []Rule, layers []Layer) []Vi
 // GenerateViolationID creates a sequential ID for a violation
 func GenerateViolationID(rule Rule, index int) string {
 	return fmt.Sprintf("D-%02d", index)
+}
+
+// GenerateTemplateViolationID creates a sequential ID for a template-based violation
+func GenerateTemplateViolationID(index int) string {
+	return fmt.Sprintf("T-%02d", index)
 }
 
 // resolveLayer finds the layer that matches a given file path

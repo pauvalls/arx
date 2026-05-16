@@ -1,6 +1,16 @@
 # Roadmap
 
-## ✅ v0.16.0 (Current — Audit HTML, More Presets, Quality)
+## ✅ v0.17.0 (Current — Custom Rule Templates)
+
+- [x] Template engine — `TemplateFunc` type + `TemplateRegistry` in `internal/domain/template.go`
+- [x] `max-deps` template — Max dependencies between two layers
+- [x] `no-leak` template — Layer must not import from forbidden layers
+- [x] `layer-balance` template — Each layer must have N-M dependencies
+- [x] Config integration — `template` + `params` fields on rules with validation
+- [x] Evaluation — template rules run alongside standard rules (AND logic)
+- [x] Template violations use `T-` prefix (distinct from standard `D-`)
+
+## ✅ v0.16.0 (Audit HTML, More Presets, Quality)
 
 - [x] `arx audit --format html` — HTML output for audit command
 - [x] `arx init --preset layered` — Layered Architecture preset

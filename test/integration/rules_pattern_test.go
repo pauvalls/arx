@@ -309,3 +309,182 @@ func writeGoMod(t *testing.T, dir, module string) {
 	goModContent := "module " + module + "\n\ngo 1.23\n"
 	writeFile(t, filepath.Join(dir, "go.mod"), goModContent)
 }
+
+// TestRulesTemplate_MixedStandardAndTemplate verifies that both standard and
+// template rules produce violations in the same run.
+func TestRulesTemplate_MixedStandardAndTemplate(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	writeGoMod(t, tmpDir, "example.com/test")
+
+	// arx.yaml with both standard and template rules
+	arxYAML := `version: "1.0"
+layers:
+  - name: domain
+    paths:
+      - internal/domain/**
+  - name: application
+    paths:
+      - internal/application/**
+  - name: infrastructure
+    paths:
+      - internal/infrastructure/**
+rules:
+  - id: no-domain-to-infra
+    from: domain
+    to:
+      - infrastructure
+    type: Cannot
+    severity: error
+    explanation: Domain must not import infrastructure
+  - id: domain-max-app-deps
+    template: max-deps
+    severity: warning
+    params:
+      from: domain
+      to: [application]
+      max: 0
+    explanation: Domain should not depend on application
+`
+	writeFile(t, filepath.Join(tmpDir, "arx.yaml"), arxYAML)
+
+	// Create domain source file importing both infrastructure and application
+	sourceDir := filepath.Join(tmpDir, "internal", "domain")
+	if err := os.MkdirAll(sourceDir, 0755); err != nil {
+		t.Fatalf("failed to create source dir: %v", err)
+	}
+	sourceFile := `package domain
+
+import (
+	"example.com/test/internal/infrastructure/db"
+	"example.com/test/internal/application/service"
+)
+`
+	writeFile(t, filepath.Join(sourceDir, "entity.go"), sourceFile)
+
+	binaryPath := buildArxBinary(t)
+
+	cmd := exec.Command(binaryPath, "check")
+	cmd.Dir = tmpDir
+	output, _ := cmd.CombinedOutput()
+	outputStr := string(output)
+
+	// Standard rule violation should appear
+	if !strings.Contains(outputStr, "Domain must not import infrastructure") {
+		t.Errorf("expected standard rule violation, got: %s", outputStr)
+	}
+
+	// Template rule violation should appear
+	if !strings.Contains(outputStr, "Domain should not depend on application") {
+		t.Errorf("expected template rule violation, got: %s", outputStr)
+	}
+
+	// Should have 2 violations (1 error + 1 warning)
+	if !strings.Contains(outputStr, "Found 2 violations") {
+		t.Errorf("expected 2 violations in summary, got: %s", outputStr)
+	}
+}
+
+// TestRulesTemplate_TemplateCatchesWhatStandardMisses verifies that a template
+// rule can detect violations that a standard from/to rule would miss.
+func TestRulesTemplate_TemplateCatchesWhatStandardMisses(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	writeGoMod(t, tmpDir, "example.com/test")
+
+	// Standard rule only blocks domain→infrastructure
+	// Template rule blocks domain→application (max=0)
+	arxYAML := `version: "1.0"
+layers:
+  - name: domain
+    paths:
+      - internal/domain/**
+  - name: application
+    paths:
+      - internal/application/**
+  - name: infrastructure
+    paths:
+      - internal/infrastructure/**
+rules:
+  - id: no-domain-to-infra
+    from: domain
+    to:
+      - infrastructure
+    type: Cannot
+    severity: error
+  - id: no-domain-to-app
+    template: max-deps
+    severity: error
+    params:
+      from: domain
+      to: [application]
+      max: 0
+`
+	writeFile(t, filepath.Join(tmpDir, "arx.yaml"), arxYAML)
+
+	// Domain imports application (allowed by standard rule, caught by template)
+	sourceDir := filepath.Join(tmpDir, "internal", "domain")
+	if err := os.MkdirAll(sourceDir, 0755); err != nil {
+		t.Fatalf("failed to create source dir: %v", err)
+	}
+	sourceFile := `package domain
+
+import (
+	"example.com/test/internal/application/service"
+)
+`
+	writeFile(t, filepath.Join(sourceDir, "entity.go"), sourceFile)
+
+	binaryPath := buildArxBinary(t)
+
+	cmd := exec.Command(binaryPath, "check")
+	cmd.Dir = tmpDir
+	output, _ := cmd.CombinedOutput()
+	outputStr := string(output)
+
+	// Template rule should catch the domain→application import (T- prefix = template)
+	if !strings.Contains(outputStr, "T-01") {
+		t.Errorf("expected template violation (T-01) for domain→application, got: %s", outputStr)
+	}
+
+	// Should have exactly 1 violation (template only, standard allows this)
+	if !strings.Contains(outputStr, "Found 1 violation") {
+		t.Errorf("expected exactly 1 violation, got output: %s", outputStr)
+	}
+}
+
+// TestRulesTemplate_InvalidTemplateAtStartup verifies that an unknown template
+// causes arx check to fail at startup with a clear error.
+func TestRulesTemplate_InvalidTemplateAtStartup(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	writeGoMod(t, tmpDir, "example.com/test")
+
+	arxYAML := `version: "1.0"
+layers:
+  - name: domain
+    paths:
+      - internal/domain/**
+rules:
+  - id: bad-template
+    template: nonexistent-template
+    severity: error
+    params:
+      foo: bar
+`
+	writeFile(t, filepath.Join(tmpDir, "arx.yaml"), arxYAML)
+
+	binaryPath := buildArxBinary(t)
+
+	cmd := exec.Command(binaryPath, "check")
+	cmd.Dir = tmpDir
+	output, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatal("arx check should have failed with unknown template")
+	}
+
+	outputStr := string(output)
+	if !strings.Contains(outputStr, "unknown template") {
+		t.Errorf("expected 'unknown template' error, got: %s", outputStr)
+	}
+}

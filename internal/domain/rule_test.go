@@ -907,3 +907,158 @@ func TestRule_Validate_Exclude(t *testing.T) {
 		})
 	}
 }
+
+// ─── Template Rule Validation ────────────────────────────────────────────────
+
+func TestRule_Validate_Template(t *testing.T) {
+	tests := []struct {
+		name       string
+		rule       Rule
+		wantErr    bool
+		errMsg     string
+		errContain string
+	}{
+		{
+			name: "valid max-deps template rule",
+			rule: Rule{
+				ID:       "T1",
+				Template: "max-deps",
+				Severity: SeverityError,
+				Params: map[string]interface{}{
+					"from": "domain",
+					"to":   []interface{}{"infrastructure"},
+					"max":  3,
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid no-leak template rule",
+			rule: Rule{
+				ID:       "T2",
+				Template: "no-leak",
+				Severity: SeverityError,
+				Params: map[string]interface{}{
+					"layer":     "domain",
+					"forbidden": []interface{}{"infrastructure"},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid layer-balance template rule",
+			rule: Rule{
+				ID:       "T3",
+				Template: "layer-balance",
+				Severity: SeverityWarning,
+				Params: map[string]interface{}{
+					"min": 1,
+					"max": 10,
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "unknown template name",
+			rule: Rule{
+				ID:       "T4",
+				Template: "nonexistent",
+				Severity: SeverityError,
+				Params:   map[string]interface{}{},
+			},
+			wantErr:    true,
+			errMsg:     `unknown template "nonexistent"`,
+		},
+		{
+			name: "missing required param",
+			rule: Rule{
+				ID:       "T5",
+				Template: "max-deps",
+				Severity: SeverityError,
+				Params: map[string]interface{}{
+					"to":  []interface{}{"infrastructure"},
+					"max": 3,
+				},
+			},
+			wantErr:    true,
+			errContain: `missing required param "from"`,
+		},
+		{
+			name: "wrong param type",
+			rule: Rule{
+				ID:       "T6",
+				Template: "max-deps",
+				Severity: SeverityError,
+				Params: map[string]interface{}{
+					"from": "domain",
+					"to":   []interface{}{"infrastructure"},
+					"max":  "not-a-number",
+				},
+			},
+			wantErr:    true,
+			errContain: "expected int",
+		},
+		{
+			name: "template with from/to coexisting (hybrid rule)",
+			rule: Rule{
+				ID:       "T7",
+				Template: "max-deps",
+				From:     "domain",
+				To:       []string{"infrastructure"},
+				Type:     RuleTypeCannot,
+				Severity: SeverityError,
+				Params: map[string]interface{}{
+					"from": "domain",
+					"to":   []interface{}{"infrastructure"},
+					"max":  3,
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "traditional rule without template (unchanged behavior)",
+			rule: Rule{
+				ID:       "R1",
+				From:     "domain",
+				To:       []string{"infrastructure"},
+				Type:     RuleTypeCannot,
+				Severity: SeverityError,
+			},
+			wantErr: false,
+		},
+		{
+			name: "template rule with empty type is valid",
+			rule: Rule{
+				ID:       "T8",
+				Template: "no-leak",
+				Params: map[string]interface{}{
+					"layer":     "domain",
+					"forbidden": []interface{}{"infrastructure"},
+				},
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.rule.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Rule.Validate() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("Rule.Validate() expected error, got nil")
+					return
+				}
+				if tt.errMsg != "" && !strings.Contains(err.Error(), tt.errMsg) {
+					t.Errorf("Rule.Validate() error = %q, want to contain %q", err.Error(), tt.errMsg)
+				}
+				if tt.errContain != "" && !strings.Contains(err.Error(), tt.errContain) {
+					t.Errorf("Rule.Validate() error = %q, want to contain %q", err.Error(), tt.errContain)
+				}
+			}
+		})
+	}
+}

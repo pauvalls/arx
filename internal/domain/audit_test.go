@@ -1,6 +1,8 @@
 package domain
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -654,6 +656,277 @@ func TestAudit_EvaluateRules_Excludes(t *testing.T) {
 				t.Errorf("EvaluateRules() returned %d violations, want %d", len(violations), tt.wantCount)
 				for i, v := range violations {
 					t.Logf("Violation %d: RuleID=%q, File=%q", i, v.RuleID, v.File)
+				}
+			}
+		})
+	}
+}
+
+// ─── Template Rule Evaluation ────────────────────────────────────────────────
+
+func TestAudit_EvaluateRules_TemplateRules(t *testing.T) {
+	tests := []struct {
+		name         string
+		dependencies []Dependency
+		rules        []Rule
+		layers       []Layer
+		wantCount    int
+		wantIDs      []string // expected violation ID prefixes
+	}{
+		{
+			name: "only template rules — max-deps violation",
+			dependencies: []Dependency{
+				{SourceFile: "internal/domain/user.go", SourceLine: 1, ImportPath: "internal/infrastructure/db", ResolvedLayer: "infrastructure"},
+				{SourceFile: "internal/domain/order.go", SourceLine: 2, ImportPath: "internal/infrastructure/cache", ResolvedLayer: "infrastructure"},
+				{SourceFile: "internal/domain/product.go", SourceLine: 3, ImportPath: "internal/infrastructure/queue", ResolvedLayer: "infrastructure"},
+			},
+			rules: []Rule{
+				{
+					ID:       "T1",
+					Template: "max-deps",
+					Severity: SeverityError,
+					Params: map[string]interface{}{
+						"from": "domain",
+						"to":   []interface{}{"infrastructure"},
+						"max":  1,
+					},
+				},
+			},
+			layers: []Layer{
+				{Name: "domain", Paths: []string{"internal/domain/"}},
+				{Name: "infrastructure", Paths: []string{"internal/infrastructure/"}},
+			},
+			wantCount: 1,
+			wantIDs:   []string{"T-"},
+		},
+		{
+			name: "only template rules — no-leak violations",
+			dependencies: []Dependency{
+				{SourceFile: "internal/domain/user.go", SourceLine: 5, ImportPath: "internal/infrastructure/db", ResolvedLayer: "infrastructure"},
+				{SourceFile: "internal/domain/order.go", SourceLine: 10, ImportPath: "internal/application/service", ResolvedLayer: "application"},
+			},
+			rules: []Rule{
+				{
+					ID:       "T2",
+					Template: "no-leak",
+					Severity: SeverityError,
+					Params: map[string]interface{}{
+						"layer":     "domain",
+						"forbidden": []interface{}{"infrastructure", "application"},
+					},
+				},
+			},
+			layers: []Layer{
+				{Name: "domain", Paths: []string{"internal/domain/"}},
+				{Name: "application", Paths: []string{"internal/application/"}},
+				{Name: "infrastructure", Paths: []string{"internal/infrastructure/"}},
+			},
+			wantCount: 2,
+			wantIDs:   []string{"T-", "T-"},
+		},
+		{
+			name: "only standard rules — backward compat",
+			dependencies: []Dependency{
+				{SourceFile: "internal/domain/user.go", SourceLine: 1, ImportPath: "internal/infrastructure/db", ResolvedLayer: "infrastructure"},
+			},
+			rules: []Rule{
+				{
+					ID:       "R1",
+					From:     "domain",
+					To:       []string{"infrastructure"},
+					Type:     RuleTypeCannot,
+					Severity: SeverityError,
+				},
+			},
+			layers: []Layer{
+				{Name: "domain", Paths: []string{"internal/domain/"}},
+				{Name: "infrastructure", Paths: []string{"internal/infrastructure/"}},
+			},
+			wantCount: 1,
+			wantIDs:   []string{"D-"},
+		},
+		{
+			name: "mixed standard + template rules — both produce violations",
+			dependencies: []Dependency{
+				{SourceFile: "internal/domain/user.go", SourceLine: 1, ImportPath: "internal/infrastructure/db", ResolvedLayer: "infrastructure"},
+				{SourceFile: "internal/domain/order.go", SourceLine: 2, ImportPath: "internal/infrastructure/cache", ResolvedLayer: "infrastructure"},
+				{SourceFile: "internal/domain/product.go", SourceLine: 3, ImportPath: "internal/infrastructure/queue", ResolvedLayer: "infrastructure"},
+			},
+			rules: []Rule{
+				{
+					ID:       "R1",
+					From:     "domain",
+					To:       []string{"infrastructure"},
+					Type:     RuleTypeCannot,
+					Severity: SeverityError,
+				},
+				{
+					ID:       "T3",
+					Template: "max-deps",
+					Severity: SeverityWarning,
+					Params: map[string]interface{}{
+						"from": "domain",
+						"to":   []interface{}{"infrastructure"},
+						"max":  1,
+					},
+				},
+			},
+			layers: []Layer{
+				{Name: "domain", Paths: []string{"internal/domain/"}},
+				{Name: "infrastructure", Paths: []string{"internal/infrastructure/"}},
+			},
+			// 3 standard violations (one per dep) + 1 template violation (max-deps exceeded)
+			wantCount: 4,
+		},
+		{
+			name: "template rule catches what standard rule misses",
+			dependencies: []Dependency{
+				{SourceFile: "internal/domain/user.go", SourceLine: 1, ImportPath: "internal/application/service", ResolvedLayer: "application"},
+				{SourceFile: "internal/domain/user.go", SourceLine: 2, ImportPath: "internal/infrastructure/db", ResolvedLayer: "infrastructure"},
+			},
+			rules: []Rule{
+				// Standard rule only blocks domain→infrastructure, allows domain→application
+				{
+					ID:       "R2",
+					From:     "domain",
+					To:       []string{"infrastructure"},
+					Type:     RuleTypeCannot,
+					Severity: SeverityError,
+				},
+				// Template rule blocks domain from having >0 deps to application
+				{
+					ID:       "T4",
+					Template: "max-deps",
+					Severity: SeverityWarning,
+					Params: map[string]interface{}{
+						"from": "domain",
+						"to":   []interface{}{"application"},
+						"max":  0,
+					},
+				},
+			},
+			layers: []Layer{
+				{Name: "domain", Paths: []string{"internal/domain/"}},
+				{Name: "application", Paths: []string{"internal/application/"}},
+				{Name: "infrastructure", Paths: []string{"internal/infrastructure/"}},
+			},
+			// 1 standard violation (domain→infrastructure) + 1 template violation (domain→application exceeds max=0)
+			wantCount: 2,
+		},
+		{
+			name: "template rule with no violations",
+			dependencies: []Dependency{
+				{SourceFile: "internal/domain/user.go", SourceLine: 1, ImportPath: "internal/infrastructure/db", ResolvedLayer: "infrastructure"},
+			},
+			rules: []Rule{
+				{
+					ID:       "T5",
+					Template: "max-deps",
+					Severity: SeverityError,
+					Params: map[string]interface{}{
+						"from": "domain",
+						"to":   []interface{}{"infrastructure"},
+						"max":  5,
+					},
+				},
+			},
+			layers: []Layer{
+				{Name: "domain", Paths: []string{"internal/domain/"}},
+				{Name: "infrastructure", Paths: []string{"internal/infrastructure/"}},
+			},
+			wantCount: 0,
+		},
+		{
+			name: "hybrid rule — standard from/to AND template both evaluated",
+			dependencies: []Dependency{
+				{SourceFile: "internal/domain/user.go", SourceLine: 1, ImportPath: "internal/infrastructure/db", ResolvedLayer: "infrastructure"},
+				{SourceFile: "internal/domain/order.go", SourceLine: 2, ImportPath: "internal/infrastructure/cache", ResolvedLayer: "infrastructure"},
+			},
+			rules: []Rule{
+				{
+					ID:       "H1",
+					From:     "domain",
+					To:       []string{"infrastructure"},
+					Type:     RuleTypeCannot,
+					Severity: SeverityError,
+					Template: "max-deps",
+					Params: map[string]interface{}{
+						"from": "domain",
+						"to":   []interface{}{"infrastructure"},
+						"max":  0,
+					},
+				},
+			},
+			layers: []Layer{
+				{Name: "domain", Paths: []string{"internal/domain/"}},
+				{Name: "infrastructure", Paths: []string{"internal/infrastructure/"}},
+			},
+			// 2 standard violations (Cannot rule) + 1 template violation (max-deps exceeded)
+			wantCount: 3,
+		},
+		{
+			name: "sequential IDs with no gaps across standard and template",
+			dependencies: []Dependency{
+				{SourceFile: "internal/domain/user.go", SourceLine: 1, ImportPath: "internal/infrastructure/db", ResolvedLayer: "infrastructure"},
+			},
+			rules: []Rule{
+				{
+					ID:       "R1",
+					From:     "domain",
+					To:       []string{"infrastructure"},
+					Type:     RuleTypeCannot,
+					Severity: SeverityError,
+				},
+				{
+					ID:       "T6",
+					Template: "max-deps",
+					Severity: SeverityError,
+					Params: map[string]interface{}{
+						"from": "domain",
+						"to":   []interface{}{"infrastructure"},
+						"max":  0,
+					},
+				},
+			},
+			layers: []Layer{
+				{Name: "domain", Paths: []string{"internal/domain/"}},
+				{Name: "infrastructure", Paths: []string{"internal/infrastructure/"}},
+			},
+			wantCount: 2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			violations := EvaluateRules(tt.dependencies, tt.rules, tt.layers)
+
+			if len(violations) != tt.wantCount {
+				t.Errorf("EvaluateRules() returned %d violations, want %d", len(violations), tt.wantCount)
+				for i, v := range violations {
+					t.Logf("  violation[%d]: ID=%q RuleID=%q Message=%q", i, v.ID, v.RuleID, v.Message)
+				}
+				return
+			}
+
+			// Check ID prefixes if specified
+			if tt.wantIDs != nil {
+				for i, v := range violations {
+					if i < len(tt.wantIDs) && !strings.HasPrefix(v.ID, tt.wantIDs[i]) {
+						t.Errorf("Violation[%d].ID = %q, want prefix %q", i, v.ID, tt.wantIDs[i])
+					}
+				}
+			}
+
+			// Verify sequential IDs with no gaps
+			for i, v := range violations {
+				expectedIdx := i + 1
+				// Extract number from ID (D-01, T-02, etc.)
+				var num int
+				if len(v.ID) >= 3 {
+					fmt.Sscanf(v.ID[2:], "%d", &num)
+				}
+				if num != expectedIdx {
+					t.Errorf("Violation[%d].ID = %q, expected index %d", i, v.ID, expectedIdx)
 				}
 			}
 		})

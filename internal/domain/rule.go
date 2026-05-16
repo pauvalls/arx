@@ -93,6 +93,8 @@ type Rule struct {
 	Pattern           string          `json:"pattern,omitempty" yaml:"pattern,omitempty"`
 	Overrides         []RuleOverride  `json:"overrides,omitempty" yaml:"overrides,omitempty"`
 	Exclude           []string        `json:"exclude,omitempty" yaml:"exclude,omitempty"`
+	Template          string          `json:"template,omitempty" yaml:"template,omitempty"`
+	Params            map[string]interface{} `json:"params,omitempty" yaml:"params,omitempty"`
 	compiledPattern   *regexp.Regexp  `json:"-" yaml:"-"`
 	compiledExclude   []*regexp.Regexp `json:"-" yaml:"-"`
 }
@@ -182,6 +184,34 @@ func (r *Rule) Validate() error {
 	// Compile exclude patterns if set
 	if err := r.CompileExcludePatterns(); err != nil {
 		return fmt.Errorf("rule %q: invalid exclude pattern: %w", r.ID, err)
+	}
+
+	// Validate template field if set
+	if r.Template != "" {
+		if _, ok := TemplateRegistry[r.Template]; !ok {
+			return fmt.Errorf("rule %q: unknown template %q", r.ID, r.Template)
+		}
+		if err := ValidateTemplateParams(r.Template, r.Params); err != nil {
+			return fmt.Errorf("rule %q: %w", r.ID, err)
+		}
+	}
+
+	// Template-only rules don't require from/to
+	if r.Template != "" && r.From == "" && len(r.To) == 0 && r.Pattern == "" {
+		// Validate type and severity only
+		switch r.Type {
+		case RuleTypeCannot, RuleTypeMust, RuleTypeCan, RuleTypeMustNotCircular, "":
+			// valid (empty type defaults to Cannot)
+		default:
+			return fmt.Errorf("rule %q: invalid rule type %q", r.ID, r.Type)
+		}
+		switch r.Severity {
+		case SeverityError, SeverityWarning, SeverityInfo, "":
+			// valid
+		default:
+			return fmt.Errorf("rule %q: invalid severity %q", r.ID, r.Severity)
+		}
+		return nil
 	}
 
 	// Pattern-only rules don't require from/to

@@ -63,7 +63,7 @@ func (c *Config) Validate() error {
 		if err := c.Rules[i].Validate(); err != nil {
 			return fmt.Errorf("rule[%d]: %w", i, err)
 		}
-		// Check that rule references valid layers (skip pattern-only rules)
+		// Check that rule references valid layers (skip pattern-only and template-only rules)
 		if c.Rules[i].From != "" {
 			if !layerNames[c.Rules[i].From] {
 				return fmt.Errorf("rule[%d]: 'from' references unknown layer %q", i, c.Rules[i].From)
@@ -72,6 +72,12 @@ func (c *Config) Validate() error {
 		for _, to := range c.Rules[i].To {
 			if !layerNames[to] {
 				return fmt.Errorf("rule[%d]: 'to' references unknown layer %q", i, to)
+			}
+		}
+		// Validate template params that reference layer names
+		if c.Rules[i].Template != "" && c.Rules[i].Params != nil {
+			if err := validateTemplateLayerRefs(c.Rules[i].Template, c.Rules[i].Params, layerNames, i); err != nil {
+				return err
 			}
 		}
 	}
@@ -94,4 +100,49 @@ func (c *Config) Hash() (string, error) {
 // Returns 0 if no threshold is set (unlimited, backward-compatible).
 func (c *Config) ViolationThreshold() int {
 	return c.MaxViolations
+}
+
+// validateTemplateLayerRefs checks that template params referencing layer names
+// point to valid configured layers. Only checks params known to be layer names
+// (from, to, layer, forbidden) — skips numeric params like max, min.
+func validateTemplateLayerRefs(templateName string, params map[string]interface{}, layerNames map[string]bool, ruleIndex int) error {
+	// Params that contain layer name references per template schema
+	layerRefParams := map[string][]string{
+		"max-deps":      {"from", "to"},
+		"no-leak":       {"layer", "forbidden"},
+		"layer-balance": {}, // no layer refs in layer-balance
+	}
+
+	refParams, ok := layerRefParams[templateName]
+	if !ok {
+		return nil // unknown template (already caught by Rule.Validate)
+	}
+
+	for _, param := range refParams {
+		val, exists := params[param]
+		if !exists {
+			continue // missing param caught by ValidateTemplateParams
+		}
+
+		switch v := val.(type) {
+		case string:
+			if !layerNames[v] {
+				return fmt.Errorf("rule[%d]: template param %q references unknown layer %q", ruleIndex, param, v)
+			}
+		case []interface{}:
+			for j, elem := range v {
+				if s, ok := elem.(string); ok && !layerNames[s] {
+					return fmt.Errorf("rule[%d]: template param %q[%d] references unknown layer %q", ruleIndex, param, j, s)
+				}
+			}
+		case []string:
+			for j, s := range v {
+				if !layerNames[s] {
+					return fmt.Errorf("rule[%d]: template param %q[%d] references unknown layer %q", ruleIndex, param, j, s)
+				}
+			}
+		}
+	}
+
+	return nil
 }

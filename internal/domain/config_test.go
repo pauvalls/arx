@@ -587,3 +587,218 @@ func TestConfig_ViolationThreshold(t *testing.T) {
 		})
 	}
 }
+
+// ─── Template Rule Config Validation ─────────────────────────────────────────
+
+func TestConfig_Validate_TemplateRules(t *testing.T) {
+	tests := []struct {
+		name       string
+		config     Config
+		wantErr    bool
+		errContain string
+	}{
+		{
+			name: "valid template rule passes",
+			config: Config{
+				Version: "1.0.0",
+				Layers: []Layer{
+					{Name: "domain", Paths: []string{"internal/domain"}},
+					{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
+				},
+				Rules: []Rule{
+					{
+						ID:       "T1",
+						Template: "max-deps",
+						Severity: SeverityError,
+						Params: map[string]interface{}{
+							"from": "domain",
+							"to":   []interface{}{"infrastructure"},
+							"max":  3,
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "unknown template fails at config level",
+			config: Config{
+				Version: "1.0.0",
+				Layers: []Layer{
+					{Name: "domain", Paths: []string{"internal/domain"}},
+				},
+				Rules: []Rule{
+					{
+						ID:       "T2",
+						Template: "nonexistent",
+						Severity: SeverityError,
+						Params:   map[string]interface{}{},
+					},
+				},
+			},
+			wantErr:    true,
+			errContain: `unknown template "nonexistent"`,
+		},
+		{
+			name: "missing params fails at config level",
+			config: Config{
+				Version: "1.0.0",
+				Layers: []Layer{
+					{Name: "domain", Paths: []string{"internal/domain"}},
+				},
+				Rules: []Rule{
+					{
+						ID:       "T3",
+						Template: "max-deps",
+						Severity: SeverityError,
+						Params: map[string]interface{}{
+							"to":  []interface{}{"infrastructure"},
+							"max": 3,
+						},
+					},
+				},
+			},
+			wantErr:    true,
+			errContain: `missing required param "from"`,
+		},
+		{
+			name: "template referencing unknown layer fails",
+			config: Config{
+				Version: "1.0.0",
+				Layers: []Layer{
+					{Name: "domain", Paths: []string{"internal/domain"}},
+					{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
+				},
+				Rules: []Rule{
+					{
+						ID:       "T4",
+						Template: "max-deps",
+						Severity: SeverityError,
+						Params: map[string]interface{}{
+							"from": "nonexistent-layer",
+							"to":   []interface{}{"infrastructure"},
+							"max":  3,
+						},
+					},
+				},
+			},
+			wantErr:    true,
+			errContain: `template param "from" references unknown layer`,
+		},
+		{
+			name: "template with unknown target layer fails",
+			config: Config{
+				Version: "1.0.0",
+				Layers: []Layer{
+					{Name: "domain", Paths: []string{"internal/domain"}},
+					{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
+				},
+				Rules: []Rule{
+					{
+						ID:       "T5",
+						Template: "max-deps",
+						Severity: SeverityError,
+						Params: map[string]interface{}{
+							"from": "domain",
+							"to":   []interface{}{"infrastructure", "unknown-layer"},
+							"max":  3,
+						},
+					},
+				},
+			},
+			wantErr:    true,
+			errContain: `template param "to"`,
+		},
+		{
+			name: "mixed standard + template rules — all valid",
+			config: Config{
+				Version: "1.0.0",
+				Layers: []Layer{
+					{Name: "domain", Paths: []string{"internal/domain"}},
+					{Name: "application", Paths: []string{"internal/application"}},
+					{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
+				},
+				Rules: []Rule{
+					{
+						ID:       "R1",
+						From:     "domain",
+						To:       []string{"infrastructure"},
+						Type:     RuleTypeCannot,
+						Severity: SeverityError,
+					},
+					{
+						ID:       "T6",
+						Template: "no-leak",
+						Severity: SeverityError,
+						Params: map[string]interface{}{
+							"layer":     "domain",
+							"forbidden": []interface{}{"infrastructure"},
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "no-leak template with unknown forbidden layer",
+			config: Config{
+				Version: "1.0.0",
+				Layers: []Layer{
+					{Name: "domain", Paths: []string{"internal/domain"}},
+					{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
+				},
+				Rules: []Rule{
+					{
+						ID:       "T7",
+						Template: "no-leak",
+						Severity: SeverityError,
+						Params: map[string]interface{}{
+							"layer":     "domain",
+							"forbidden": []interface{}{"infrastructure", "unknown"},
+						},
+					},
+				},
+			},
+			wantErr:    true,
+			errContain: `template param "forbidden"`,
+		},
+		{
+			name: "layer-balance template — no layer refs to validate",
+			config: Config{
+				Version: "1.0.0",
+				Layers: []Layer{
+					{Name: "domain", Paths: []string{"internal/domain"}},
+				},
+				Rules: []Rule{
+					{
+						ID:       "T8",
+						Template: "layer-balance",
+						Severity: SeverityWarning,
+						Params: map[string]interface{}{
+							"min": 1,
+							"max": 10,
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.config.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Config.Validate() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr && tt.errContain != "" {
+				if err == nil {
+					t.Errorf("Config.Validate() expected error containing %q, got nil", tt.errContain)
+				} else if !strings.Contains(err.Error(), tt.errContain) {
+					t.Errorf("Config.Validate() error = %q, want to contain %q", err.Error(), tt.errContain)
+				}
+			}
+		})
+	}
+}
