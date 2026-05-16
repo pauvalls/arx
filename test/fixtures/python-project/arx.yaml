@@ -1,0 +1,27 @@
+version: "1.0"
+layers:
+  - name: domain
+    paths:
+      - domain/**
+  - name: application
+    paths:
+      - application/**
+  - name: infrastructure
+    paths:
+      - infrastructure/**
+rules:
+  - id: domain-no-import-other
+    from: domain
+    to:
+      - application
+      - infrastructure
+    type: Cannot
+    severity: error
+    explanation: Domain must not depend on other layers
+  - id: application-no-import-infrastructure
+    from: application
+    to:
+      - infrastructure
+    type: Cannot
+    severity: error
+    explanation: Application should depend on interfaces, not implementations
