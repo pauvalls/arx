@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/pauvalls/arx/internal/domain"
 	"github.com/pauvalls/arx/internal/ports"
@@ -215,6 +216,153 @@ func TestRunDetectors_SkipsNilDetector(t *testing.T) {
 
 func TestRunDetectors_UsesPortInterface(t *testing.T) {
 	var _ ports.Detector = (*mockDetector)(nil)
+}
+
+// mockBlockingDetector is a detector that blocks until a channel is closed.
+// Used to test concurrent execution.
+type mockBlockingDetector struct {
+	mockDetector
+	startSignal  chan struct{}
+	finishSignal chan struct{}
+}
+
+func (m *mockBlockingDetector) Detect(ctx context.Context, projectRoot string) (bool, error) {
+	close(m.startSignal)
+	select {
+	case <-m.finishSignal:
+		return m.detectResult, m.detectErr
+	case <-ctx.Done():
+		return false, ctx.Err()
+	}
+}
+
+func TestRunDetectors_ConcurrentExecution(t *testing.T) {
+	ctx := context.Background()
+
+	finish1 := make(chan struct{})
+	finish2 := make(chan struct{})
+	started1 := make(chan struct{})
+	started2 := make(chan struct{})
+
+	detector1 := &mockBlockingDetector{
+		mockDetector: mockDetector{
+			name:         "d1",
+			detectResult: true,
+			extractDeps: []domain.Dependency{
+				{SourceFile: "a.go", SourceLine: 1, ImportPath: "fmt"},
+			},
+		},
+		startSignal:  started1,
+		finishSignal: finish1,
+	}
+	detector2 := &mockBlockingDetector{
+		mockDetector: mockDetector{
+			name:         "d2",
+			detectResult: true,
+			extractDeps: []domain.Dependency{
+				{SourceFile: "b.go", SourceLine: 1, ImportPath: "os"},
+			},
+		},
+		startSignal:  started2,
+		finishSignal: finish2,
+	}
+
+	// Run in background
+	resultCh := make(chan struct {
+		deps []domain.Dependency
+		err  error
+	}, 1)
+	go func() {
+		deps, err := RunDetectors(ctx, "/test", []domain.Layer{}, []ports.Detector{detector1, detector2})
+		resultCh <- struct {
+			deps []domain.Dependency
+			err  error
+		}{deps, err}
+	}()
+
+	// Wait for BOTH detectors to start — proves they run concurrently
+	select {
+	case <-started1:
+		// good
+	case <-time.After(2 * time.Second):
+		t.Fatal("detector 1 did not start")
+	}
+	select {
+	case <-started2:
+		// good
+	case <-time.After(2 * time.Second):
+		t.Fatal("detector 2 did not start — detectors may not be running concurrently")
+	}
+
+	// Now let both finish
+	close(finish1)
+	close(finish2)
+
+	select {
+	case result := <-resultCh:
+		if result.err != nil {
+			t.Fatalf("RunDetectors() error = %v", result.err)
+		}
+		if len(result.deps) != 2 {
+			t.Errorf("RunDetectors() returned %d deps, want 2", len(result.deps))
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("RunDetectors() did not complete")
+	}
+}
+
+func TestRunDetectors_ErrorCancelsOthers(t *testing.T) {
+	ctx := context.Background()
+
+	finish := make(chan struct{})
+	started := make(chan struct{})
+
+	slowDetector := &mockBlockingDetector{
+		mockDetector: mockDetector{name: "slow"},
+		startSignal:  started,
+		finishSignal: finish,
+	}
+	failingDetector := &mockDetector{
+		name:         "failing",
+		detectResult: false,
+		detectErr:    errors.New("detection failed"),
+	}
+
+	// Run in background
+	resultCh := make(chan struct {
+		deps []domain.Dependency
+		err  error
+	}, 1)
+	go func() {
+		deps, err := RunDetectors(ctx, "/test", []domain.Layer{}, []ports.Detector{slowDetector, failingDetector})
+		resultCh <- struct {
+			deps []domain.Dependency
+			err  error
+		}{deps, err}
+	}()
+
+	// Wait for slow detector to start
+	select {
+	case <-started:
+		// good
+	case <-time.After(2 * time.Second):
+		t.Fatal("slow detector did not start")
+	}
+
+	// The failing detector should cause overall error
+	select {
+	case result := <-resultCh:
+		if result.err == nil {
+			t.Fatal("RunDetectors() with failing detector should return error")
+		}
+		if len(result.deps) != 0 {
+			t.Errorf("RunDetectors() returned %d deps, want 0", len(result.deps))
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("RunDetectors() did not return error in time")
+	}
+
+	close(finish)
 }
 
 func TestEvaluateArchitecture_WithViolations(t *testing.T) {

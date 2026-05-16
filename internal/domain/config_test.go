@@ -802,3 +802,168 @@ func TestConfig_Validate_TemplateRules(t *testing.T) {
 		})
 	}
 }
+
+// ─── Severity Mapping Tests ──────────────────────────────────────────────────
+
+func TestConfig_SeverityMapping_Valid(t *testing.T) {
+	config := Config{
+		Version: "1.0.0",
+		Layers: []Layer{
+			{Name: "domain", Paths: []string{"internal/domain"}},
+			{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
+		},
+		Rules: []Rule{
+			{
+				ID:       "R1",
+				From:     "domain",
+				To:       []string{"infrastructure"},
+				Type:     RuleTypeCannot,
+				Severity: "critical",
+			},
+		},
+		SeverityMapping: map[string]string{
+			"critical": "error",
+			"minor":    "warning",
+		},
+	}
+
+	err := config.Validate()
+	if err != nil {
+		t.Fatalf("Config.Validate() error = %v", err)
+	}
+
+	if config.Rules[0].Severity != SeverityError {
+		t.Errorf("expected severity %q, got %q", SeverityError, config.Rules[0].Severity)
+	}
+}
+
+func TestConfig_SeverityMapping_InvalidTargetSeverity(t *testing.T) {
+	config := Config{
+		Version: "1.0.0",
+		Layers: []Layer{
+			{Name: "domain", Paths: []string{"internal/domain"}},
+		},
+		Rules: []Rule{},
+		SeverityMapping: map[string]string{
+			"critical": "invalid",
+		},
+	}
+
+	err := config.Validate()
+	if err == nil {
+		t.Fatal("Config.Validate() expected error, got nil")
+	}
+
+	wantContain := "maps to invalid severity"
+	if !strings.Contains(err.Error(), wantContain) {
+		t.Errorf("Config.Validate() error = %q, want to contain %q", err.Error(), wantContain)
+	}
+}
+
+func TestConfig_SeverityMapping_Empty(t *testing.T) {
+	config := Config{
+		Version: "1.0.0",
+		Layers: []Layer{
+			{Name: "domain", Paths: []string{"internal/domain"}},
+			{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
+		},
+		Rules: []Rule{
+			{
+				ID:       "R1",
+				From:     "domain",
+				To:       []string{"infrastructure"},
+				Type:     RuleTypeCannot,
+				Severity: SeverityWarning,
+			},
+		},
+		SeverityMapping: map[string]string{},
+	}
+
+	err := config.Validate()
+	if err != nil {
+		t.Fatalf("Config.Validate() error = %v", err)
+	}
+
+	if config.Rules[0].Severity != SeverityWarning {
+		t.Errorf("expected severity %q, got %q", SeverityWarning, config.Rules[0].Severity)
+	}
+}
+
+func TestConfig_SeverityMapping_RuleSeverityRemapped(t *testing.T) {
+	config := Config{
+		Version: "1.0.0",
+		Layers: []Layer{
+			{Name: "domain", Paths: []string{"internal/domain"}},
+			{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
+		},
+		Rules: []Rule{
+			{
+				ID:       "R1",
+				From:     "domain",
+				To:       []string{"infrastructure"},
+				Type:     RuleTypeCannot,
+				Severity: "critical",
+			},
+			{
+				ID:       "R2",
+				From:     "domain",
+				To:       []string{"infrastructure"},
+				Type:     RuleTypeCannot,
+				Severity: SeverityInfo,
+			},
+		},
+		SeverityMapping: map[string]string{
+			"critical": "error",
+		},
+	}
+
+	err := config.Validate()
+	if err != nil {
+		t.Fatalf("Config.Validate() error = %v", err)
+	}
+
+	if config.Rules[0].Severity != SeverityError {
+		t.Errorf("rule 0: expected severity %q, got %q", SeverityError, config.Rules[0].Severity)
+	}
+	if config.Rules[1].Severity != SeverityInfo {
+		t.Errorf("rule 1: expected severity %q (unchanged), got %q", SeverityInfo, config.Rules[1].Severity)
+	}
+}
+
+func TestConfig_SeverityMapping_OverrideRemapped(t *testing.T) {
+	config := Config{
+		Version: "1.0.0",
+		Layers: []Layer{
+			{Name: "domain", Paths: []string{"internal/domain"}},
+			{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
+		},
+		Rules: []Rule{
+			{
+				ID:       "R1",
+				From:     "domain",
+				To:       []string{"infrastructure"},
+				Type:     RuleTypeCannot,
+				Severity: "critical",
+				Overrides: []RuleOverride{
+					{Path: "internal/legacy", Severity: "minor"},
+				},
+			},
+		},
+		SeverityMapping: map[string]string{
+			"critical": "error",
+			"minor":    "warning",
+		},
+	}
+
+	err := config.Validate()
+	if err != nil {
+		t.Fatalf("Config.Validate() error = %v", err)
+	}
+
+	if config.Rules[0].Severity != SeverityError {
+		t.Errorf("rule severity: expected %q, got %q", SeverityError, config.Rules[0].Severity)
+	}
+	if config.Rules[0].Overrides[0].Severity != SeverityWarning {
+		t.Errorf("override severity: expected %q, got %q", SeverityWarning, config.Rules[0].Overrides[0].Severity)
+	}
+}

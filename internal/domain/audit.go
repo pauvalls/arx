@@ -29,6 +29,12 @@ func EvaluateRules(dependencies []Dependency, rules []Rule, layers []Layer) []Vi
 		// Check against each rule
 		for i := range rules {
 			rule := &rules[i]
+
+			// Expression-based rules are evaluated separately (not per-dependency)
+			if rule.CheckExpressionIsStandalone() {
+				continue
+			}
+
 			if rule.Violates(dep.ImportPath, sourceLayer, targetLayer) {
 				// Check if rule is disabled for this file path
 				if !rule.IsEnabledFor(dep.SourceFile) {
@@ -66,6 +72,34 @@ func EvaluateRules(dependencies []Dependency, rules []Rule, layers []Layer) []Vi
 
 				violations = append(violations, v)
 			}
+		}
+	}
+
+	// Evaluate expression-based rules
+	for i := range rules {
+		rule := &rules[i]
+		if !rule.CheckExpressionIsStandalone() {
+			continue
+		}
+		matched, err := ruleCheckMatches(rule, dependencies, layers)
+		if err != nil {
+			// Log error but continue; validation should have caught this
+			continue
+		}
+		if matched {
+			violationIndex++
+			v := Violation{
+				ID:          GenerateViolationID(*rule, violationIndex),
+				RuleID:      rule.ID,
+				File:        "",
+				Line:        0,
+				SourceLayer: "",
+				TargetLayer: "",
+				Import:      "",
+				Message:     buildExprViolationMessage(*rule),
+				Severity:    rule.Severity,
+			}
+			violations = append(violations, v)
 		}
 	}
 

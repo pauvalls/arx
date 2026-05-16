@@ -93,10 +93,12 @@ type Rule struct {
 	Pattern           string          `json:"pattern,omitempty" yaml:"pattern,omitempty"`
 	Overrides         []RuleOverride  `json:"overrides,omitempty" yaml:"overrides,omitempty"`
 	Exclude           []string        `json:"exclude,omitempty" yaml:"exclude,omitempty"`
-	Template          string          `json:"template,omitempty" yaml:"template,omitempty"`
+	Template          string                 `json:"template,omitempty" yaml:"template,omitempty"`
 	Params            map[string]interface{} `json:"params,omitempty" yaml:"params,omitempty"`
-	compiledPattern   *regexp.Regexp  `json:"-" yaml:"-"`
-	compiledExclude   []*regexp.Regexp `json:"-" yaml:"-"`
+	Check             string                 `json:"check,omitempty" yaml:"check,omitempty"`
+	compiledPattern   *regexp.Regexp         `json:"-" yaml:"-"`
+	compiledExclude   []*regexp.Regexp       `json:"-" yaml:"-"`
+	compiledExpr      Expr                   `json:"-" yaml:"-"`
 }
 
 // CompilePattern compiles the Pattern field into a cached *regexp.Regexp.
@@ -186,6 +188,27 @@ func (r *Rule) Validate() error {
 		return fmt.Errorf("rule %q: invalid exclude pattern: %w", r.ID, err)
 	}
 
+	// Compile check expression if set
+	if err := r.compileCheckExpression(); err != nil {
+		return fmt.Errorf("rule %q: %w", r.ID, err)
+	}
+
+	// Check expression rules cannot be mixed with from/to/template/pattern
+	if r.Check != "" {
+		if r.From != "" {
+			return fmt.Errorf("rule %q: 'check' expression rules cannot have 'from' field", r.ID)
+		}
+		if len(r.To) > 0 {
+			return fmt.Errorf("rule %q: 'check' expression rules cannot have 'to' field", r.ID)
+		}
+		if r.Template != "" {
+			return fmt.Errorf("rule %q: 'check' expression rules cannot have 'template' field", r.ID)
+		}
+		if r.Pattern != "" {
+			return fmt.Errorf("rule %q: 'check' expression rules cannot have 'pattern' field", r.ID)
+		}
+	}
+
 	// Validate template field if set
 	if r.Template != "" {
 		if _, ok := TemplateRegistry[r.Template]; !ok {
@@ -194,6 +217,24 @@ func (r *Rule) Validate() error {
 		if err := ValidateTemplateParams(r.Template, r.Params); err != nil {
 			return fmt.Errorf("rule %q: %w", r.ID, err)
 		}
+	}
+
+	// Check-only rules don't require from/to
+	if r.Check != "" && r.From == "" && len(r.To) == 0 && r.Pattern == "" && r.Template == "" {
+		// Validate type and severity only
+		switch r.Type {
+		case RuleTypeCannot, RuleTypeMust, RuleTypeCan, RuleTypeMustNotCircular, "":
+			// valid (empty type defaults to Cannot)
+		default:
+			return fmt.Errorf("rule %q: invalid rule type %q", r.ID, r.Type)
+		}
+		switch r.Severity {
+		case SeverityError, SeverityWarning, SeverityInfo, "":
+			// valid
+		default:
+			return fmt.Errorf("rule %q: invalid severity %q", r.ID, r.Severity)
+		}
+		return nil
 	}
 
 	// Template-only rules don't require from/to

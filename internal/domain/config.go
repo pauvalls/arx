@@ -29,6 +29,7 @@ type Config struct {
 	Exclude        []string                    `json:"exclude,omitempty" yaml:"exclude,omitempty"`
 	SeverityConfig map[Severity]SeverityConfig `json:"severity_config,omitempty" yaml:"severity_config,omitempty"`
 	MaxViolations  int                         `json:"max_violations,omitempty" yaml:"max_violations,omitempty"`
+	SeverityMapping map[string]string           `json:"severity_mapping,omitempty" yaml:"severity_mapping,omitempty"`
 }
 
 // Validate validates the entire configuration
@@ -44,6 +45,11 @@ func (c *Config) Validate() error {
 	// Validate max_violations threshold
 	if c.MaxViolations < 0 {
 		return fmt.Errorf("max_violations cannot be negative (got %d)", c.MaxViolations)
+	}
+
+	// Validate and apply severity mapping
+	if err := c.applySeverityMapping(); err != nil {
+		return err
 	}
 
 	// Validate all layers
@@ -63,6 +69,22 @@ func (c *Config) Validate() error {
 		if err := c.Rules[i].Validate(); err != nil {
 			return fmt.Errorf("rule[%d]: %w", i, err)
 		}
+		// Expression rules must be standalone (no from/to/template/pattern mixing)
+		if c.Rules[i].Check != "" {
+			if c.Rules[i].From != "" {
+				return fmt.Errorf("rule[%d]: 'check' expression rules cannot have 'from' field", i)
+			}
+			if len(c.Rules[i].To) > 0 {
+				return fmt.Errorf("rule[%d]: 'check' expression rules cannot have 'to' field", i)
+			}
+			if c.Rules[i].Template != "" {
+				return fmt.Errorf("rule[%d]: 'check' expression rules cannot have 'template' field", i)
+			}
+			if c.Rules[i].Pattern != "" {
+				return fmt.Errorf("rule[%d]: 'check' expression rules cannot have 'pattern' field", i)
+			}
+		}
+
 		// Check that rule references valid layers (skip pattern-only and template-only rules)
 		if c.Rules[i].From != "" {
 			if !layerNames[c.Rules[i].From] {
@@ -100,6 +122,42 @@ func (c *Config) Hash() (string, error) {
 // Returns 0 if no threshold is set (unlimited, backward-compatible).
 func (c *Config) ViolationThreshold() int {
 	return c.MaxViolations
+}
+
+// applySeverityMapping validates all mapping values and rewrites rule severities.
+// Empty mapping has no effect (backward compatible).
+func (c *Config) applySeverityMapping() error {
+	if len(c.SeverityMapping) == 0 {
+		return nil
+	}
+
+	// Validate all mapped values are valid severities
+	validSeverities := map[string]bool{
+		string(SeverityError):   true,
+		string(SeverityWarning): true,
+		string(SeverityInfo):    true,
+	}
+
+	for from, to := range c.SeverityMapping {
+		if !validSeverities[to] {
+			return fmt.Errorf("severity_mapping: %q maps to invalid severity %q (must be error, warning, or info)", from, to)
+		}
+	}
+
+	// Apply mapping to all rules
+	for i := range c.Rules {
+		if mapped, ok := c.SeverityMapping[string(c.Rules[i].Severity)]; ok {
+			c.Rules[i].Severity = Severity(mapped)
+		}
+		// Apply mapping to overrides
+		for j := range c.Rules[i].Overrides {
+			if mapped, ok := c.SeverityMapping[string(c.Rules[i].Overrides[j].Severity)]; ok {
+				c.Rules[i].Overrides[j].Severity = Severity(mapped)
+			}
+		}
+	}
+
+	return nil
 }
 
 // validateTemplateLayerRefs checks that template params referencing layer names

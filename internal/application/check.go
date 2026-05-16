@@ -3,9 +3,11 @@ package application
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/pauvalls/arx/internal/domain"
 	"github.com/pauvalls/arx/internal/ports"
+	"golang.org/x/sync/errgroup"
 )
 
 // LoadConfig reads and validates a configuration file using the provided ConfigReader.
@@ -26,13 +28,16 @@ func LoadConfig(configPath string, reader ports.ConfigReader) (*domain.Config, e
 	return config, nil
 }
 
-// RunDetectors executes all applicable detectors and aggregates their dependencies.
+// RunDetectors executes all applicable detectors concurrently and aggregates their dependencies.
 // A detector is considered applicable if its Detect() method returns true for the project.
+// Detectors run in parallel; an error in one detector cancels the context for others.
 func RunDetectors(ctx context.Context, projectRoot string, layers []domain.Layer, detectors []ports.Detector) ([]domain.Dependency, error) {
 	if len(detectors) == 0 {
 		return nil, fmt.Errorf("no detectors provided")
 	}
 
+	g, ctx := errgroup.WithContext(ctx)
+	var mu sync.Mutex
 	var allDependencies []domain.Dependency
 
 	for _, detector := range detectors {
@@ -40,23 +45,34 @@ func RunDetectors(ctx context.Context, projectRoot string, layers []domain.Layer
 			continue
 		}
 
-		// Check if this detector is applicable
-		applicable, err := detector.Detect(ctx, projectRoot)
-		if err != nil {
-			return nil, fmt.Errorf("detector %q detection failed: %w", detector.Name(), err)
-		}
+		d := detector // capture loop variable
+		g.Go(func() error {
+			// Check if this detector is applicable
+			applicable, err := d.Detect(ctx, projectRoot)
+			if err != nil {
+				return fmt.Errorf("detector %q detection failed: %w", d.Name(), err)
+			}
 
-		if !applicable {
-			continue
-		}
+			if !applicable {
+				return nil
+			}
 
-		// Extract dependencies
-		deps, err := detector.ExtractImports(ctx, projectRoot, layers)
-		if err != nil {
-			return nil, fmt.Errorf("detector %q extraction failed: %w", detector.Name(), err)
-		}
+			// Extract dependencies
+			deps, err := d.ExtractImports(ctx, projectRoot, layers)
+			if err != nil {
+				return fmt.Errorf("detector %q extraction failed: %w", d.Name(), err)
+			}
 
-		allDependencies = append(allDependencies, deps...)
+			mu.Lock()
+			allDependencies = append(allDependencies, deps...)
+			mu.Unlock()
+
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, err
 	}
 
 	return allDependencies, nil

@@ -1,6 +1,15 @@
 # Roadmap
 
-## ✅ v0.17.0 (Current — Custom Rule Templates)
+## ✅ v0.18.0 (Current — Expression-Based Rules, Concurrent Detectors, Severity Mapping)
+
+- [x] Expression engine — Recursive-descent parser + evaluator (zero deps)
+- [x] Built-in functions: `count()`, `deps()`, `layers()`, `has_circular()`
+- [x] Operators: `>`, `<`, `>=`, `<=`, `==`, `!=`, `&&`, `||`, `!`
+- [x] Rule `check` field for inline expressions (backward compatible)
+- [x] Concurrent detectors — `errgroup`-based parallel execution
+- [x] Severity mapping — `severity_mapping: {critical: error, minor: warning}`
+
+## ✅ v0.17.0 (Custom Rule Templates)
 
 - [x] Template engine — `TemplateFunc` type + `TemplateRegistry` in `internal/domain/template.go`
 - [x] `max-deps` template — Max dependencies between two layers
