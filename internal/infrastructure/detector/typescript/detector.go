@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"github.com/pauvalls/arx/internal/domain"
@@ -165,18 +164,6 @@ func (d *Detector) ExtractImports(ctx context.Context, projectRoot string, layer
 	return dependencies, nil
 }
 
-// Regex patterns for TypeScript imports
-var (
-	// import ... from "..."
-	importFromRegex = regexp.MustCompile(`import\s+(?:type\s+)?(?:[\w\s{},*]+\s+from\s+)?["']([^"']+)["']`)
-	// require("...")
-	requireRegex = regexp.MustCompile(`require\s*\(\s*["']([^"']+)["']\s*\)`)
-	// export ... from "..."
-	exportFromRegex = regexp.MustCompile(`export\s+(?:\*|\{[^}]*\}|\w+)\s+from\s+["']([^"']+)["']`)
-	// import type { ... } from "..."
-	importTypeRegex = regexp.MustCompile(`import\s+type\s+\{[^}]*\}\s+from\s+["']([^"']+)["']`)
-)
-
 // extractFileImports parses a single TypeScript file and extracts its imports
 func (d *Detector) extractFileImports(filePath, projectRoot string, layers []domain.Layer) ([]domain.Dependency, error) {
 	file, err := os.Open(filePath)
@@ -193,8 +180,7 @@ func (d *Detector) extractFileImports(filePath, projectRoot string, layers []dom
 		lineNum++
 		line := scanner.Text()
 
-		// Try each regex pattern
-		importPaths := d.extractImportPaths(line)
+		importPaths := extractImportsFromLine(line)
 
 		for _, importPath := range importPaths {
 			// Resolve path aliases
@@ -223,33 +209,6 @@ func (d *Detector) extractFileImports(filePath, projectRoot string, layers []dom
 	}
 
 	return dependencies, nil
-}
-
-// extractImportPaths extracts all import paths from a line of TypeScript code
-func (d *Detector) extractImportPaths(line string) []string {
-	var paths []string
-
-	// Check import ... from
-	if matches := importFromRegex.FindStringSubmatch(line); matches != nil {
-		paths = append(paths, matches[1])
-	}
-
-	// Check require()
-	if matches := requireRegex.FindStringSubmatch(line); matches != nil {
-		paths = append(paths, matches[1])
-	}
-
-	// Check export ... from
-	if matches := exportFromRegex.FindStringSubmatch(line); matches != nil {
-		paths = append(paths, matches[1])
-	}
-
-	// Check import type
-	if matches := importTypeRegex.FindStringSubmatch(line); matches != nil {
-		paths = append(paths, matches[1])
-	}
-
-	return paths
 }
 
 // resolveAlias converts TypeScript path aliases to actual paths

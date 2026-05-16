@@ -780,3 +780,306 @@ func TestTokenize_WhitespaceInsensitive(t *testing.T) {
 		}
 	}
 }
+
+// ─── Extended Expression Function Tests ──────────────────────────────────────
+
+func TestEval_BuiltinFiles(t *testing.T) {
+	ctx := EvalContext{
+		Layers: []Layer{
+			{Name: "domain", Paths: []string{"domain/"}},
+			{Name: "infra", Paths: []string{"infra/"}},
+		},
+		LayerFiles: map[string][]string{
+			"domain": {"domain/a.go", "domain/b.go", "domain/c.go"},
+			"infra":  {"infra/x.go"},
+		},
+	}
+
+	expr := &FuncCallExpr{
+		Name: "files",
+		Args: []Expr{&StringLiteral{Value: "domain"}},
+	}
+	val, err := expr.Eval(ctx)
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	if val.Kind != ValueInt || val.Int != 3 {
+		t.Errorf("expected files(domain)=3, got %v", val)
+	}
+
+	// Empty layer
+	expr2 := &FuncCallExpr{
+		Name: "files",
+		Args: []Expr{&StringLiteral{Value: "unknown"}},
+	}
+	val2, err := expr2.Eval(ctx)
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	if val2.Kind != ValueInt || val2.Int != 0 {
+		t.Errorf("expected files(unknown)=0, got %v", val2)
+	}
+}
+
+func TestEval_BuiltinFilesWrongArgs(t *testing.T) {
+	expr := &FuncCallExpr{Name: "files", Args: []Expr{}}
+	_, err := expr.Eval(EvalContext{})
+	if err == nil {
+		t.Fatal("expected error for wrong arg count")
+	}
+}
+
+func TestEval_BuiltinRatio(t *testing.T) {
+	// ratio(4, 8) = 0 (integer division)
+	expr := &FuncCallExpr{
+		Name: "ratio",
+		Args: []Expr{&NumberLiteral{Value: 4}, &NumberLiteral{Value: 8}},
+	}
+	val, err := expr.Eval(EvalContext{})
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	if val.Kind != ValueInt || val.Int != 0 {
+		t.Errorf("expected ratio(4,8)=0, got %v", val)
+	}
+
+	// ratio(8, 4) = 2
+	expr2 := &FuncCallExpr{
+		Name: "ratio",
+		Args: []Expr{&NumberLiteral{Value: 8}, &NumberLiteral{Value: 4}},
+	}
+	val2, err := expr2.Eval(EvalContext{})
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	if val2.Kind != ValueInt || val2.Int != 2 {
+		t.Errorf("expected ratio(8,4)=2, got %v", val2)
+	}
+
+	// ratio(5, 0) = 0 (division by zero protection)
+	expr3 := &FuncCallExpr{
+		Name: "ratio",
+		Args: []Expr{&NumberLiteral{Value: 5}, &NumberLiteral{Value: 0}},
+	}
+	val3, err := expr3.Eval(EvalContext{})
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	if val3.Kind != ValueInt || val3.Int != 0 {
+		t.Errorf("expected ratio(5,0)=0, got %v", val3)
+	}
+}
+
+func TestEval_BuiltinRatioWrongArgs(t *testing.T) {
+	expr := &FuncCallExpr{Name: "ratio", Args: []Expr{&NumberLiteral{Value: 1}}}
+	_, err := expr.Eval(EvalContext{})
+	if err == nil {
+		t.Fatal("expected error for wrong arg count")
+	}
+}
+
+func TestEval_BuiltinViolations(t *testing.T) {
+	ctx := EvalContext{
+		Violations: []Violation{
+			{RuleID: "domain-no-import-infra"},
+			{RuleID: "domain-no-import-infra"},
+			{RuleID: "domain-no-import-infra"},
+			{RuleID: "other-rule"},
+		},
+	}
+
+	expr := &FuncCallExpr{
+		Name: "violations",
+		Args: []Expr{&StringLiteral{Value: "domain-no-import-infra"}},
+	}
+	val, err := expr.Eval(ctx)
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	if val.Kind != ValueInt || val.Int != 3 {
+		t.Errorf("expected violations(domain-no-import-infra)=3, got %v", val)
+	}
+
+	// Unknown rule
+	expr2 := &FuncCallExpr{
+		Name: "violations",
+		Args: []Expr{&StringLiteral{Value: "missing-rule"}},
+	}
+	val2, err := expr2.Eval(ctx)
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	if val2.Kind != ValueInt || val2.Int != 0 {
+		t.Errorf("expected violations(missing-rule)=0, got %v", val2)
+	}
+}
+
+func TestEval_BuiltinViolationsWrongArgs(t *testing.T) {
+	expr := &FuncCallExpr{Name: "violations", Args: []Expr{}}
+	_, err := expr.Eval(EvalContext{})
+	if err == nil {
+		t.Fatal("expected error for wrong arg count")
+	}
+}
+
+func TestEval_BuiltinThreshold(t *testing.T) {
+	// threshold(3, 0, 5) = true
+	expr := &FuncCallExpr{
+		Name: "threshold",
+		Args: []Expr{&NumberLiteral{Value: 3}, &NumberLiteral{Value: 0}, &NumberLiteral{Value: 5}},
+	}
+	val, err := expr.Eval(EvalContext{})
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	if val.Kind != ValueBool || !val.Bool {
+		t.Errorf("expected threshold(3,0,5)=true, got %v", val)
+	}
+
+	// threshold(5, 0, 5) = true (inclusive)
+	expr2 := &FuncCallExpr{
+		Name: "threshold",
+		Args: []Expr{&NumberLiteral{Value: 5}, &NumberLiteral{Value: 0}, &NumberLiteral{Value: 5}},
+	}
+	val2, err := expr2.Eval(EvalContext{})
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	if val.Kind != ValueBool || !val2.Bool {
+		t.Errorf("expected threshold(5,0,5)=true, got %v", val2)
+	}
+
+	// threshold(6, 0, 5) = false
+	expr3 := &FuncCallExpr{
+		Name: "threshold",
+		Args: []Expr{&NumberLiteral{Value: 6}, &NumberLiteral{Value: 0}, &NumberLiteral{Value: 5}},
+	}
+	val3, err := expr3.Eval(EvalContext{})
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	if val.Kind != ValueBool || val3.Bool {
+		t.Errorf("expected threshold(6,0,5)=false, got %v", val3)
+	}
+
+	// threshold(-1, 0, 5) = false
+	expr4 := &FuncCallExpr{
+		Name: "threshold",
+		Args: []Expr{&NumberLiteral{Value: -1}, &NumberLiteral{Value: 0}, &NumberLiteral{Value: 5}},
+	}
+	val4, err := expr4.Eval(EvalContext{})
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	if val.Kind != ValueBool || val4.Bool {
+		t.Errorf("expected threshold(-1,0,5)=false, got %v", val4)
+	}
+}
+
+func TestEval_BuiltinThresholdWrongArgs(t *testing.T) {
+	expr := &FuncCallExpr{Name: "threshold", Args: []Expr{&NumberLiteral{Value: 1}}}
+	_, err := expr.Eval(EvalContext{})
+	if err == nil {
+		t.Fatal("expected error for wrong arg count")
+	}
+}
+
+func TestEval_ExtendedFunctionsInExpression(t *testing.T) {
+	// threshold(count(deps(domain, infra)), 0, 5)
+	deps := []Dependency{
+		{SourceFile: "domain/a.go", ResolvedLayer: "infra"},
+		{SourceFile: "domain/b.go", ResolvedLayer: "infra"},
+		{SourceFile: "domain/c.go", ResolvedLayer: "infra"},
+	}
+	layers := []Layer{
+		{Name: "domain", Paths: []string{"domain/"}},
+		{Name: "infra", Paths: []string{"infra/"}},
+	}
+	ctx := EvalContext{Deps: deps, Layers: layers}
+
+	expr, err := Parse("threshold(count(deps(domain, infra)), 0, 5)")
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	val, err := expr.Eval(ctx)
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	if !val.Bool {
+		t.Errorf("expected true (3 in [0,5]), got %v", val)
+	}
+}
+
+func TestEval_FilesWithLayerFiles(t *testing.T) {
+	// files(domain) with LayerFiles populated
+	ctx := EvalContext{
+		Layers: []Layer{
+			{Name: "domain", Paths: []string{"domain/"}},
+		},
+		LayerFiles: map[string][]string{
+			"domain": {
+				"domain/a.go",
+				"domain/b.go",
+				"domain/c.go",
+				"domain/d.go",
+				"domain/e.go",
+				"domain/f.go",
+				"domain/g.go",
+				"domain/h.go",
+				"domain/i.go",
+				"domain/j.go",
+				"domain/k.go",
+				"domain/l.go",
+			},
+		},
+	}
+
+	expr, err := Parse("files(domain)")
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	val, err := expr.Eval(ctx)
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	if val.Kind != ValueInt || val.Int != 12 {
+		t.Errorf("expected files(domain)=12, got %v", val)
+	}
+}
+
+func TestEval_RatioInExpression(t *testing.T) {
+	// ratio(8, 4) == 2
+	expr, err := Parse("ratio(8, 4) == 2")
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	val, err := expr.Eval(EvalContext{})
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	if !val.Bool {
+		t.Errorf("expected true (8/4 == 2), got %v", val)
+	}
+}
+
+func TestEval_ViolationsInExpression(t *testing.T) {
+	ctx := EvalContext{
+		Violations: []Violation{
+			{RuleID: "R1"},
+			{RuleID: "R1"},
+			{RuleID: "R2"},
+		},
+	}
+
+	expr, err := Parse("violations(R1) == 2")
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	val, err := expr.Eval(ctx)
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	if !val.Bool {
+		t.Errorf("expected true (violations(R1)=2), got %v", val)
+	}
+}

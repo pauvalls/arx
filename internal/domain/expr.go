@@ -168,8 +168,10 @@ type Expr interface {
 }
 
 type EvalContext struct {
-	Deps   []Dependency
-	Layers []Layer
+	Deps       []Dependency
+	Layers     []Layer
+	Violations []Violation
+	LayerFiles map[string][]string
 }
 
 type ValueKind int
@@ -360,6 +362,10 @@ var builtins = map[string]func(args []Expr, ctx EvalContext) (Value, error){
 	"deps":         builtinDeps,
 	"layers":       builtinLayers,
 	"has_circular": builtinHasCircular,
+	"files":        builtinFiles,
+	"ratio":        builtinRatio,
+	"violations":   builtinViolations,
+	"threshold":    builtinThreshold,
 }
 
 func builtinCount(args []Expr, ctx EvalContext) (Value, error) {
@@ -430,6 +436,77 @@ func builtinHasCircular(args []Expr, ctx EvalContext) (Value, error) {
 	}
 	cycles := DetectCircularDependencies(ctx.Deps, ctx.Layers)
 	return Value{Kind: ValueBool, Bool: len(cycles) > 0}, nil
+}
+
+func builtinFiles(args []Expr, ctx EvalContext) (Value, error) {
+	if len(args) != 1 {
+		return Value{}, fmt.Errorf("files() expects exactly 1 argument, got %d", len(args))
+	}
+	layerName, err := resolveStringArg(args[0], ctx)
+	if err != nil {
+		return Value{}, err
+	}
+	count := len(ctx.LayerFiles[layerName])
+	return Value{Kind: ValueInt, Int: count}, nil
+}
+
+func builtinRatio(args []Expr, ctx EvalContext) (Value, error) {
+	if len(args) != 2 {
+		return Value{}, fmt.Errorf("ratio() expects exactly 2 arguments, got %d", len(args))
+	}
+	v1, err := args[0].Eval(ctx)
+	if err != nil {
+		return Value{}, err
+	}
+	v2, err := args[1].Eval(ctx)
+	if err != nil {
+		return Value{}, err
+	}
+	count := v1.AsInt()
+	total := v2.AsInt()
+	if total == 0 {
+		return Value{Kind: ValueInt, Int: 0}, nil
+	}
+	return Value{Kind: ValueInt, Int: count / total}, nil
+}
+
+func builtinViolations(args []Expr, ctx EvalContext) (Value, error) {
+	if len(args) != 1 {
+		return Value{}, fmt.Errorf("violations() expects exactly 1 argument, got %d", len(args))
+	}
+	ruleID, err := resolveStringArg(args[0], ctx)
+	if err != nil {
+		return Value{}, err
+	}
+	count := 0
+	for _, v := range ctx.Violations {
+		if v.RuleID == ruleID {
+			count++
+		}
+	}
+	return Value{Kind: ValueInt, Int: count}, nil
+}
+
+func builtinThreshold(args []Expr, ctx EvalContext) (Value, error) {
+	if len(args) != 3 {
+		return Value{}, fmt.Errorf("threshold() expects exactly 3 arguments, got %d", len(args))
+	}
+	v, err := args[0].Eval(ctx)
+	if err != nil {
+		return Value{}, err
+	}
+	minVal, err := args[1].Eval(ctx)
+	if err != nil {
+		return Value{}, err
+	}
+	maxVal, err := args[2].Eval(ctx)
+	if err != nil {
+		return Value{}, err
+	}
+	val := v.AsInt()
+	min := minVal.AsInt()
+	max := maxVal.AsInt()
+	return Value{Kind: ValueBool, Bool: val >= min && val <= max}, nil
 }
 
 // ─── Parser ──────────────────────────────────────────────────────────────────
@@ -673,11 +750,10 @@ func buildExprViolationMessage(rule Rule) string {
 
 // ruleCheckMatches checks if a rule with a Check expression evaluates to true.
 // This is used during rule evaluation to determine if a violation should be emitted.
-func ruleCheckMatches(rule *Rule, deps []Dependency, layers []Layer) (bool, error) {
+func ruleCheckMatches(rule *Rule, ctx EvalContext) (bool, error) {
 	if rule.compiledExpr == nil {
 		return false, fmt.Errorf("rule %q: check expression not compiled", rule.ID)
 	}
-	ctx := EvalContext{Deps: deps, Layers: layers}
 	val, err := rule.compiledExpr.Eval(ctx)
 	if err != nil {
 		return false, fmt.Errorf("rule %q: check expression evaluation failed: %w", rule.ID, err)

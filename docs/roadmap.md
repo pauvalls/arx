@@ -1,6 +1,13 @@
 # Roadmap
 
-## ✅ v0.18.0 (Current — Expression-Based Rules, Concurrent Detectors, Severity Mapping)
+## ✅ v0.19.0 (Current — Extended Expressions, TS Parser, Python Fixtures)
+
+- [x] Extended expression functions: `files()`, `ratio()`, `violations()`, `threshold()`
+- [x] TypeScript parser: `import type`, `export { X } from`, dynamic `import()` patterns
+- [x] Python E2E fixture with layer structure
+- [x] Bug fix: TypeScript comment detection + duplicate import type matching
+
+## ✅ v0.18.0 (Expression-Based Rules, Concurrent Detectors, Severity Mapping)
 
 - [x] Expression engine — Recursive-descent parser + evaluator (zero deps)
 - [x] Built-in functions: `count()`, `deps()`, `layers()`, `has_circular()`

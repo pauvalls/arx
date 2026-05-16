@@ -11,8 +11,19 @@ func EvaluateRules(dependencies []Dependency, rules []Rule, layers []Layer) []Vi
 
 	// Build a map of layer names to layer objects for quick lookup
 	layerMap := make(map[string]*Layer)
+	layerFiles := make(map[string][]string)
 	for i := range layers {
 		layerMap[layers[i].Name] = &layers[i]
+	}
+
+	// Build unique file list per layer from dependencies
+	fileSeen := make(map[string]bool)
+	for _, dep := range dependencies {
+		srcLayer := resolveLayer(dep.SourceFile, layerMap)
+		if srcLayer != "" && !fileSeen[dep.SourceFile] {
+			fileSeen[dep.SourceFile] = true
+			layerFiles[srcLayer] = append(layerFiles[srcLayer], dep.SourceFile)
+		}
 	}
 
 	// Evaluate each dependency against each rule
@@ -76,12 +87,18 @@ func EvaluateRules(dependencies []Dependency, rules []Rule, layers []Layer) []Vi
 	}
 
 	// Evaluate expression-based rules
+	exprCtx := EvalContext{
+		Deps:       dependencies,
+		Layers:     layers,
+		Violations: violations,
+		LayerFiles: layerFiles,
+	}
 	for i := range rules {
 		rule := &rules[i]
 		if !rule.CheckExpressionIsStandalone() {
 			continue
 		}
-		matched, err := ruleCheckMatches(rule, dependencies, layers)
+		matched, err := ruleCheckMatches(rule, exprCtx)
 		if err != nil {
 			// Log error but continue; validation should have caught this
 			continue
