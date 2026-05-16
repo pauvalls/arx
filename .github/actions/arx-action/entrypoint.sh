@@ -4,7 +4,7 @@
 # e.g. input "path" → env var INPUT_PATH, input "config" → INPUT_CONFIG
 # ARX_BIN is set by action.yml and points to the built binary.
 
-set -e
+# Do NOT use set -e: we need to capture arx's exit code without aborting.
 
 # Resolve the arx binary path
 ARX="${ARX_BIN:-arx}"
@@ -27,17 +27,16 @@ echo "  Baseline: ${BASELINE:-<none>}"
 echo "  Diagram:  ${DIAGRAM}"
 echo ""
 
-# Note: --ci overrides --format to JSON in the current CLI.
-# For SARIF output we must NOT pass --ci, since the flag forces JSON.
 if [ "${FORMAT}" = "sarif" ]; then
     # SARIF output: redirect to file for upload-sarif action.
-    # Use --format sarif (without --ci) to get actual SARIF JSON.
+    # Always succeed — SARIF file contains violations data for upload.
+    # arx exits 1 on violations; we DON'T want to fail the action here.
     echo "Running: ${ARX} check --format sarif --config ${CONFIG_PATH} ${PROJECT_PATH}"
-    "${ARX}" check --format sarif --config "${CONFIG_PATH}" "${PROJECT_PATH}" > "${OUTPUT_DIR}/arx-audit.sarif"
-    EXIT_CODE=$?
+    "${ARX}" check --format sarif --config "${CONFIG_PATH}" "${PROJECT_PATH}" > "${OUTPUT_DIR}/arx-audit.sarif" || true
     echo "SARIF output written to ${OUTPUT_DIR}/arx-audit.sarif"
+    EXIT_CODE=0
 else
-    # Other formats: use --ci for CI-friendly exit codes
+    # Other formats: use --ci for CI-friendly exit codes, propagate result
     echo "Running: ${ARX} check --ci --format ${FORMAT} --config ${CONFIG_PATH} ${PROJECT_PATH}"
     "${ARX}" check --ci --format "${FORMAT}" --config "${CONFIG_PATH}" "${PROJECT_PATH}"
     EXIT_CODE=$?
@@ -58,5 +57,6 @@ if [ "${DIAGRAM}" = "true" ]; then
     echo "::endgroup::"
 fi
 
-# Exit with arx's exit code so workflow steps respect the result
+# For SARIF, always exit 0 (file upload handles reporting).
+# For other formats, propagate arx's exit code for CI pipelines.
 exit ${EXIT_CODE}
