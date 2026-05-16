@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/pauvalls/arx/internal/application"
 	"github.com/pauvalls/arx/internal/domain"
 	"github.com/pauvalls/arx/internal/ports"
 )
@@ -45,12 +46,24 @@ func NewJSONReporterWithThreshold(maxViolations int) *JSONReporter {
 
 // JSONOutput represents the structured JSON output format
 type JSONOutput struct {
-	Version                 string            `json:"version"`
-	Tool                    string            `json:"tool"`
-	Violations              []JSONViolation   `json:"violations"`
-	Summary                 Summary           `json:"summary"`
-	BaselineSuppressedCount int               `json:"baseline_suppressed_count,omitempty"`
-	MaxViolations           int               `json:"max_violations,omitempty"`
+	Version                 string                `json:"version"`
+	Tool                    string                `json:"tool"`
+	Violations              []JSONViolation       `json:"violations"`
+	Summary                 Summary               `json:"summary"`
+	BaselineSuppressedCount int                   `json:"baseline_suppressed_count,omitempty"`
+	MaxViolations           int                   `json:"max_violations,omitempty"`
+	CouplingMatrix          domain.CouplingMatrix `json:"coupling_matrix,omitempty"`
+	DebtScore               domain.DebtScore      `json:"debt_score,omitempty"`
+	TrendReport             domain.TrendReport    `json:"trend_report,omitempty"`
+	Detectors               []DetectorInfo        `json:"detectors,omitempty"`
+}
+
+// DetectorInfo mirrors application.DetectorStatus for JSON serialization
+type DetectorInfo struct {
+	Name       string `json:"name"`
+	Applicable bool   `json:"applicable"`
+	DepCount   int    `json:"dep_count"`
+	Error      string `json:"error,omitempty"`
 }
 
 // JSONViolation represents a single violation in JSON format
@@ -148,6 +161,103 @@ func (r *JSONReporter) Report(violations []domain.Violation, format ports.Output
 	fmt.Fprintln(os.Stdout, string(jsonData))
 
 	return nil
+}
+
+// ReportAudit renders full audit report as JSON.
+func (r *JSONReporter) ReportAudit(report *domain.AuditReport) error {
+	output := r.buildJSONOutput(report.Violations)
+	output.CouplingMatrix = report.CouplingMatrix
+	output.DebtScore = report.DebtScore
+	output.TrendReport = report.TrendReport
+
+	jsonData, err := json.MarshalIndent(output, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshaling JSON: %w", err)
+	}
+
+	fmt.Fprintln(os.Stdout, string(jsonData))
+	return nil
+}
+
+// ReportWithContext renders check results with optional detector metadata.
+func (r *JSONReporter) ReportWithContext(violations []domain.Violation, detectors []application.DetectorStatus) error {
+	output := r.buildJSONOutput(violations)
+
+	if len(detectors) > 0 {
+		output.Detectors = make([]DetectorInfo, 0, len(detectors))
+		for _, d := range detectors {
+			output.Detectors = append(output.Detectors, DetectorInfo{
+				Name:       d.Name,
+				Applicable: d.Applicable,
+				DepCount:   d.DepCount,
+				Error:      d.Error,
+			})
+		}
+	}
+
+	jsonData, err := json.MarshalIndent(output, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshaling JSON: %w", err)
+	}
+
+	fmt.Fprintln(os.Stdout, string(jsonData))
+	return nil
+}
+
+// buildJSONOutput creates the base JSONOutput from violations.
+func (r *JSONReporter) buildJSONOutput(violations []domain.Violation) JSONOutput {
+	jsonViolations := make([]JSONViolation, 0, len(violations))
+	errors := 0
+	warnings := 0
+	info := 0
+	overriddenCount := 0
+
+	for _, v := range violations {
+		var severity string
+		switch v.Severity {
+		case domain.SeverityWarning:
+			severity = "warning"
+			warnings++
+		case domain.SeverityInfo:
+			severity = "info"
+			info++
+		default:
+			severity = "error"
+			errors++
+		}
+
+		if v.Overridden {
+			overriddenCount++
+		}
+
+		jsonViolations = append(jsonViolations, JSONViolation{
+			ID:          v.ID,
+			RuleID:      v.RuleID,
+			Severity:    severity,
+			File:        v.File,
+			Line:        v.Line,
+			SourceLayer: v.SourceLayer,
+			TargetLayer: v.TargetLayer,
+			Import:      v.Import,
+			Message:     v.Message,
+			Overridden:  v.Overridden,
+		})
+	}
+
+	return JSONOutput{
+		Version: r.version,
+		Tool:    r.tool,
+		Violations: jsonViolations,
+		Summary: Summary{
+			Total:           len(violations),
+			Errors:          errors,
+			Warnings:        warnings,
+			Info:            info,
+			OverriddenCount: overriddenCount,
+		},
+		BaselineSuppressedCount: r.baselineSuppressedCount,
+		MaxViolations:           r.maxViolations,
+	}
 }
 
 // containsWarning checks if the rule ID suggests a warning severity

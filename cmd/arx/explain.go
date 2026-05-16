@@ -6,6 +6,8 @@ import (
 
 	"github.com/pauvalls/arx/internal/infrastructure/output"
 	"github.com/spf13/cobra"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 // explainCmd represents the explain command
@@ -99,7 +101,7 @@ func listViolations() error {
 		fmt.Printf("%s %s\n", severityIcon, v.ID)
 		fmt.Printf("   File: %s:%d\n", v.File, v.Line)
 		fmt.Printf("   Rule: %s\n", v.RuleID)
-		fmt.Printf("   Severity: %s\n", strings.Title(strings.ToLower(v.Severity)))
+		fmt.Printf("   Severity: %s\n", cases.Title(language.Und).String(strings.ToLower(v.Severity)))
 		fmt.Println()
 	}
 

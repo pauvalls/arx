@@ -1,6 +1,12 @@
 # Roadmap
 
-## ✅ v0.20.0 (Current — Maturity Release)
+## ✅ v0.21.0 (Current — Audit HTML Improvements, JSON Metadata, Quality)
+
+- [x] Full HTML audit report — coupling matrix, debt score, trend sections
+- [x] JSON check output — coupling matrix + detector metadata
+- [x] Quality pass — `go vet` clean, fuzz tests verified, no deprecated APIs
+
+## ✅ v0.20.0 (Maturity Release)
 
 - [x] JSON Schema for arx.yaml — IDE autocompletion (`$schema` field)
 - [x] NO_COLOR support — Respects `NO_COLOR` env var per no-color.org standard

@@ -493,3 +493,152 @@ func TestHTMLReporter_OverriddenViolation(t *testing.T) {
 		t.Error("Missing original severity reference")
 	}
 }
+
+func captureReportAudit(t *testing.T, reporter *HTMLReporter, report *domain.AuditReport) string {
+	t.Helper()
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := reporter.ReportAudit(report)
+	if err != nil {
+		t.Fatalf("ReportAudit failed: %v", err)
+	}
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	io.Copy(&buf, r)
+	return buf.String()
+}
+
+func TestHTMLReporter_ReportAudit_CouplingMatrix(t *testing.T) {
+	reporter := NewHTMLReporter()
+	report := &domain.AuditReport{
+		ProjectRoot: "/test",
+		Violations:  []domain.Violation{},
+		CouplingMatrix: domain.CouplingMatrix{
+			FromTo: map[string]map[string]int{
+				"domain": {"infrastructure": 5, "application": 2},
+				"application": {"presentation": 8},
+			},
+		},
+		DebtScore: domain.NewDebtScore(),
+	}
+
+	output := captureReportAudit(t, reporter, report)
+
+	// Validate HTML
+	_, err := html.Parse(strings.NewReader(output))
+	if err != nil {
+		t.Fatalf("ReportAudit HTML is invalid: %v", err)
+	}
+
+	// Check coupling table headers
+	if !strings.Contains(output, "<th>From</th>") {
+		t.Error("Missing 'From' column in coupling table")
+	}
+	if !strings.Contains(output, "<th>To</th>") {
+		t.Error("Missing 'To' column in coupling table")
+	}
+	if !strings.Contains(output, "<th>Count</th>") {
+		t.Error("Missing 'Count' column in coupling table")
+	}
+	if !strings.Contains(output, "<th>Percentage</th>") {
+		t.Error("Missing 'Percentage' column in coupling table")
+	}
+
+	// Check coupling data rows
+	if !strings.Contains(output, "domain") {
+		t.Error("Missing 'domain' layer in coupling output")
+	}
+	if !strings.Contains(output, "infrastructure") {
+		t.Error("Missing 'infrastructure' layer in coupling output")
+	}
+	if !strings.Contains(output, "5") {
+		t.Error("Missing count value in coupling output")
+	}
+}
+
+func TestHTMLReporter_ReportAudit_EmptyCouplingMatrix(t *testing.T) {
+	reporter := NewHTMLReporter()
+	report := &domain.AuditReport{
+		ProjectRoot:    "/test",
+		Violations:     []domain.Violation{},
+		CouplingMatrix: domain.NewCouplingMatrix(),
+		DebtScore:      domain.NewDebtScore(),
+	}
+
+	output := captureReportAudit(t, reporter, report)
+
+	if !strings.Contains(output, "(no data)") {
+		t.Error("Empty coupling matrix should display '(no data)'")
+	}
+}
+
+func TestHTMLReporter_ReportAudit_DebtScore(t *testing.T) {
+	reporter := NewHTMLReporter()
+	debt := domain.NewDebtScore()
+	debt.BySeverity["error"] = 3
+	debt.BySeverity["warning"] = 2
+	debt.Calculate()
+
+	report := &domain.AuditReport{
+		ProjectRoot: "/test",
+		Violations: []domain.Violation{
+			{ID: "v1", RuleID: "r1", File: "a.go", Line: 1, Severity: domain.SeverityError},
+		},
+		DebtScore: debt,
+	}
+
+	output := captureReportAudit(t, reporter, report)
+
+	if !strings.Contains(output, "Technical Debt") {
+		t.Error("Missing 'Technical Debt' section")
+	}
+	if !strings.Contains(output, "Total:") {
+		t.Error("Missing debt total label")
+	}
+	if !strings.Contains(output, "11") {
+		t.Error("Missing debt total value (3*3 + 2*1 = 11)")
+	}
+	if !strings.Contains(output, "error") {
+		t.Error("Missing error severity in debt breakdown")
+	}
+	if !strings.Contains(output, "warning") {
+		t.Error("Missing warning severity in debt breakdown")
+	}
+}
+
+func TestHTMLReporter_ReportAudit_TrendReport(t *testing.T) {
+	reporter := NewHTMLReporter()
+	report := &domain.AuditReport{
+		ProjectRoot: "/test",
+		Violations:  []domain.Violation{},
+		TrendReport: domain.TrendReport{
+			Status:         domain.TrendImproved,
+			ViolationDelta: -3,
+			DebtDelta:      -5,
+			Summary:        "Architecture improved: reduced violations",
+		},
+	}
+
+	output := captureReportAudit(t, reporter, report)
+
+	if !strings.Contains(output, "Trend") {
+		t.Error("Missing 'Trend' section")
+	}
+	if !strings.Contains(output, "improved") {
+		t.Error("Missing trend status 'improved'")
+	}
+	if !strings.Contains(output, "Architecture improved: reduced violations") {
+		t.Error("Missing trend summary")
+	}
+	if !strings.Contains(output, "New Violations") {
+		t.Error("Missing 'New Violations' label")
+	}
+	if !strings.Contains(output, "Resolved Violations") {
+		t.Error("Missing 'Resolved Violations' label")
+	}
+}

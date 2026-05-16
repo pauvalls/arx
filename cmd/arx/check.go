@@ -307,7 +307,7 @@ func printCheckResult(result checkResult, format ports.OutputFormat, isWatchUpda
 
 	// Initial check report
 	if format == ports.OutputFormatJSON {
-		var reporter ports.Reporter
+		var reporter *output.JSONReporter
 		if suppressedCount > 0 {
 			// Use baseline-aware reporter
 			reporter = output.NewJSONReporterWithBaseline(suppressedCount)
@@ -317,7 +317,7 @@ func printCheckResult(result checkResult, format ports.OutputFormat, isWatchUpda
 		} else {
 			reporter = output.NewJSONReporter()
 		}
-		if err := reporter.Report(violations, format); err != nil {
+		if err := reporter.ReportWithContext(violations, result.detectorStatuses); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: report generation failed: %v\n", err)
 		}
 	} else if format == ports.OutputFormatTerminal {

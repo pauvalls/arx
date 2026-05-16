@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/pauvalls/arx/internal/domain"
@@ -93,7 +94,7 @@ func TestPHPDetector_SkipsVendorDir(t *testing.T) {
 	// Should not find files in vendor/ directory
 	for _, f := range files {
 		rel, _ := filepath.Rel(fixturePath, f)
-		if filepath.HasPrefix(rel, "vendor") {
+		if strings.HasPrefix(rel, "vendor") {
 			t.Errorf("Should skip vendor/ directory, found: %s", f)
 		}
 	}
