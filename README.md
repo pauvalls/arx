@@ -92,7 +92,7 @@ rules:
 
 | Problem | Traditional Tools | Arx |
 |---------|------------------|-----|
-| Language lock-in | ArchUnit (Java), Deptrac (PHP) | Cross-language (Go, TS, Python, Java, Kotlin, Rust) |
+| Language lock-in | ArchUnit (Java), Deptrac (PHP) | Cross-language (Go, TS, Python, Java, Kotlin, Rust, C#, Ruby) |
 | Silent violations | Linters only flag style | Fails CI on architectural violations |
 | No teaching | "Remove this dependency" | Explains WHY + HOW to fix |
 | Enterprise-only | SonarQube (paid) | Free, open-source (MPL-2.0) |
