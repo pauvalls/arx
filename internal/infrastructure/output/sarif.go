@@ -45,10 +45,9 @@ type Tool struct {
 
 // Driver represents the tool driver information
 type Driver struct {
-	Name            string `json:"name"`
-	Version         string `json:"version"`
-	InformationURI  string `json:"informationUri,omitempty"`
-	RuleCount       int    `json:"rulesCount"`
+	Name           string `json:"name"`
+	Version        string `json:"version"`
+	InformationURI string `json:"informationUri,omitempty"`
 }
 
 // Result represents a single result/violation
@@ -87,7 +86,23 @@ type Region struct {
 	StartColumn int `json:"startColumn,omitempty"`
 }
 
-// Properties represents additional properties
+// extractFilePath extracts a clean file path from a violation File field.
+// File may contain "layer (path/file.go:line)" format (circular deps).
+func extractFilePath(file string) string {
+	if idx := strings.Index(file, "("); idx != -1 {
+		// Format: "layer (path/file.go:line)"
+		inner := file[idx+1:]
+		if endIdx := strings.LastIndex(inner, ")"); endIdx != -1 {
+			inner = inner[:endIdx]
+		}
+		// inner is now "path/file.go:line"
+		if colonIdx := strings.LastIndex(inner, ":"); colonIdx != -1 {
+			return inner[:colonIdx]
+		}
+		return inner
+	}
+	return file
+}
 type Properties struct {
 	SourceLayer  string `json:"source_layer,omitempty"`
 	TargetLayer  string `json:"target_layer,omitempty"`
@@ -126,7 +141,7 @@ func (r *SARIFReporter) buildSARIFLog(violations []domain.Violation) SARIFLog {
 				{
 					PhysicalLocation: PhysicalLocation{
 						ArtifactLocation: ArtifactLocation{
-							URI: v.File,
+							URI: extractFilePath(v.File),
 						},
 						Region: Region{
 							StartLine: v.Line,
@@ -152,7 +167,6 @@ func (r *SARIFReporter) buildSARIFLog(violations []domain.Violation) SARIFLog {
 					Driver: Driver{
 						Name:      r.tool,
 						Version:   "0.2.0",
-						RuleCount: len(violations),
 					},
 				},
 				Results: results,
