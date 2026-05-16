@@ -34,6 +34,7 @@ runs:
         echo "::group::Build arx"
         cd "${GITHUB_ACTION_PATH}/../../.."
         go build -o "${GITHUB_WORKSPACE}/.arx-bin/arx" ./cmd/arx
+        chmod +x "${GITHUB_ACTION_PATH}/entrypoint.sh"
         echo "Binary built to ${GITHUB_WORKSPACE}/.arx-bin/arx"
         echo "::endgroup::"
 

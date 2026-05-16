@@ -27,23 +27,33 @@ func EvaluateRules(dependencies []Dependency, rules []Rule, layers []Layer) []Vi
 		}
 
 		// Check against each rule
-		for _, rule := range rules {
+		for i := range rules {
+			rule := &rules[i]
 			if rule.Violates(dep.ImportPath, sourceLayer, targetLayer) {
 				// Check if rule is disabled for this file path
 				if !rule.IsEnabledFor(dep.SourceFile) {
 					continue
 				}
 
+				// Check if file is excluded from this rule
+				// Defensive: compile exclude patterns if not already compiled
+				if rule.compiledExclude == nil && len(rule.Exclude) > 0 {
+					_ = rule.CompileExcludePatterns()
+				}
+				if rule.IsExcludedFor(dep.SourceFile) {
+					continue
+				}
+
 				violationIndex++
 				v := Violation{
-					ID:          GenerateViolationID(rule, violationIndex),
+					ID:          GenerateViolationID(*rule, violationIndex),
 					RuleID:      rule.ID,
 					File:        dep.SourceFile,
 					Line:        dep.SourceLine,
 					SourceLayer: sourceLayer,
 					TargetLayer: targetLayer,
 					Import:      dep.ImportPath,
-					Message:     buildViolationMessage(rule, sourceLayer, targetLayer, dep.ImportPath),
+					Message:     buildViolationMessage(*rule, sourceLayer, targetLayer, dep.ImportPath),
 					Severity:    rule.Severity,
 				}
 

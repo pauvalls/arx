@@ -1,0 +1,73 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: arx
+    main: ./cmd/arx
+    binary: arx
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - id: arx-bin
+    builds: [arx]
+    name_template: "arx_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format: tar.gz
+    format_overrides:
+      - goos: linux
+        format: tar.gz
+      - goos: darwin
+        format: zip
+
+nfpms:
+  - id: arx-packages
+    package_name: arx
+    file_name_template: "arx_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    builds: [arx]
+    description: Architecture audit CLI for cross-language codebases
+    homepage: https://github.com/pauvalls/arx
+    license: MPL-2.0
+    maintainer: Pau Vallespir
+    formats:
+      - deb
+      - rpm
+
+brews:
+  - name: arx
+    repository:
+      owner: pauvalls
+      name: homebrew-arx
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    commit_author:
+      name: goreleaserbot
+      email: goreleaser@arx
+    homepage: https://github.com/pauvalls/arx
+    description: Architecture audit CLI for cross-language codebases
+    license: MPL-2.0
+    test: |
+      system "#{bin}/arx --version"
+
+release:
+  github:
+    owner: pauvalls
+    name: arx
+  name_template: "v{{ .Version }}"
+  header: |
+    # Arx v{{ .Version }}
+
+    See [CHANGELOG](https://github.com/pauvalls/arx/blob/main/CHANGELOG.md) for details.

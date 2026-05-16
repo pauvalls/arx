@@ -9,6 +9,9 @@ set -e
 # Resolve the arx binary path
 ARX="${ARX_BIN:-arx}"
 
+# Output directory for generated files
+OUTPUT_DIR="${GITHUB_WORKSPACE:-.}"
+
 # --- resolve inputs ---
 PROJECT_PATH="${INPUT_PATH:-.}"
 CONFIG_PATH="${INPUT_CONFIG:-arx.yaml}"
@@ -30,9 +33,9 @@ if [ "${FORMAT}" = "sarif" ]; then
     # SARIF output: redirect to file for upload-sarif action.
     # Use --format sarif (without --ci) to get actual SARIF JSON.
     echo "Running: ${ARX} check --format sarif --config ${CONFIG_PATH} ${PROJECT_PATH}"
-    "${ARX}" check --format sarif --config "${CONFIG_PATH}" "${PROJECT_PATH}" > arx-audit.sarif
+    "${ARX}" check --format sarif --config "${CONFIG_PATH}" "${PROJECT_PATH}" > "${OUTPUT_DIR}/arx-audit.sarif"
     EXIT_CODE=$?
-    echo "SARIF output written to arx-audit.sarif"
+    echo "SARIF output written to ${OUTPUT_DIR}/arx-audit.sarif"
 else
     # Other formats: use --ci for CI-friendly exit codes
     echo "Running: ${ARX} check --ci --format ${FORMAT} --config ${CONFIG_PATH} ${PROJECT_PATH}"
@@ -46,8 +49,8 @@ echo "::endgroup::"
 if [ "${DIAGRAM}" = "true" ]; then
     echo "::group::Generating architecture diagram"
     echo "Running: ${ARX} diagram --format mermaid ${PROJECT_PATH}"
-    "${ARX}" diagram --format mermaid "${PROJECT_PATH}" > arx-architecture.mmd 2>/dev/null || true
-    if [ -f arx-architecture.mmd ] && [ -s arx-architecture.mmd ]; then
+    "${ARX}" diagram --format mermaid "${PROJECT_PATH}" > "${OUTPUT_DIR}/arx-architecture.mmd" 2>/dev/null || true
+    if [ -f "${OUTPUT_DIR}/arx-architecture.mmd" ] && [ -s "${OUTPUT_DIR}/arx-architecture.mmd" ]; then
         echo "Diagram saved to arx-architecture.mmd"
     else
         echo "Warning: diagram generation produced no output"

@@ -423,3 +423,239 @@ func TestGenerateViolationID(t *testing.T) {
 		})
 	}
 }
+
+func TestAudit_EvaluateRules_Excludes(t *testing.T) {
+	tests := []struct {
+		name         string
+		dependencies []Dependency
+		rules        []Rule
+		layers       []Layer
+		wantCount    int
+	}{
+		{
+			name: "excluded path - violation skipped",
+			dependencies: []Dependency{
+				{
+					SourceFile:    "internal/legacy/file.go",
+					SourceLine:    10,
+					ImportPath:    "github.com/example/arx/internal/infrastructure/db",
+					ResolvedLayer: "infrastructure",
+				},
+			},
+			rules: []Rule{
+				{
+					ID:       "R1",
+					From:     "domain",
+					To:       []string{"infrastructure"},
+					Type:     RuleTypeCannot,
+					Severity: SeverityError,
+					Exclude:  []string{"internal/legacy/**"},
+				},
+			},
+			layers: []Layer{
+				{Name: "domain", Paths: []string{"internal/domain"}},
+				{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
+			},
+			wantCount: 0,
+		},
+		{
+			name: "non-excluded path - violation reported",
+			dependencies: []Dependency{
+				{
+					SourceFile:    "internal/domain/file.go",
+					SourceLine:    10,
+					ImportPath:    "github.com/example/arx/internal/infrastructure/db",
+					ResolvedLayer: "infrastructure",
+				},
+			},
+			rules: []Rule{
+				{
+					ID:       "R1",
+					From:     "domain",
+					To:       []string{"infrastructure"},
+					Type:     RuleTypeCannot,
+					Severity: SeverityError,
+					Exclude:  []string{"internal/legacy/**"},
+				},
+			},
+			layers: []Layer{
+				{Name: "domain", Paths: []string{"internal/domain"}},
+				{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
+			},
+			wantCount: 1,
+		},
+		{
+			name: "multiple rules with different excludes",
+			dependencies: []Dependency{
+				{
+					SourceFile:    "internal/legacy/file.go",
+					SourceLine:    10,
+					ImportPath:    "github.com/example/arx/internal/infrastructure/db",
+					ResolvedLayer: "infrastructure",
+				},
+				{
+					SourceFile:    "internal/domain/file.go",
+					SourceLine:    20,
+					ImportPath:    "github.com/example/arx/internal/infrastructure/cache",
+					ResolvedLayer: "infrastructure",
+				},
+			},
+			rules: []Rule{
+				{
+					ID:       "R1",
+					From:     "legacy",
+					To:       []string{"infrastructure"},
+					Type:     RuleTypeCannot,
+					Severity: SeverityError,
+					Exclude:  []string{"internal/legacy/**"},
+				},
+				{
+					ID:       "R2",
+					From:     "domain",
+					To:       []string{"infrastructure"},
+					Type:     RuleTypeCannot,
+					Severity: SeverityWarning,
+					Exclude:  []string{"internal/domain/**"},
+				},
+			},
+			layers: []Layer{
+				{Name: "legacy", Paths: []string{"internal/legacy"}},
+				{Name: "domain", Paths: []string{"internal/domain"}},
+				{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
+			},
+			// First dep excluded by R1, second dep excluded by R2
+			wantCount: 0,
+		},
+		{
+			name: "mixed - some excluded, some not",
+			dependencies: []Dependency{
+				{
+					SourceFile:    "internal/legacy/file.go",
+					SourceLine:    10,
+					ImportPath:    "github.com/example/arx/internal/infrastructure/db",
+					ResolvedLayer: "infrastructure",
+				},
+				{
+					SourceFile:    "internal/domain/file.go",
+					SourceLine:    20,
+					ImportPath:    "github.com/example/arx/internal/infrastructure/cache",
+					ResolvedLayer: "infrastructure",
+				},
+				{
+					SourceFile:    "internal/domain/another.go",
+					SourceLine:    30,
+					ImportPath:    "github.com/example/arx/internal/infrastructure/queue",
+					ResolvedLayer: "infrastructure",
+				},
+			},
+			rules: []Rule{
+				{
+					ID:       "R1",
+					From:     "domain",
+					To:       []string{"infrastructure"},
+					Type:     RuleTypeCannot,
+					Severity: SeverityError,
+					Exclude:  []string{"internal/legacy/**"},
+				},
+			},
+			layers: []Layer{
+				{Name: "domain", Paths: []string{"internal/domain"}},
+				{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
+				{Name: "legacy", Paths: []string{"internal/legacy"}},
+			},
+			// First dep excluded (legacy), second and third reported (domain)
+			wantCount: 2,
+		},
+		{
+			name: "glob pattern exact match",
+			dependencies: []Dependency{
+				{
+					SourceFile:    "internal/legacy/old.go",
+					SourceLine:    10,
+					ImportPath:    "github.com/example/arx/internal/infrastructure/db",
+					ResolvedLayer: "infrastructure",
+				},
+			},
+			rules: []Rule{
+				{
+					ID:       "R1",
+					From:     "domain",
+					To:       []string{"infrastructure"},
+					Type:     RuleTypeCannot,
+					Severity: SeverityError,
+					Exclude:  []string{"internal/legacy/old.go"},
+				},
+			},
+			layers: []Layer{
+				{Name: "domain", Paths: []string{"internal/domain"}},
+				{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
+			},
+			wantCount: 0,
+		},
+		{
+			name: "glob pattern wildcard match",
+			dependencies: []Dependency{
+				{
+					SourceFile:    "internal/legacy/old.go",
+					SourceLine:    10,
+					ImportPath:    "github.com/example/arx/internal/infrastructure/db",
+					ResolvedLayer: "infrastructure",
+				},
+			},
+			rules: []Rule{
+				{
+					ID:       "R1",
+					From:     "domain",
+					To:       []string{"infrastructure"},
+					Type:     RuleTypeCannot,
+					Severity: SeverityError,
+					Exclude:  []string{"internal/legacy/*.go"},
+				},
+			},
+			layers: []Layer{
+				{Name: "domain", Paths: []string{"internal/domain"}},
+				{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
+			},
+			wantCount: 0,
+		},
+		{
+			name: "glob pattern double star nested",
+			dependencies: []Dependency{
+				{
+					SourceFile:    "internal/legacy/deep/nested.go",
+					SourceLine:    10,
+					ImportPath:    "github.com/example/arx/internal/infrastructure/db",
+					ResolvedLayer: "infrastructure",
+				},
+			},
+			rules: []Rule{
+				{
+					ID:       "R1",
+					From:     "domain",
+					To:       []string{"infrastructure"},
+					Type:     RuleTypeCannot,
+					Severity: SeverityError,
+					Exclude:  []string{"internal/legacy/**"},
+				},
+			},
+			layers: []Layer{
+				{Name: "domain", Paths: []string{"internal/domain"}},
+				{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
+			},
+			wantCount: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			violations := EvaluateRules(tt.dependencies, tt.rules, tt.layers)
+
+			if len(violations) != tt.wantCount {
+				t.Errorf("EvaluateRules() returned %d violations, want %d", len(violations), tt.wantCount)
+				for i, v := range violations {
+					t.Logf("Violation %d: RuleID=%q, File=%q", i, v.RuleID, v.File)
+				}
+			}
+		})
+	}
+}

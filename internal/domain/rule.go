@@ -84,15 +84,17 @@ type RuleOverride struct {
 
 // Rule represents an architectural rule between layers
 type Rule struct {
-	ID              string          `json:"id" yaml:"id"`
-	From            string          `json:"from" yaml:"from"`
-	To              []string        `json:"to" yaml:"to"`
-	Type            RuleType        `json:"type" yaml:"type"`
-	Severity        Severity        `json:"severity" yaml:"severity"`
-	Explanation     string          `json:"explanation,omitempty" yaml:"explanation,omitempty"`
-	Pattern         string          `json:"pattern,omitempty" yaml:"pattern,omitempty"`
-	Overrides       []RuleOverride  `json:"overrides,omitempty" yaml:"overrides,omitempty"`
-	compiledPattern *regexp.Regexp  `json:"-" yaml:"-"`
+	ID                string          `json:"id" yaml:"id"`
+	From              string          `json:"from" yaml:"from"`
+	To                []string        `json:"to" yaml:"to"`
+	Type              RuleType        `json:"type" yaml:"type"`
+	Severity          Severity        `json:"severity" yaml:"severity"`
+	Explanation       string          `json:"explanation,omitempty" yaml:"explanation,omitempty"`
+	Pattern           string          `json:"pattern,omitempty" yaml:"pattern,omitempty"`
+	Overrides         []RuleOverride  `json:"overrides,omitempty" yaml:"overrides,omitempty"`
+	Exclude           []string        `json:"exclude,omitempty" yaml:"exclude,omitempty"`
+	compiledPattern   *regexp.Regexp  `json:"-" yaml:"-"`
+	compiledExclude   []*regexp.Regexp `json:"-" yaml:"-"`
 }
 
 // CompilePattern compiles the Pattern field into a cached *regexp.Regexp.
@@ -111,6 +113,61 @@ func (r *Rule) CompilePattern() error {
 	return nil
 }
 
+// CompileExcludePatterns compiles all Exclude glob patterns into cached regex patterns.
+// Returns error if any pattern fails to compile.
+func (r *Rule) CompileExcludePatterns() error {
+	if len(r.Exclude) == 0 {
+		r.compiledExclude = nil
+		return nil
+	}
+
+	r.compiledExclude = make([]*regexp.Regexp, 0, len(r.Exclude))
+	for i, pattern := range r.Exclude {
+		// Convert glob pattern to regex (same logic as shared/glob.go)
+		// First escape all regex metacharacters
+		escaped := regexp.QuoteMeta(pattern)
+		
+		// Replace /** with (/.*)? (matches zero or more path segments, including no segments)
+		// Must do this BEFORE replacing single * to avoid conflicts
+		escaped = strings.ReplaceAll(escaped, `/\*\*`, "(/.*)?")
+		
+		// Replace any remaining ** (without leading /) with .*
+		escaped = strings.ReplaceAll(escaped, `\*\*`, ".*")
+		
+		// Replace escaped * with [^/]* (matches anything except /)
+		escaped = strings.ReplaceAll(escaped, `\*`, "[^/]*")
+		
+		// Handle trailing slash: convert to match everything under that directory
+		// e.g., "internal/legacy/" becomes "internal/legacy(/.*)?"
+		if strings.HasSuffix(pattern, "/") {
+			// Remove the escaped trailing slash and add directory match
+			escaped = strings.TrimSuffix(escaped, `/`) + "(/.*)?"
+		}
+		
+		re, err := regexp.Compile("^" + escaped + "$")
+		if err != nil {
+			return fmt.Errorf("exclude pattern[%d] %q: %w", i, pattern, err)
+		}
+		r.compiledExclude = append(r.compiledExclude, re)
+	}
+	return nil
+}
+
+// IsExcludedFor checks if a file path matches any exclude pattern.
+// Returns true if the file should be excluded from this rule.
+// Empty exclude list returns false (backward compatible).
+func (r *Rule) IsExcludedFor(filePath string) bool {
+	if len(r.compiledExclude) == 0 {
+		return false
+	}
+	for _, re := range r.compiledExclude {
+		if re.MatchString(filePath) {
+			return true
+		}
+	}
+	return false
+}
+
 // Validate checks if the rule configuration is valid
 func (r *Rule) Validate() error {
 	if r.ID == "" {
@@ -120,6 +177,11 @@ func (r *Rule) Validate() error {
 	// Compile pattern if set
 	if err := r.CompilePattern(); err != nil {
 		return fmt.Errorf("rule %q: invalid pattern: %w", r.ID, err)
+	}
+
+	// Compile exclude patterns if set
+	if err := r.CompileExcludePatterns(); err != nil {
+		return fmt.Errorf("rule %q: invalid exclude pattern: %w", r.ID, err)
 	}
 
 	// Pattern-only rules don't require from/to

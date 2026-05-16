@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -386,4 +387,203 @@ func TestConfig_Hash_FieldChange(t *testing.T) {
 			t.Error("exclude change should produce different hash")
 		}
 	})
+}
+
+func TestConfig_Validate_RuleExcludes(t *testing.T) {
+	tests := []struct {
+		name    string
+		config  Config
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name: "valid rule with exclude patterns",
+			config: Config{
+				Version: "1.0.0",
+				Layers: []Layer{
+					{Name: "domain", Paths: []string{"internal/domain"}},
+					{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
+				},
+				Rules: []Rule{
+					{
+						ID:       "R1",
+						From:     "domain",
+						To:       []string{"infrastructure"},
+						Type:     RuleTypeCannot,
+						Severity: SeverityError,
+						Exclude:  []string{"internal/legacy/**", "vendor/**"},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "rule with trailing slash exclude is valid",
+			config: Config{
+				Version: "1.0.0",
+				Layers: []Layer{
+					{Name: "domain", Paths: []string{"internal/domain"}},
+					{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
+				},
+				Rules: []Rule{
+					{
+						ID:       "R1",
+						From:     "domain",
+						To:       []string{"infrastructure"},
+						Type:     RuleTypeCannot,
+						Severity: SeverityError,
+						Exclude:  []string{"internal/legacy/"},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "multiple rules with excludes",
+			config: Config{
+				Version: "1.0.0",
+				Layers: []Layer{
+					{Name: "domain", Paths: []string{"internal/domain"}},
+					{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
+				},
+				Rules: []Rule{
+					{
+						ID:       "R1",
+						From:     "domain",
+						To:       []string{"infrastructure"},
+						Type:     RuleTypeCannot,
+						Severity: SeverityError,
+						Exclude:  []string{"internal/legacy/**"},
+					},
+					{
+						ID:       "R2",
+						From:     "domain",
+						To:       []string{"infrastructure"},
+						Type:     RuleTypeCannot,
+						Severity: SeverityWarning,
+						Exclude:  []string{"vendor/**"},
+					},
+				},
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.config.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Config.Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr && tt.errMsg != "" {
+				if err == nil {
+					t.Errorf("Config.Validate() expected error containing %q, got nil", tt.errMsg)
+				} else if !strings.Contains(err.Error(), tt.errMsg) {
+					t.Errorf("Config.Validate() error = %q, want to contain %q", err.Error(), tt.errMsg)
+				}
+			}
+		})
+	}
+}
+
+func TestConfig_MaxViolations_Validation(t *testing.T) {
+	tests := []struct {
+		name          string
+		maxViolations int
+		wantErr       bool
+		errMsg        string
+	}{
+		{
+			name:          "zero threshold (backward compatible)",
+			maxViolations: 0,
+			wantErr:       false,
+		},
+		{
+			name:          "positive threshold",
+			maxViolations: 5,
+			wantErr:       false,
+		},
+		{
+			name:          "large positive threshold",
+			maxViolations: 100,
+			wantErr:       false,
+		},
+		{
+			name:          "negative threshold rejected",
+			maxViolations: -1,
+			wantErr:       true,
+			errMsg:        "max_violations cannot be negative",
+		},
+		{
+			name:          "negative threshold rejected with value",
+			maxViolations: -10,
+			wantErr:       true,
+			errMsg:        "max_violations cannot be negative",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := Config{
+				Version: "1.0.0",
+				Layers: []Layer{
+					{Name: "domain", Paths: []string{"internal/domain"}},
+				},
+				Rules:         []Rule{},
+				MaxViolations: tt.maxViolations,
+			}
+
+			err := config.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Config.Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr && tt.errMsg != "" {
+				if err == nil {
+					t.Errorf("Config.Validate() expected error containing %q, got nil", tt.errMsg)
+				} else if !containsString(err.Error(), tt.errMsg) {
+					t.Errorf("Config.Validate() expected error containing %q, got %q", tt.errMsg, err.Error())
+				}
+			}
+		})
+	}
+}
+
+func TestConfig_ViolationThreshold(t *testing.T) {
+	tests := []struct {
+		name          string
+		maxViolations int
+		wantThreshold int
+	}{
+		{
+			name:          "zero returns zero",
+			maxViolations: 0,
+			wantThreshold: 0,
+		},
+		{
+			name:          "positive value returned",
+			maxViolations: 5,
+			wantThreshold: 5,
+		},
+		{
+			name:          "large value returned",
+			maxViolations: 100,
+			wantThreshold: 100,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := Config{
+				Version:       "1.0.0",
+				Layers:        []Layer{{Name: "domain", Paths: []string{"internal/domain"}}},
+				Rules:         []Rule{},
+				MaxViolations: tt.maxViolations,
+			}
+
+			got := config.ViolationThreshold()
+			if got != tt.wantThreshold {
+				t.Errorf("Config.ViolationThreshold() = %d, want %d", got, tt.wantThreshold)
+			}
+		})
+	}
 }

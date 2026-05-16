@@ -2,6 +2,7 @@ package domain
 
 import (
 	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -651,6 +652,256 @@ func TestRule_Validate_Overrides(t *testing.T) {
 			if tt.wantErr && tt.errMsg != "" {
 				if err == nil {
 					t.Errorf("Rule.Validate() expected error containing %q, got nil", tt.errMsg)
+				}
+			}
+		})
+	}
+}
+
+func TestRule_IsExcludedFor(t *testing.T) {
+	tests := []struct {
+		name     string
+		excludes []string
+		filePath string
+		want     bool
+	}{
+		{
+			name:     "empty excludes - not excluded",
+			excludes: []string{},
+			filePath: "internal/domain/user.go",
+			want:     false,
+		},
+		{
+			name:     "exact match",
+			excludes: []string{"internal/legacy/old.go"},
+			filePath: "internal/legacy/old.go",
+			want:     true,
+		},
+		{
+			name:     "exact match - no match",
+			excludes: []string{"internal/legacy/old.go"},
+			filePath: "internal/legacy/new.go",
+			want:     false,
+		},
+		{
+			name:     "prefix match with trailing slash",
+			excludes: []string{"internal/legacy/"},
+			filePath: "internal/legacy/old.go",
+			want:     true,
+		},
+		{
+			name:     "prefix match - nested file",
+			excludes: []string{"internal/legacy/"},
+			filePath: "internal/legacy/deep/nested.go",
+			want:     true,
+		},
+		{
+			name:     "prefix match - different directory",
+			excludes: []string{"internal/legacy/"},
+			filePath: "internal/domain/user.go",
+			want:     false,
+		},
+		{
+			name:     "glob single star - matches",
+			excludes: []string{"internal/legacy/*.go"},
+			filePath: "internal/legacy/old.go",
+			want:     true,
+		},
+		{
+			name:     "glob single star - no match different extension",
+			excludes: []string{"internal/legacy/*.go"},
+			filePath: "internal/legacy/old.txt",
+			want:     false,
+		},
+		{
+			name:     "glob single star - no match nested",
+			excludes: []string{"internal/legacy/*.go"},
+			filePath: "internal/legacy/deep/old.go",
+			want:     false,
+		},
+		{
+			name:     "glob double star - matches nested",
+			excludes: []string{"internal/legacy/**"},
+			filePath: "internal/legacy/deep/nested.go",
+			want:     true,
+		},
+		{
+			name:     "glob double star - matches direct",
+			excludes: []string{"internal/legacy/**"},
+			filePath: "internal/legacy/old.go",
+			want:     true,
+		},
+		{
+			name:     "glob double star - no match different dir",
+			excludes: []string{"internal/legacy/**"},
+			filePath: "internal/domain/user.go",
+			want:     false,
+		},
+		{
+			name:     "multiple patterns - first matches",
+			excludes: []string{"internal/legacy/**", "vendor/**"},
+			filePath: "internal/legacy/old.go",
+			want:     true,
+		},
+		{
+			name:     "multiple patterns - second matches",
+			excludes: []string{"internal/legacy/**", "vendor/**"},
+			filePath: "vendor/some/pkg/file.go",
+			want:     true,
+		},
+		{
+			name:     "multiple patterns - none match",
+			excludes: []string{"internal/legacy/**", "vendor/**"},
+			filePath: "internal/domain/user.go",
+			want:     false,
+		},
+		{
+			name:     "glob star in middle of path",
+			excludes: []string{"internal/*/old.go"},
+			filePath: "internal/legacy/old.go",
+			want:     true,
+		},
+		{
+			name:     "glob star in middle - no match",
+			excludes: []string{"internal/*/old.go"},
+			filePath: "internal/domain/old.go",
+			want:     true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &Rule{
+				ID:       "R1",
+				From:     "domain",
+				To:       []string{"infrastructure"},
+				Type:     RuleTypeCannot,
+				Severity: SeverityError,
+				Exclude:  tt.excludes,
+			}
+			// Compile exclude patterns
+			if err := r.CompileExcludePatterns(); err != nil {
+				t.Fatalf("CompileExcludePatterns() error = %v", err)
+			}
+
+			got := r.IsExcludedFor(tt.filePath)
+			if got != tt.want {
+				t.Errorf("IsExcludedFor(%q) = %v, want %v (excludes=%v)", tt.filePath, got, tt.want, tt.excludes)
+			}
+		})
+	}
+}
+
+func TestRule_CompileExcludePatterns(t *testing.T) {
+	tests := []struct {
+		name     string
+		excludes []string
+		wantErr  bool
+	}{
+		{
+			name:     "empty excludes",
+			excludes: []string{},
+			wantErr:  false,
+		},
+		{
+			name:     "valid glob patterns",
+			excludes: []string{"internal/legacy/**", "vendor/**"},
+			wantErr:  false,
+		},
+		{
+			name:     "valid single star pattern",
+			excludes: []string{"*.go", "internal/*/*.go"},
+			wantErr:  false,
+		},
+		{
+			name:     "valid prefix pattern with trailing slash",
+			excludes: []string{"internal/legacy/"},
+			wantErr:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &Rule{
+				ID:       "R1",
+				From:     "domain",
+				To:       []string{"infrastructure"},
+				Type:     RuleTypeCannot,
+				Severity: SeverityError,
+				Exclude:  tt.excludes,
+			}
+			err := r.CompileExcludePatterns()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("CompileExcludePatterns() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if !tt.wantErr && len(tt.excludes) > 0 {
+				if len(r.compiledExclude) != len(tt.excludes) {
+					t.Errorf("compiledExclude length = %d, want %d", len(r.compiledExclude), len(tt.excludes))
+				}
+			}
+			if tt.wantErr && r.compiledExclude != nil {
+				t.Error("compiledExclude should be nil after failed compilation")
+			}
+		})
+	}
+}
+
+func TestRule_Validate_Exclude(t *testing.T) {
+	tests := []struct {
+		name    string
+		rule    Rule
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name: "valid exclude patterns",
+			rule: Rule{
+				ID:       "R1",
+				From:     "domain",
+				To:       []string{"infrastructure"},
+				Type:     RuleTypeCannot,
+				Severity: SeverityError,
+				Exclude:  []string{"internal/legacy/**", "vendor/**"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "empty exclude is valid",
+			rule: Rule{
+				ID:       "R1",
+				From:     "domain",
+				To:       []string{"infrastructure"},
+				Type:     RuleTypeCannot,
+				Severity: SeverityError,
+				Exclude:  []string{},
+			},
+			wantErr: false,
+		},
+		{
+			name: "exclude with trailing slash is valid",
+			rule: Rule{
+				ID:       "R1",
+				From:     "domain",
+				To:       []string{"infrastructure"},
+				Type:     RuleTypeCannot,
+				Severity: SeverityError,
+				Exclude:  []string{"internal/legacy/"},
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.rule.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Rule.Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr && tt.errMsg != "" {
+				if err == nil {
+					t.Errorf("Rule.Validate() expected error containing %q, got nil", tt.errMsg)
+				} else if !strings.Contains(err.Error(), tt.errMsg) {
+					t.Errorf("Rule.Validate() error = %q, want to contain %q", err.Error(), tt.errMsg)
 				}
 			}
 		})

@@ -11,13 +11,22 @@ import (
 
 // TerminalReporter implements the ports.Reporter interface for terminal output
 type TerminalReporter struct {
-	width int
+	width         int
+	maxViolations int
 }
 
 // NewTerminalReporter creates a new terminal reporter
 func NewTerminalReporter() *TerminalReporter {
 	return &TerminalReporter{
 		width: 80,
+	}
+}
+
+// NewTerminalReporterWithThreshold creates a terminal reporter with violation threshold
+func NewTerminalReporterWithThreshold(maxViolations int) *TerminalReporter {
+	return &TerminalReporter{
+		width:         80,
+		maxViolations: maxViolations,
 	}
 }
 
@@ -142,6 +151,11 @@ func (r *TerminalReporter) Report(violations []domain.Violation, format ports.Ou
 
 		if overriddenCount > 0 {
 			summary += fmt.Sprintf(" (%d overridden)", overriddenCount)
+		}
+
+		// Add threshold info if set
+		if r.maxViolations > 0 {
+			summary += fmt.Sprintf(" (threshold: %d violations)", r.maxViolations)
 		}
 
 		details := fmt.Sprintf(" (%d errors, %d warnings, %d info)", totalErrors, totalWarnings, totalInfo)
@@ -288,20 +302,37 @@ func findSubstring(s, substr string) bool {
 // Ensure TerminalReporter implements ports.Reporter interface
 var _ ports.Reporter = (*TerminalReporter)(nil)
 
-// ExitCode returns the appropriate exit code based on violations.
+// ExitCode returns the appropriate exit code based on violations and threshold.
 // Returns 0 if no violations exist or all remaining violations are overridden.
-// Returns 1 if any non-overridden violation exists.
-func ExitCode(violations []domain.Violation) int {
+// Returns 0 if non-overridden violations <= maxViolations (when maxViolations > 0).
+// Returns 1 if non-overridden violations > maxViolations.
+// maxViolations of 0 means no threshold (unlimited, backward-compatible).
+func ExitCode(violations []domain.Violation, maxViolations int) int {
 	if len(violations) == 0 {
 		return 0
 	}
 
-	// Return 0 only if ALL violations are overridden
+	// Count non-overridden violations
+	nonOverriddenCount := 0
 	for _, v := range violations {
 		if !v.Overridden {
-			return 1
+			nonOverriddenCount++
 		}
 	}
 
-	return 0
+	// If threshold is set (maxViolations > 0), check against it
+	if maxViolations > 0 {
+		if nonOverriddenCount <= maxViolations {
+			return 0
+		}
+		return 1
+	}
+
+	// Backward-compatible behavior: no threshold
+	// Return 0 only if ALL violations are overridden
+	if nonOverriddenCount == 0 {
+		return 0
+	}
+
+	return 1
 }

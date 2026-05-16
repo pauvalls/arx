@@ -11,9 +11,10 @@ import (
 
 // JSONReporter implements the ports.Reporter interface for JSON output
 type JSONReporter struct {
-	version               string
-	tool                  string
+	version                 string
+	tool                    string
 	baselineSuppressedCount int
+	maxViolations           int
 }
 
 // NewJSONReporter creates a new JSON reporter
@@ -33,6 +34,15 @@ func NewJSONReporterWithBaseline(suppressedCount int) *JSONReporter {
 	}
 }
 
+// NewJSONReporterWithThreshold creates a JSON reporter with threshold info
+func NewJSONReporterWithThreshold(maxViolations int) *JSONReporter {
+	return &JSONReporter{
+		version:       "1.0",
+		tool:          "arx",
+		maxViolations: maxViolations,
+	}
+}
+
 // JSONOutput represents the structured JSON output format
 type JSONOutput struct {
 	Version                 string            `json:"version"`
@@ -40,6 +50,7 @@ type JSONOutput struct {
 	Violations              []JSONViolation   `json:"violations"`
 	Summary                 Summary           `json:"summary"`
 	BaselineSuppressedCount int               `json:"baseline_suppressed_count,omitempty"`
+	MaxViolations           int               `json:"max_violations,omitempty"`
 }
 
 // JSONViolation represents a single violation in JSON format
@@ -124,6 +135,7 @@ func (r *JSONReporter) Report(violations []domain.Violation, format ports.Output
 			OverriddenCount: overriddenCount,
 		},
 		BaselineSuppressedCount: r.baselineSuppressedCount,
+		MaxViolations:           r.maxViolations,
 	}
 
 	// Marshal to JSON with indentation for readability

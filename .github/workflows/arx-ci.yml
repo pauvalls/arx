@@ -37,11 +37,10 @@ jobs:
 
       - name: "Upload SARIF to GitHub Code Scanning"
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
-          sarif_file: arx-audit.sarif
+          sarif_file: ${{ github.workspace }}/arx-audit.sarif
           category: "arx-architecture-audit"
-          upload_name: "Arx Architecture Audit Results"
 
       - name: "Upload architecture diagram"
         if: always()

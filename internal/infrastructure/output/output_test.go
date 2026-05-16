@@ -248,14 +248,16 @@ func TestExitCode_Overrides(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name       string
-		violations []domain.Violation
-		want       int
+		name          string
+		violations    []domain.Violation
+		maxViolations int
+		want          int
 	}{
 		{
-			name:       "no violations returns 0",
-			violations: []domain.Violation{},
-			want:       0,
+			name:          "no violations returns 0",
+			violations:    []domain.Violation{},
+			maxViolations: 0,
+			want:          0,
 		},
 		{
 			name: "all overridden violations returns 0",
@@ -263,7 +265,8 @@ func TestExitCode_Overrides(t *testing.T) {
 				{ID: "V1", Severity: domain.SeverityWarning, Overridden: true},
 				{ID: "V2", Severity: domain.SeverityInfo, Overridden: true},
 			},
-			want: 0,
+			maxViolations: 0,
+			want:          0,
 		},
 		{
 			name: "mixed overridden and non-overridden returns 1",
@@ -271,7 +274,8 @@ func TestExitCode_Overrides(t *testing.T) {
 				{ID: "V1", Severity: domain.SeverityError, Overridden: true},
 				{ID: "V2", Severity: domain.SeverityError, Overridden: false},
 			},
-			want: 1,
+			maxViolations: 0,
+			want:          1,
 		},
 		{
 			name: "no overridden violations returns 1",
@@ -279,28 +283,31 @@ func TestExitCode_Overrides(t *testing.T) {
 				{ID: "V1", Severity: domain.SeverityError, Overridden: false},
 				{ID: "V2", Severity: domain.SeverityWarning, Overridden: false},
 			},
-			want: 1,
+			maxViolations: 0,
+			want:          1,
 		},
 		{
 			name: "single non-overridden violation returns 1",
 			violations: []domain.Violation{
 				{ID: "V1", Severity: domain.SeverityError, Overridden: false},
 			},
-			want: 1,
+			maxViolations: 0,
+			want:          1,
 		},
 		{
 			name: "single overridden violation returns 0",
 			violations: []domain.Violation{
 				{ID: "V1", Severity: domain.SeverityWarning, Overridden: true},
 			},
-			want: 0,
+			maxViolations: 0,
+			want:          0,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := ExitCode(tt.violations)
+			got := ExitCode(tt.violations, tt.maxViolations)
 			if got != tt.want {
 				t.Errorf("ExitCode() = %d, want %d", got, tt.want)
 			}

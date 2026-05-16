@@ -28,6 +28,7 @@ type Config struct {
 	LanguageOverrides map[string]LanguageOverride `json:"language_overrides,omitempty" yaml:"language_overrides,omitempty"`
 	Exclude        []string                    `json:"exclude,omitempty" yaml:"exclude,omitempty"`
 	SeverityConfig map[Severity]SeverityConfig `json:"severity_config,omitempty" yaml:"severity_config,omitempty"`
+	MaxViolations  int                         `json:"max_violations,omitempty" yaml:"max_violations,omitempty"`
 }
 
 // Validate validates the entire configuration
@@ -38,6 +39,11 @@ func (c *Config) Validate() error {
 
 	if len(c.Layers) == 0 {
 		return fmt.Errorf("at least one layer must be defined")
+	}
+
+	// Validate max_violations threshold
+	if c.MaxViolations < 0 {
+		return fmt.Errorf("max_violations cannot be negative (got %d)", c.MaxViolations)
 	}
 
 	// Validate all layers
@@ -82,4 +88,10 @@ func (c *Config) Hash() (string, error) {
 	}
 	h := sha256.Sum256(data)
 	return hex.EncodeToString(h[:]), nil
+}
+
+// ViolationThreshold returns the maximum number of violations allowed before failing.
+// Returns 0 if no threshold is set (unlimited, backward-compatible).
+func (c *Config) ViolationThreshold() int {
+	return c.MaxViolations
 }
