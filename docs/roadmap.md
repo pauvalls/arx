@@ -1,6 +1,15 @@
 # Roadmap
 
-## ✅ v0.14.0 (Current — PHP + Swift Detectors)
+## ✅ v0.15.0 (Current — Man Pages, .arxignore, Fuzz Coverage)
+
+- [x] `arx man` — Man page generation for Linux distros
+- [x] `.editorconfig` — Editor settings for contributors
+- [x] `.github/dependabot.yml` — Automated dependency updates
+- [x] Fuzz tests for Kotlin, PHP, Swift parsers (30k+ execs, 0 crashes)
+- [x] `.arxignore` — Project-wide ignore file (like .gitignore)
+- [x] ArxIgnore wired into all 10 detectors
+
+## ✅ v0.14.0 (PHP + Swift Detectors)
 
 - [x] PHP detector — `composer.json` detection, `use`/`use as`/`use function` parsing
 - [x] Swift detector — `Package.swift` detection, `import`/`@_exported import` parsing

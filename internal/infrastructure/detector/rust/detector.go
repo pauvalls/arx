@@ -72,9 +72,23 @@ func shouldSkipPath(path string) bool {
 func (d *RustDetector) FindRustFiles(projectRoot string) ([]string, error) {
 	var files []string
 
+	ignore, _ := domain.LoadArxIgnore(projectRoot)
+
 	err := filepath.Walk(projectRoot, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
+		}
+
+		relPath, err := filepath.Rel(projectRoot, path)
+		if err != nil {
+			return err
+		}
+
+		if ignore != nil && ignore.IsIgnored(relPath) {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
 		}
 
 		// Skip common non-source directories

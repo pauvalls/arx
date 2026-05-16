@@ -96,10 +96,25 @@ func (d *Detector) ExtractImports(ctx context.Context, projectRoot string, layer
 	// TypeScript file extensions
 	tsExtensions := []string{".ts", ".tsx", ".mts", ".cts"}
 
+	// Load .arxignore patterns
+	ignore, _ := domain.LoadArxIgnore(projectRoot)
+
 	// Walk through all TypeScript files
 	err := filepath.WalkDir(projectRoot, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
+		}
+
+		relPath, err := filepath.Rel(projectRoot, path)
+		if err != nil {
+			return err
+		}
+
+		if ignore != nil && ignore.IsIgnored(relPath) {
+			if entry.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
 		}
 
 		// Skip directories

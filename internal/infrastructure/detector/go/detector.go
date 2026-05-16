@@ -73,10 +73,25 @@ func (d *Detector) readModulePrefix(goModPath string) (string, error) {
 func (d *Detector) ExtractImports(ctx context.Context, projectRoot string, layers []domain.Layer) ([]domain.Dependency, error) {
 	var dependencies []domain.Dependency
 
+	// Load .arxignore patterns
+	ignore, _ := domain.LoadArxIgnore(projectRoot)
+
 	// Walk through all .go files
 	err := filepath.WalkDir(projectRoot, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
+		}
+
+		relPath, err := filepath.Rel(projectRoot, path)
+		if err != nil {
+			return err
+		}
+
+		if ignore != nil && ignore.IsIgnored(relPath) {
+			if entry.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
 		}
 
 		// Skip directories and non-Go files
@@ -90,10 +105,6 @@ func (d *Detector) ExtractImports(ctx context.Context, projectRoot string, layer
 		}
 
 		// Skip vendor and hidden directories
-		relPath, err := filepath.Rel(projectRoot, path)
-		if err != nil {
-			return err
-		}
 		if strings.Contains(relPath, "vendor/") || strings.HasPrefix(entry.Name(), ".") {
 			return filepath.SkipDir
 		}
