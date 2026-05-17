@@ -1,6 +1,16 @@
 # Roadmap
 
-## ✅ v0.26.0 (Current — Performance Metrics, Config Improvements, Quality)
+## ✅ v0.27.0 (Current — arx suggest / Auto-fix)
+
+- [x] `arx suggest` command — shows fix suggestions for architecture violations
+- [x] Fix templates: domain→infrastructure, application→infrastructure
+- [x] Violation-specific suggestions: `arx suggest D-01`
+- [x] `--apply` flag auto-applies fixes with `.arx-backup/` safety
+- [x] `--force` flag skips confirmation prompt
+- [x] `--output` flag writes diff to file
+- [x] Atomic rollback on error (all-or-nothing)
+
+## ✅ v0.26.0 (Performance Metrics, Config Improvements, Quality)
 
 - [x] Performance metrics: check duration, files scanned, total deps, detectors run, uptime
 - [x] `/api/metrics` endpoint + metrics cards on dashboard
