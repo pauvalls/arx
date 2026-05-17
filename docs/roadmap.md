@@ -1,6 +1,16 @@
 # Roadmap
 
-## ✅ v0.22.0 (Current — Config CLI, Severity Filter)
+## ✅ v0.23.0 (Current — Hardening & E2E Mega Release)
+
+- [x] E2E tests for all 6 language fixtures (Go, TS, Python, Java, Ruby, Swift)
+- [x] All CLI commands tested: check (7 formats), config validate, doctor, explain, diagram (3 formats), completion (2 shells)
+- [x] Baseline workflow E2E (check → baseline → check suppressed → --no-baseline)
+- [x] Threshold, expression rules, multi-language project E2E
+- [x] Diff + Hook commands E2E
+- [x] Python fixture with requirements.txt + dot-to-slash import resolution fix
+- [x] Multi-language fixture with Go/TS/Python files
+
+## ✅ v0.22.0 (Config CLI, Severity Filter)
 
 - [x] `arx config get/set` — Read/modify arx.yaml from CLI
 - [x] `arx check --severity <level>` — Filter violations by severity

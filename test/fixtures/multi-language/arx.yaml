@@ -1,0 +1,19 @@
+version: "1.0"
+layers:
+  - name: domain
+    paths:
+      - "**/domain/**"
+  - name: application
+    paths:
+      - "**/app/**"
+      - "**/ts-app/**"
+  - name: infrastructure
+    paths:
+      - "**/infrastructure/**"
+rules:
+  - id: domain-no-import-infra
+    from: domain
+    to:
+      - infrastructure
+    type: Cannot
+    severity: error

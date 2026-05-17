@@ -195,6 +195,9 @@ func (d *Detector) parseFile(filePath, projectRoot string, layerMap map[string]*
 
 // resolveImport resolves an import path to a layer
 func (d *Detector) resolveImport(importPath, filePath, projectRoot string, layerMap map[string]*domain.Layer) string {
+	// Convert Python module paths (dots) to file paths (slashes) for layer matching
+	importPathForMatch := strings.ReplaceAll(importPath, ".", "/")
+
 	// Handle relative imports
 	if strings.HasPrefix(importPath, ".") {
 		// Convert relative to absolute based on file location
@@ -220,14 +223,13 @@ func (d *Detector) resolveImport(importPath, filePath, projectRoot string, layer
 
 	// Try to match import path to a layer
 	for name, layer := range layerMap {
-		if layer.MatchesPath(importPath) {
+		if layer.MatchesPath(importPathForMatch) {
 			return name
 		}
 
 		// Also try matching the import path directly against layer paths
 		for _, layerPath := range layer.Paths {
-			// Convert glob pattern to check if import matches
-			if d.importMatchesLayer(importPath, layerPath) {
+			if d.importMatchesLayer(importPathForMatch, layerPath) {
 				return name
 			}
 		}
