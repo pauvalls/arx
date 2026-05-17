@@ -722,3 +722,61 @@ func TestServer_AllEndpointsReturnValidJSON(t *testing.T) {
 		})
 	}
 }
+
+// TestServerState_ConfigGetter tests the Config() getter returns nil when unset
+func TestServerState_ConfigGetter(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test"})
+	if cfg := state.Config(); cfg != nil {
+		t.Error("expected nil config before SetCheckResult")
+	}
+}
+
+// TestServerState_ConfigAfterSet tests the Config() getter returns config after SetCheckResult
+func TestServerState_ConfigAfterSet(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test"})
+	cfg := &domain.Config{Version: "1.0"}
+	state.SetCheckResult(nil, domain.CouplingMatrix{}, domain.DebtScore{}, cfg, nil)
+	if got := state.Config(); got == nil || got.Version != "1.0" {
+		t.Errorf("expected config with version 1.0, got %v", got)
+	}
+}
+
+// TestNewServer verifies the New constructor
+func TestNewServer(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test"})
+	srv := New(8080, "127.0.0.1", "/test", nil, state)
+	if srv == nil {
+		t.Fatal("New() returned nil")
+	}
+	if srv.port != 8080 {
+		t.Errorf("expected port 8080, got %d", srv.port)
+	}
+	if srv.projectRoot != "/test" {
+		t.Errorf("expected projectRoot /test, got %s", srv.projectRoot)
+	}
+}
+
+// TestConfigPathFor verifies configPathFor returns correct path
+func TestConfigPathFor(t *testing.T) {
+	tests := []struct {
+		root     string
+		expected string
+	}{
+		{"/project", "/project/arx.yaml"},
+		{"/project/sub", "/project/sub/arx.yaml"},
+	}
+	for _, tt := range tests {
+		got := configPathFor(tt.root)
+		if got != tt.expected {
+			t.Errorf("configPathFor(%q) = %q, want %q", tt.root, got, tt.expected)
+		}
+	}
+}
+
+// TestNewDefaultCheckService verifies the factory creates a valid service
+func TestNewDefaultCheckService(t *testing.T) {
+	service := NewDefaultCheckService()
+	if service == nil {
+		t.Fatal("NewDefaultCheckService() returned nil")
+	}
+}
