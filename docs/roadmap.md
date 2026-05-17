@@ -1,6 +1,14 @@
 # Roadmap
 
-## ✅ v0.25.0 (Current — Dashboard Filters, State Persistence, Check Diff)
+## ✅ v0.26.0 (Current — Performance Metrics, Config Improvements, Quality)
+
+- [x] Performance metrics: check duration, files scanned, total deps, detectors run, uptime
+- [x] `/api/metrics` endpoint + metrics cards on dashboard
+- [x] `arx config set` supports dotted paths (`severity_mapping.critical`), JSON arrays, numbers
+- [x] `arx config get` supports dotted paths for complex values
+- [x] Quality pass: `go vet` clean, `go test -race` 0 data races
+
+## ✅ v0.25.0 (Dashboard Filters, State Persistence, Check Diff)
 
 - [x] Dashboard filtering by severity (checkboxes), layer (dropdown), and search text
 - [x] Sortable violation columns (asc/desc/none with visual arrows)

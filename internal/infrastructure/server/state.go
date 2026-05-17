@@ -20,6 +20,15 @@ type VersionInfo struct {
 	GoVersion string `json:"go_version"`
 }
 
+// Metrics holds performance data from the last architecture check.
+type Metrics struct {
+	CheckDurationMs int64 `json:"check_duration_ms"`
+	FilesScanned    int   `json:"files_scanned"`
+	TotalDeps       int   `json:"total_deps"`
+	DetectorsRun    int   `json:"detectors_run"`
+	UptimeSeconds   int64 `json:"uptime_seconds"`
+}
+
 // ServerState holds the cached audit results shared between the refresh loop
 // and HTTP handlers. All public access must go through the mutex-protected
 // getters to ensure safe concurrent reads.
@@ -33,6 +42,7 @@ type ServerState struct {
 	config     *domain.Config
 	version    VersionInfo
 	checkError error
+	metrics    Metrics
 }
 
 // NewServerState creates a new ServerState with the given version info.
@@ -44,7 +54,7 @@ func NewServerState(version VersionInfo) *ServerState {
 }
 
 // SetCheckResult atomically updates all check-related fields.
-func (s *ServerState) SetCheckResult(violations []domain.Violation, coupling domain.CouplingMatrix, debt domain.DebtScore, cfg *domain.Config, checkErr error) {
+func (s *ServerState) SetCheckResult(violations []domain.Violation, coupling domain.CouplingMatrix, debt domain.DebtScore, cfg *domain.Config, metrics Metrics, checkErr error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -52,6 +62,7 @@ func (s *ServerState) SetCheckResult(violations []domain.Violation, coupling dom
 	s.coupling = coupling
 	s.debt = debt
 	s.config = cfg
+	s.metrics = metrics
 	s.checkError = checkErr
 	s.lastCheck = time.Now()
 }
@@ -123,6 +134,16 @@ func (s *ServerState) CheckError() error {
 	return s.checkError
 }
 
+// Metrics returns a copy of the current performance metrics.
+func (s *ServerState) Metrics() Metrics {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	m := s.metrics
+	// Compute uptime dynamically at read time
+	m.UptimeSeconds = int64(time.Since(s.uptime).Seconds())
+	return m
+}
+
 // ViolationCount returns the number of violations without allocating a slice copy.
 func (s *ServerState) ViolationCount() int {
 	s.mu.RLock()
@@ -137,6 +158,7 @@ type CacheData struct {
 	Debt       domain.DebtScore      `json:"debt"`
 	LastCheck  time.Time             `json:"last_check"`
 	Error      string                `json:"error,omitempty"`
+	Metrics    Metrics               `json:"metrics,omitempty"`
 }
 
 // SaveToFile writes the current state to a JSON file.
@@ -147,6 +169,7 @@ func (s *ServerState) SaveToFile(path string) error {
 		Coupling:   s.coupling,
 		Debt:       s.debt,
 		LastCheck:  s.lastCheck,
+		Metrics:    s.metrics,
 	}
 	if s.checkError != nil {
 		data.Error = s.checkError.Error()
@@ -183,6 +206,7 @@ func (s *ServerState) LoadFromFile(path string) error {
 	s.coupling = cache.Coupling
 	s.debt = cache.Debt
 	s.lastCheck = cache.LastCheck
+	s.metrics = cache.Metrics
 	if cache.Error != "" {
 		s.checkError = fmt.Errorf("%s", cache.Error)
 	}

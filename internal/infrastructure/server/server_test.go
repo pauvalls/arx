@@ -33,7 +33,7 @@ func TestServerState_ConcurrentReadWrite(t *testing.T) {
 			debt.AddViolation("error")
 			debt.Calculate()
 
-			state.SetCheckResult(violations, coupling, debt, nil, nil)
+			state.SetCheckResult(violations, coupling, debt, nil, Metrics{}, nil)
 			time.Sleep(time.Microsecond)
 		}
 		close(done)
@@ -174,7 +174,7 @@ func TestServer_HandlerStatusWithViolations(t *testing.T) {
 		{ID: "v1", RuleID: "r1", Severity: domain.SeverityError},
 		{ID: "v2", RuleID: "r2", Severity: domain.SeverityWarning},
 	}
-	state.SetCheckResult(violations, domain.NewCouplingMatrix(), domain.NewDebtScore(), nil, nil)
+	state.SetCheckResult(violations, domain.NewCouplingMatrix(), domain.NewDebtScore(), nil, Metrics{}, nil)
 
 	srv := &Server{state: state}
 
@@ -198,7 +198,7 @@ func TestServer_HandlerViolations(t *testing.T) {
 	violations := []domain.Violation{
 		{ID: "v1", RuleID: "r1", File: "a.go", Severity: domain.SeverityError},
 	}
-	state.SetCheckResult(violations, domain.NewCouplingMatrix(), domain.NewDebtScore(), nil, nil)
+	state.SetCheckResult(violations, domain.NewCouplingMatrix(), domain.NewDebtScore(), nil, Metrics{}, nil)
 
 	srv := &Server{state: state}
 
@@ -253,7 +253,7 @@ func TestServer_HandlerCoupling(t *testing.T) {
 	coupling.Add("app", "domain")
 	coupling.Add("app", "domain")
 	coupling.Add("domain", "infra")
-	state.SetCheckResult(nil, coupling, domain.NewDebtScore(), nil, nil)
+	state.SetCheckResult(nil, coupling, domain.NewDebtScore(), nil, Metrics{}, nil)
 
 	srv := &Server{state: state}
 
@@ -305,7 +305,7 @@ func TestServer_HandlerDebt(t *testing.T) {
 	debt.AddViolation("error")
 	debt.AddViolation("warning")
 	debt.Calculate()
-	state.SetCheckResult(nil, domain.NewCouplingMatrix(), debt, nil, nil)
+	state.SetCheckResult(nil, domain.NewCouplingMatrix(), debt, nil, Metrics{}, nil)
 
 	srv := &Server{state: state}
 
@@ -428,7 +428,7 @@ func TestServer_HandlerStatusWithSeverityBreakdown(t *testing.T) {
 	debt.AddViolation("error")
 	debt.AddViolation("warning")
 	debt.Calculate()
-	state.SetCheckResult(violations, domain.NewCouplingMatrix(), debt, nil, nil)
+	state.SetCheckResult(violations, domain.NewCouplingMatrix(), debt, nil, Metrics{}, nil)
 
 	srv := &Server{state: state}
 
@@ -507,7 +507,7 @@ func TestServer_HandlerViolationsFullDataShape(t *testing.T) {
 			Import:      "github.com/example/infra",
 		},
 	}
-	state.SetCheckResult(violations, domain.NewCouplingMatrix(), domain.NewDebtScore(), nil, nil)
+	state.SetCheckResult(violations, domain.NewCouplingMatrix(), domain.NewDebtScore(), nil, Metrics{}, nil)
 
 	srv := &Server{state: state}
 
@@ -566,7 +566,7 @@ func TestServer_HandlerCouplingEntriesFormat(t *testing.T) {
 	coupling.Add("application", "domain")
 	coupling.Add("application", "infrastructure")
 	coupling.Add("domain", "infrastructure")
-	state.SetCheckResult(nil, coupling, domain.NewDebtScore(), nil, nil)
+	state.SetCheckResult(nil, coupling, domain.NewDebtScore(), nil, Metrics{}, nil)
 
 	srv := &Server{state: state}
 
@@ -619,7 +619,7 @@ func TestServer_HandlerDebtFullStructure(t *testing.T) {
 	debt.AddViolation("info")
 	debt.Calculate()
 	debt.SetTrend(5)
-	state.SetCheckResult(nil, domain.NewCouplingMatrix(), debt, nil, nil)
+	state.SetCheckResult(nil, domain.NewCouplingMatrix(), debt, nil, Metrics{}, nil)
 
 	srv := &Server{state: state}
 
@@ -736,7 +736,7 @@ func TestServerState_ConfigGetter(t *testing.T) {
 func TestServerState_ConfigAfterSet(t *testing.T) {
 	state := NewServerState(VersionInfo{Version: "test"})
 	cfg := &domain.Config{Version: "1.0"}
-	state.SetCheckResult(nil, domain.CouplingMatrix{}, domain.DebtScore{}, cfg, nil)
+	state.SetCheckResult(nil, domain.CouplingMatrix{}, domain.DebtScore{}, cfg, Metrics{}, nil)
 	if got := state.Config(); got == nil || got.Version != "1.0" {
 		t.Errorf("expected config with version 1.0, got %v", got)
 	}
@@ -797,7 +797,7 @@ func TestServerState_SaveLoad(t *testing.T) {
 	debt.AddViolation("error")
 	debt.AddViolation("warning")
 	debt.Calculate()
-	state.SetCheckResult(violations, coupling, debt, nil, nil)
+	state.SetCheckResult(violations, coupling, debt, nil, Metrics{}, nil)
 
 	// Save to temp file
 	tmp := t.TempDir()
@@ -873,5 +873,206 @@ func TestServerState_LoadMissing(t *testing.T) {
 	}
 	if state.CheckError() != nil {
 		t.Errorf("expected nil error after missing load, got %v", state.CheckError())
+	}
+}
+
+func TestMetrics_JSONRoundTrip(t *testing.T) {
+	m := Metrics{
+		CheckDurationMs: 342,
+		FilesScanned:    156,
+		TotalDeps:       892,
+		DetectorsRun:    3,
+		UptimeSeconds:   1800,
+	}
+
+	data, err := json.Marshal(m)
+	if err != nil {
+		t.Fatalf("failed to marshal Metrics: %v", err)
+	}
+
+	var got Metrics
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("failed to unmarshal Metrics: %v", err)
+	}
+
+	if got.CheckDurationMs != m.CheckDurationMs {
+		t.Errorf("check_duration_ms: got %d, want %d", got.CheckDurationMs, m.CheckDurationMs)
+	}
+	if got.FilesScanned != m.FilesScanned {
+		t.Errorf("files_scanned: got %d, want %d", got.FilesScanned, m.FilesScanned)
+	}
+	if got.TotalDeps != m.TotalDeps {
+		t.Errorf("total_deps: got %d, want %d", got.TotalDeps, m.TotalDeps)
+	}
+	if got.DetectorsRun != m.DetectorsRun {
+		t.Errorf("detectors_run: got %d, want %d", got.DetectorsRun, m.DetectorsRun)
+	}
+}
+
+func TestServerState_MetricsGetterSetter(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test"})
+
+	// Default metrics should be zero
+	m := state.Metrics()
+	if m.CheckDurationMs != 0 {
+		t.Errorf("expected default check_duration_ms 0, got %d", m.CheckDurationMs)
+	}
+	if m.UptimeSeconds < 0 {
+		t.Errorf("expected non-negative uptime, got %d", m.UptimeSeconds)
+	}
+
+	// Set metrics and verify
+	expected := Metrics{
+		CheckDurationMs: 500,
+		FilesScanned:    42,
+		TotalDeps:       100,
+		DetectorsRun:    2,
+	}
+	state.SetCheckResult(nil, domain.CouplingMatrix{}, domain.DebtScore{}, nil, expected, nil)
+
+	got := state.Metrics()
+	if got.CheckDurationMs != 500 {
+		t.Errorf("check_duration_ms: got %d, want 500", got.CheckDurationMs)
+	}
+	if got.FilesScanned != 42 {
+		t.Errorf("files_scanned: got %d, want 42", got.FilesScanned)
+	}
+	if got.TotalDeps != 100 {
+		t.Errorf("total_deps: got %d, want 100", got.TotalDeps)
+	}
+	if got.DetectorsRun != 2 {
+		t.Errorf("detectors_run: got %d, want 2", got.DetectorsRun)
+	}
+	// UptimeSeconds is computed dynamically, just verify it's non-negative
+	if got.UptimeSeconds < 0 {
+		t.Errorf("expected non-negative uptime_seconds, got %d", got.UptimeSeconds)
+	}
+}
+
+func TestServerState_MetricsThreadSafety(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test"})
+
+	var wg sync.WaitGroup
+	done := make(chan struct{})
+
+	// Writer
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 100; i++ {
+			m := Metrics{
+				CheckDurationMs: int64(i),
+				FilesScanned:    i,
+				TotalDeps:       i * 2,
+				DetectorsRun:    i % 5,
+			}
+			state.SetCheckResult(nil, domain.CouplingMatrix{}, domain.DebtScore{}, nil, m, nil)
+			time.Sleep(time.Microsecond)
+		}
+		close(done)
+	}()
+
+	// Readers
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-done:
+					return
+				default:
+					_ = state.Metrics()
+					time.Sleep(time.Microsecond)
+				}
+			}
+		}()
+	}
+
+	wg.Wait()
+}
+
+func TestServer_HandlerMetrics(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test"})
+	m := Metrics{
+		CheckDurationMs: 342,
+		FilesScanned:    156,
+		TotalDeps:       892,
+		DetectorsRun:    3,
+	}
+	state.SetCheckResult(nil, domain.CouplingMatrix{}, domain.DebtScore{}, nil, m, nil)
+
+	srv := &Server{state: state}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/metrics", nil)
+	rec := httptest.NewRecorder()
+
+	srv.handleMetrics(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+
+	ct := rec.Header().Get("Content-Type")
+	if ct != "application/json" {
+		t.Errorf("expected Content-Type application/json, got %s", ct)
+	}
+
+	var result Metrics
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	if result.CheckDurationMs != 342 {
+		t.Errorf("check_duration_ms: got %d, want 342", result.CheckDurationMs)
+	}
+	if result.FilesScanned != 156 {
+		t.Errorf("files_scanned: got %d, want 156", result.FilesScanned)
+	}
+	if result.TotalDeps != 892 {
+		t.Errorf("total_deps: got %d, want 892", result.TotalDeps)
+	}
+	if result.DetectorsRun != 3 {
+		t.Errorf("detectors_run: got %d, want 3", result.DetectorsRun)
+	}
+}
+
+func TestServer_HandlerMetricsMethodNotAllowed(t *testing.T) {
+	srv := &Server{state: NewServerState(VersionInfo{})}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/metrics", nil)
+	rec := httptest.NewRecorder()
+
+	srv.handleMetrics(rec, req)
+
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected status 405, got %d", rec.Code)
+	}
+}
+
+func TestServer_HandlerMetricsEmptyState(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test"})
+	srv := &Server{state: state}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/metrics", nil)
+	rec := httptest.NewRecorder()
+
+	srv.handleMetrics(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+
+	var result Metrics
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	// Zero values for unset metrics (uptime is computed dynamically)
+	if result.CheckDurationMs != 0 {
+		t.Errorf("expected 0 check_duration_ms, got %d", result.CheckDurationMs)
+	}
+	if result.FilesScanned != 0 {
+		t.Errorf("expected 0 files_scanned, got %d", result.FilesScanned)
 	}
 }

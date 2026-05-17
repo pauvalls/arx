@@ -56,6 +56,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/violations", s.handleViolations)
 	mux.HandleFunc("/api/coupling", s.handleCoupling)
 	mux.HandleFunc("/api/debt", s.handleDebt)
+	mux.HandleFunc("/api/metrics", s.handleMetrics)
 
 	// Dashboard root
 	mux.HandleFunc("/", s.handleDashboard)
@@ -248,6 +249,16 @@ func (s *Server) handleDebt(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.state.Debt())
 }
 
+// handleMetrics returns performance metrics from the last check.
+func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, s.state.Metrics())
+}
+
 // writeJSON marshals and writes a JSON response.
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
@@ -281,18 +292,34 @@ func (s *Server) runCheck(ctx context.Context) {
 // RunCheck performs a full architecture check and updates the ServerState.
 // This standalone version is used by cmd/arx/server.go for the initial check.
 func RunCheck(ctx context.Context, service *application.CheckService, projectRoot string, state *ServerState) {
+	start := time.Now()
 	configPath := configPathFor(projectRoot)
 
 	cfg, err := service.Load(configPath)
 	if err != nil {
-		state.SetError(fmt.Errorf("failed to load config: %w", err))
+		state.SetCheckResult(nil, domain.CouplingMatrix{}, domain.DebtScore{}, nil, Metrics{}, fmt.Errorf("failed to load config: %w", err))
 		return
 	}
 
-	deps, err := service.Detect(ctx, projectRoot, cfg.Layers)
+	result, err := service.DetectWithStatus(ctx, projectRoot, cfg.Layers)
 	if err != nil {
-		state.SetError(fmt.Errorf("detection failed: %w", err))
+		state.SetCheckResult(nil, domain.CouplingMatrix{}, domain.DebtScore{}, cfg, Metrics{}, fmt.Errorf("detection failed: %w", err))
 		return
+	}
+	deps := result.Dependencies
+
+	// Count applicable detectors
+	detectorsRun := 0
+	for _, st := range result.Statuses {
+		if st.Applicable {
+			detectorsRun++
+		}
+	}
+
+	// Count unique files
+	fileSet := make(map[string]struct{}, len(deps))
+	for _, d := range deps {
+		fileSet[d.SourceFile] = struct{}{}
 	}
 
 	violations := service.Evaluate(deps, cfg.Rules, cfg.Layers)
@@ -308,7 +335,14 @@ func RunCheck(ctx context.Context, service *application.CheckService, projectRoo
 	}
 	debt.Calculate()
 
-	state.SetCheckResult(violations, coupling, debt, cfg, nil)
+	metrics := Metrics{
+		CheckDurationMs: time.Since(start).Milliseconds(),
+		FilesScanned:    len(fileSet),
+		TotalDeps:       len(deps),
+		DetectorsRun:    detectorsRun,
+	}
+
+	state.SetCheckResult(violations, coupling, debt, cfg, metrics, nil)
 }
 
 // configPathFor returns the expected arx.yaml path for a project root.

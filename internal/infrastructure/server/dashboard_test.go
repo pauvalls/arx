@@ -48,7 +48,7 @@ func TestDashboard_ShowsViolationCount(t *testing.T) {
 	debt.AddViolation("warning")
 	debt.AddViolation("info")
 	debt.Calculate()
-	state.SetCheckResult(violations, domain.NewCouplingMatrix(), debt, nil, nil)
+	state.SetCheckResult(violations, domain.NewCouplingMatrix(), debt, nil, Metrics{}, nil)
 
 	srv := &Server{state: state}
 
@@ -126,7 +126,7 @@ func TestDashboard_WithCouplingData(t *testing.T) {
 	coupling.Add("app", "domain")
 	coupling.Add("app", "domain")
 	coupling.Add("domain", "infra")
-	state.SetCheckResult(nil, coupling, domain.NewDebtScore(), nil, nil)
+	state.SetCheckResult(nil, coupling, domain.NewDebtScore(), nil, Metrics{}, nil)
 
 	srv := &Server{state: state}
 
@@ -153,7 +153,7 @@ func TestDashboard_WithDebtScore(t *testing.T) {
 	debt.AddViolation("error")
 	debt.AddViolation("warning")
 	debt.Calculate()
-	state.SetCheckResult(nil, domain.NewCouplingMatrix(), debt, nil, nil)
+	state.SetCheckResult(nil, domain.NewCouplingMatrix(), debt, nil, Metrics{}, nil)
 
 	srv := &Server{state: state}
 
@@ -291,7 +291,7 @@ func TestDashboard_LastCheckTimestamp(t *testing.T) {
 	violations := []domain.Violation{
 		{ID: "v1", RuleID: "r1", Severity: domain.SeverityError},
 	}
-	state.SetCheckResult(violations, domain.NewCouplingMatrix(), domain.NewDebtScore(), nil, nil)
+	state.SetCheckResult(violations, domain.NewCouplingMatrix(), domain.NewDebtScore(), nil, Metrics{}, nil)
 
 	srv := &Server{state: state}
 
@@ -436,7 +436,7 @@ func TestDashboard_ContainsFilterBar(t *testing.T) {
 	violations := []domain.Violation{
 		{ID: "v1", RuleID: "r1", File: "a.go", Severity: domain.SeverityError, SourceLayer: "app"},
 	}
-	state.SetCheckResult(violations, domain.NewCouplingMatrix(), domain.NewDebtScore(), nil, nil)
+	state.SetCheckResult(violations, domain.NewCouplingMatrix(), domain.NewDebtScore(), nil, Metrics{}, nil)
 
 	srv := &Server{state: state}
 
@@ -480,7 +480,7 @@ func TestDashboard_ContainsSortableHeaders(t *testing.T) {
 	violations := []domain.Violation{
 		{ID: "v1", RuleID: "r1", File: "a.go", Severity: domain.SeverityError},
 	}
-	state.SetCheckResult(violations, domain.NewCouplingMatrix(), domain.NewDebtScore(), nil, nil)
+	state.SetCheckResult(violations, domain.NewCouplingMatrix(), domain.NewDebtScore(), nil, Metrics{}, nil)
 
 	srv := &Server{state: state}
 
@@ -513,7 +513,7 @@ func TestDashboard_ContainsFilterSummary(t *testing.T) {
 	violations := []domain.Violation{
 		{ID: "v1", RuleID: "r1", File: "a.go", Severity: domain.SeverityError},
 	}
-	state.SetCheckResult(violations, domain.NewCouplingMatrix(), domain.NewDebtScore(), nil, nil)
+	state.SetCheckResult(violations, domain.NewCouplingMatrix(), domain.NewDebtScore(), nil, Metrics{}, nil)
 
 	srv := &Server{state: state}
 
@@ -532,5 +532,73 @@ func TestDashboard_ContainsFilterSummary(t *testing.T) {
 	}
 	if !strings.Contains(body, "No violations match the current filter") {
 		t.Error("expected empty filter state message in dashboard")
+	}
+}
+
+func TestDashboard_ContainsMetricCards(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test"})
+	srv := &Server{state: state}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+
+	srv.handleDashboard(rec, req)
+
+	body := rec.Body.String()
+
+	metricCardIDs := []string{
+		`id="metric-duration"`,
+		`id="metric-files"`,
+		`id="metric-deps"`,
+		`id="metric-detectors"`,
+	}
+
+	for _, id := range metricCardIDs {
+		if !strings.Contains(body, id) {
+			t.Errorf("expected dashboard to contain metric card %q", id)
+		}
+	}
+
+	// Verify metric card CSS class
+	if !strings.Contains(body, "summary-card metric") {
+		t.Error("expected metric cards to have 'summary-card metric' class")
+	}
+
+	// Verify labels
+	requiredLabels := []string{"Check (ms)", "Files", "Dependencies", "Detectors"}
+	for _, label := range requiredLabels {
+		if !strings.Contains(body, label) {
+			t.Errorf("expected dashboard to contain metric label %q", label)
+		}
+	}
+}
+
+func TestDashboard_ContainsMetricsPolling(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test"})
+	srv := &Server{state: state}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+
+	srv.handleDashboard(rec, req)
+
+	body := rec.Body.String()
+
+	// Verify metrics endpoint is fetched in JS
+	if !strings.Contains(body, "/api/metrics") {
+		t.Error("expected polling script to fetch /api/metrics")
+	}
+
+	// Verify metric card IDs are referenced in JS
+	metricJSRefs := []string{
+		"metric-duration",
+		"metric-files",
+		"metric-deps",
+		"metric-detectors",
+	}
+	for _, ref := range metricJSRefs {
+		if !strings.Contains(body, ref) {
+			t.Errorf("expected JS to reference metric element %q", ref)
+		}
 	}
 }

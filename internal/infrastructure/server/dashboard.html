@@ -88,6 +88,7 @@ header .meta {
 .summary-card.warnings .value { color: var(--color-warning); }
 .summary-card.info .value { color: var(--color-info); }
 .summary-card.debt .value { color: var(--color-text); }
+.summary-card.metric .value { color: var(--color-text-muted); font-size: 1.75rem; }
 
 /* Sections */
 section {
@@ -408,6 +409,22 @@ th[data-sortable].sort-desc::after {
     <div class="summary-card debt">
       <span class="value" id="debt-score">{{.DebtTotal}}</span>
       <span class="label">Debt Score</span>
+    </div>
+    <div class="summary-card metric">
+      <span class="value" id="metric-duration">-</span>
+      <span class="label">Check (ms)</span>
+    </div>
+    <div class="summary-card metric">
+      <span class="value" id="metric-files">-</span>
+      <span class="label">Files</span>
+    </div>
+    <div class="summary-card metric">
+      <span class="value" id="metric-deps">-</span>
+      <span class="label">Dependencies</span>
+    </div>
+    <div class="summary-card metric">
+      <span class="value" id="metric-detectors">-</span>
+      <span class="label">Detectors</span>
     </div>
   </div>
 
@@ -859,6 +876,14 @@ th[data-sortable].sort-desc::after {
         reRender();
         renderCoupling(coupling);
 
+        // Update metric cards
+        var metrics = results.metrics || {};
+        var el = function(id) { return document.getElementById(id); };
+        if (el('metric-duration')) el('metric-duration').textContent = metrics.check_duration_ms || '-';
+        if (el('metric-files')) el('metric-files').textContent = metrics.files_scanned || '-';
+        if (el('metric-deps')) el('metric-deps').textContent = metrics.total_deps || '-';
+        if (el('metric-detectors')) el('metric-detectors').textContent = metrics.detectors_run || '-';
+
         if (statusEl) {
           statusEl.textContent = 'updated ' + new Date().toLocaleTimeString();
           statusEl.className = 'polling';
@@ -888,6 +913,7 @@ th[data-sortable].sort-desc::after {
     fetchOne('/api/coupling', 'coupling');
     fetchOne('/api/debt', 'debt');
     fetchOne('/api/status', 'status');
+    fetchOne('/api/metrics', 'metrics');
   }
 
   // --- Wire event listeners (task 1.9) ---
