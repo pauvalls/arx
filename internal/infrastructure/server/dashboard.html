@@ -204,6 +204,161 @@ footer {
   margin-right: 4px;
 }
 
+/* Filter Bar */
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 16px;
+  padding: 12px;
+  background: var(--color-bg);
+  border-radius: var(--radius);
+}
+
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.filter-group label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.filter-severity {
+  display: flex;
+  gap: 8px;
+}
+
+.filter-severity label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: normal;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--color-border);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.filter-severity label.active-error {
+  background: var(--color-error-bg);
+  border-color: var(--color-error);
+  color: var(--color-error);
+}
+
+.filter-severity label.active-warning {
+  background: var(--color-warning-bg);
+  border-color: var(--color-warning);
+  color: #856404;
+}
+
+.filter-severity label.active-info {
+  background: var(--color-info-bg);
+  border-color: var(--color-info);
+  color: #0c5460;
+}
+
+.filter-severity input[type="checkbox"] {
+  margin: 0;
+  cursor: pointer;
+}
+
+.filter-bar select,
+.filter-bar input[type="text"] {
+  padding: 4px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  font-size: 0.85rem;
+  background: var(--color-surface);
+}
+
+.filter-bar select.active,
+.filter-bar input[type="text"].active {
+  border-color: var(--color-info);
+  box-shadow: 0 0 0 1px var(--color-info);
+}
+
+.filter-bar input[type="text"] {
+  min-width: 180px;
+}
+
+#filter-summary {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  margin-left: auto;
+}
+
+#clear-filters-btn {
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-surface);
+  cursor: pointer;
+  color: var(--color-text-muted);
+}
+
+#clear-filters-btn:hover {
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+#empty-filter-state {
+  text-align: center;
+  padding: 32px 20px;
+  color: var(--color-text-muted);
+}
+
+#empty-filter-state p {
+  margin-bottom: 12px;
+  font-style: italic;
+}
+
+/* Sortable columns */
+th[data-sortable] {
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+  padding-right: 20px;
+}
+
+th[data-sortable]:hover {
+  background: var(--color-border);
+}
+
+th[data-sortable]::after {
+  content: "\2195";
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  opacity: 0.4;
+}
+
+th[data-sortable].sort-asc::after {
+  content: "\2191";
+  opacity: 1;
+  color: var(--color-text);
+}
+
+th[data-sortable].sort-desc::after {
+  content: "\2193";
+  opacity: 1;
+  color: var(--color-text);
+}
+
 /* Print Styles */
 @media print {
   body { background: white; padding: 0; }
@@ -260,17 +415,49 @@ footer {
   <section id="violations-section">
     <h2>Violations</h2>
     {{if .Violations}}
+    <!-- Filter Bar -->
+    <div class="filter-bar" id="filter-bar">
+      <div class="filter-group filter-severity">
+        <label>Severity:</label>
+        <label class="active-error" id="sev-error-label">
+          <input type="checkbox" id="sev-error" checked> error
+        </label>
+        <label class="active-warning" id="sev-warning-label">
+          <input type="checkbox" id="sev-warning" checked> warning
+        </label>
+        <label class="active-info" id="sev-info-label">
+          <input type="checkbox" id="sev-info" checked> info
+        </label>
+      </div>
+      <div class="filter-group">
+        <label for="layer-filter">Layer:</label>
+        <select id="layer-filter">
+          <option value="">All layers</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label for="search-input">Search:</label>
+        <input type="text" id="search-input" placeholder="rule, file, message...">
+      </div>
+      <span id="filter-summary"></span>
+      <button id="clear-filters-btn" style="display:none;">Clear filters</button>
+    </div>
+    <!-- Empty state for filter results -->
+    <div id="empty-filter-state" style="display:none;">
+      <p>No violations match the current filter.</p>
+      <button id="clear-filters-btn-alt">Clear filters</button>
+    </div>
     <div class="table-wrap">
       <table id="violations-table">
         <thead>
           <tr>
-            <th>Severity</th>
-            <th>Rule</th>
-            <th>File</th>
-            <th>Line</th>
-            <th>From</th>
-            <th>To</th>
-            <th>Message</th>
+            <th data-sortable="severity">Severity</th>
+            <th data-sortable="rule_id">Rule</th>
+            <th data-sortable="file">File</th>
+            <th data-sortable="line">Line</th>
+            <th data-sortable="source_layer">From</th>
+            <th data-sortable="target_layer">To</th>
+            <th data-sortable="message">Message</th>
           </tr>
         </thead>
         <tbody id="violations-body">
@@ -363,6 +550,18 @@ footer {
   var pollInterval = 30000;
   var statusEl = document.getElementById('poll-status');
 
+  // --- Filter State (task 1.5) ---
+  var allViolations = []; // full dataset from API
+  var originalOrder = []; // preserve original order for "none" sort
+  var activeFilters = {
+    severities: { error: true, warning: true, info: true },
+    sourceLayer: '',
+    searchText: '',
+    sortColumn: null,
+    sortDirection: null // 'asc', 'desc', or null
+  };
+  var searchDebounceTimer = null;
+
   function escapeHtml(str) {
     var div = document.createElement('div');
     div.appendChild(document.createTextNode(str));
@@ -375,6 +574,159 @@ footer {
     return 'error';
   }
 
+  // --- Populate layer dropdown (task 1.8) ---
+  function populateLayerDropdown(violations) {
+    var sel = document.getElementById('layer-filter');
+    if (!sel) return;
+    var layers = {};
+    for (var i = 0; i < violations.length; i++) {
+      var layer = violations[i].source_layer;
+      if (layer && layer !== '') layers[layer] = true;
+    }
+    var sorted = [];
+    for (var key in layers) { if (layers.hasOwnProperty(key)) sorted.push(key); }
+    sorted.sort();
+    // Keep "All layers" option, remove rest
+    while (sel.options.length > 1) sel.remove(1);
+    for (var j = 0; j < sorted.length; j++) {
+      var opt = document.createElement('option');
+      opt.value = sorted[j];
+      opt.textContent = sorted[j];
+      sel.appendChild(opt);
+    }
+  }
+
+  // --- Apply filters (task 1.6) ---
+  function applyFilters(violations) {
+    var result = [];
+    for (var i = 0; i < violations.length; i++) {
+      var v = violations[i];
+      // Severity filter
+      if (!activeFilters.severities[v.severity]) continue;
+      // Source layer filter
+      if (activeFilters.sourceLayer && v.source_layer !== activeFilters.sourceLayer) continue;
+      // Search filter
+      if (activeFilters.searchText) {
+        var q = activeFilters.searchText;
+        var haystack = (v.rule_id || '') + ' ' + (v.file || '') + ' ' + (v.message || '');
+        if (haystack.toLowerCase().indexOf(q) === -1) continue;
+      }
+      result.push(v);
+    }
+    return result;
+  }
+
+  // --- Sort by column (task 1.7) ---
+  function sortByColumn(violations, column, direction) {
+    if (!column || !direction) {
+      // Return original order
+      return originalOrder.slice();
+    }
+    var sorted = violations.slice();
+    var dir = direction === 'asc' ? 1 : -1;
+    sorted.sort(function(a, b) {
+      var va = a[column] || '';
+      var vb = b[column] || '';
+      // Numeric comparison for 'line'
+      if (column === 'line') {
+        var na = parseInt(va, 10) || 0;
+        var nb = parseInt(vb, 10) || 0;
+        return (na - nb) * dir;
+      }
+      // String comparison
+      var sa = String(va).toLowerCase();
+      var sb = String(vb).toLowerCase();
+      if (sa < sb) return -1 * dir;
+      if (sa > sb) return 1 * dir;
+      return 0;
+    });
+    return sorted;
+  }
+
+  // --- Update filter summary (task 1.10) ---
+  function updateFilterSummary(filteredCount, totalCount) {
+    var el = document.getElementById('filter-summary');
+    if (el) el.textContent = 'Showing ' + filteredCount + ' of ' + totalCount + ' violations';
+  }
+
+  // --- Show/hide empty filter state ---
+  function updateEmptyState(hasResults) {
+    var emptyEl = document.getElementById('empty-filter-state');
+    var tableWrap = document.querySelector('#violations-section .table-wrap');
+    if (!hasResults && allViolations.length > 0) {
+      if (emptyEl) emptyEl.style.display = '';
+      if (tableWrap) tableWrap.style.display = 'none';
+    } else {
+      if (emptyEl) emptyEl.style.display = 'none';
+      if (tableWrap) tableWrap.style.display = '';
+    }
+  }
+
+  // --- Update active filter indicator styles ---
+  function updateFilterIndicators() {
+    // Severity checkboxes
+    var sevs = ['error', 'warning', 'info'];
+    for (var i = 0; i < sevs.length; i++) {
+      var cb = document.getElementById('sev-' + sevs[i]);
+      var lbl = document.getElementById('sev-' + sevs[i] + '-label');
+      if (cb && lbl) {
+        var cls = 'active-' + sevs[i];
+        lbl.className = cb.checked ? cls : '';
+      }
+    }
+    // Layer dropdown
+    var layerSel = document.getElementById('layer-filter');
+    if (layerSel) {
+      layerSel.className = layerSel.value ? 'active' : '';
+    }
+    // Search input
+    var searchInput = document.getElementById('search-input');
+    if (searchInput) {
+      searchInput.className = searchInput.value ? 'active' : '';
+    }
+    // Clear filters button visibility
+    var hasActiveFilter = !activeFilters.severities.error || !activeFilters.severities.warning ||
+      !activeFilters.severities.info || activeFilters.sourceLayer !== '' || activeFilters.searchText !== '';
+    var clearBtn = document.getElementById('clear-filters-btn');
+    var clearBtnAlt = document.getElementById('clear-filters-btn-alt');
+    if (clearBtn) clearBtn.style.display = hasActiveFilter ? '' : 'none';
+    if (clearBtnAlt) clearBtnAlt.style.display = hasActiveFilter ? '' : 'none';
+  }
+
+  // --- Clear all filters ---
+  function clearFilters() {
+    activeFilters.severities = { error: true, warning: true, info: true };
+    activeFilters.sourceLayer = '';
+    activeFilters.searchText = '';
+    activeFilters.sortColumn = null;
+    activeFilters.sortDirection = null;
+
+    document.getElementById('sev-error').checked = true;
+    document.getElementById('sev-warning').checked = true;
+    document.getElementById('sev-info').checked = true;
+    document.getElementById('layer-filter').value = '';
+    document.getElementById('search-input').value = '';
+
+    // Reset sort indicators
+    var ths = document.querySelectorAll('th[data-sortable]');
+    for (var i = 0; i < ths.length; i++) {
+      ths[i].className = '';
+    }
+
+    reRender();
+  }
+
+  // --- Re-render after filter/sort change ---
+  function reRender() {
+    var filtered = applyFilters(allViolations);
+    var sorted = sortByColumn(filtered, activeFilters.sortColumn, activeFilters.sortDirection);
+    renderViolations(sorted);
+    updateFilterSummary(sorted.length, allViolations.length);
+    updateEmptyState(sorted.length > 0);
+    updateFilterIndicators();
+  }
+
+  // --- Render violations (task 1.10, updated) ---
   function renderViolations(violations) {
     var tbody = document.getElementById('violations-body');
     var empty = document.getElementById('violations-empty');
@@ -500,7 +852,11 @@ footer {
           debt_info: debtInfo
         });
 
-        renderViolations(violations);
+        // Store full dataset and re-apply filters
+        allViolations = violations;
+        originalOrder = violations.slice();
+        populateLayerDropdown(violations);
+        reRender();
         renderCoupling(coupling);
 
         if (statusEl) {
@@ -534,8 +890,91 @@ footer {
     fetchOne('/api/status', 'status');
   }
 
+  // --- Wire event listeners (task 1.9) ---
+  function wireFilters() {
+    // Severity checkboxes
+    var sevs = ['error', 'warning', 'info'];
+    for (var i = 0; i < sevs.length; i++) {
+      (function(sev) {
+        var cb = document.getElementById('sev-' + sev);
+        if (cb) {
+          cb.addEventListener('change', function() {
+            activeFilters.severities[sev] = cb.checked;
+            reRender();
+          });
+        }
+      })(sevs[i]);
+    }
+
+    // Layer dropdown
+    var layerSel = document.getElementById('layer-filter');
+    if (layerSel) {
+      layerSel.addEventListener('change', function() {
+        activeFilters.sourceLayer = layerSel.value;
+        reRender();
+      });
+    }
+
+    // Search input with debounce (task 1.9)
+    var searchInput = document.getElementById('search-input');
+    if (searchInput) {
+      searchInput.addEventListener('input', function() {
+        clearTimeout(searchDebounceTimer);
+        searchDebounceTimer = setTimeout(function() {
+          activeFilters.searchText = searchInput.value.toLowerCase().trim();
+          reRender();
+        }, 300);
+      });
+    }
+
+    // Sortable column headers (task 1.9)
+    var ths = document.querySelectorAll('th[data-sortable]');
+    for (var j = 0; j < ths.length; j++) {
+      (function(th) {
+        th.addEventListener('click', function() {
+          var col = th.getAttribute('data-sortable');
+          if (activeFilters.sortColumn === col) {
+            // Cycle: asc -> desc -> none
+            if (activeFilters.sortDirection === 'asc') {
+              activeFilters.sortDirection = 'desc';
+            } else if (activeFilters.sortDirection === 'desc') {
+              activeFilters.sortColumn = null;
+              activeFilters.sortDirection = null;
+            }
+          } else {
+            activeFilters.sortColumn = col;
+            activeFilters.sortDirection = 'asc';
+          }
+          // Update visual indicators
+          for (var k = 0; k < ths.length; k++) {
+            var otherCol = ths[k].getAttribute('data-sortable');
+            if (otherCol === activeFilters.sortColumn) {
+              ths[k].className = 'sort-' + activeFilters.sortDirection;
+            } else {
+              ths[k].className = '';
+            }
+          }
+          reRender();
+        });
+      })(ths[j]);
+    }
+
+    // Clear filters buttons
+    var clearBtn = document.getElementById('clear-filters-btn');
+    var clearBtnAlt = document.getElementById('clear-filters-btn-alt');
+    if (clearBtn) clearBtn.addEventListener('click', clearFilters);
+    if (clearBtnAlt) clearBtnAlt.addEventListener('click', clearFilters);
+  }
+
   // Initial poll after 30s, then every 30s
   setInterval(fetchData, pollInterval);
+
+  // Wire filters on DOM ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', wireFilters);
+  } else {
+    wireFilters();
+  }
 })();
 </script>
 </body>

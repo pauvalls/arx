@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -744,7 +745,7 @@ func TestServerState_ConfigAfterSet(t *testing.T) {
 // TestNewServer verifies the New constructor
 func TestNewServer(t *testing.T) {
 	state := NewServerState(VersionInfo{Version: "test"})
-	srv := New(8080, "127.0.0.1", "/test", nil, state)
+	srv := New(8080, "127.0.0.1", "/test", "", nil, state)
 	if srv == nil {
 		t.Fatal("New() returned nil")
 	}
@@ -778,5 +779,99 @@ func TestNewDefaultCheckService(t *testing.T) {
 	service := NewDefaultCheckService()
 	if service == nil {
 		t.Fatal("NewDefaultCheckService() returned nil")
+	}
+}
+
+func TestServerState_SaveLoad(t *testing.T) {
+	// Create state with violations, coupling, and debt
+	state := NewServerState(VersionInfo{Version: "test"})
+	violations := []domain.Violation{
+		{ID: "v1", RuleID: "r1", File: "a.go", Severity: domain.SeverityError},
+		{ID: "v2", RuleID: "r2", File: "b.go", Severity: domain.SeverityWarning},
+	}
+	coupling := domain.NewCouplingMatrix()
+	coupling.Add("app", "domain")
+	coupling.Add("app", "domain")
+	coupling.Add("domain", "infra")
+	debt := domain.NewDebtScore()
+	debt.AddViolation("error")
+	debt.AddViolation("warning")
+	debt.Calculate()
+	state.SetCheckResult(violations, coupling, debt, nil, nil)
+
+	// Save to temp file
+	tmp := t.TempDir()
+	path := tmp + "/state.json"
+	if err := state.SaveToFile(path); err != nil {
+		t.Fatalf("SaveToFile failed: %v", err)
+	}
+
+	// Load into a fresh state
+	loaded := NewServerState(VersionInfo{Version: "loaded"})
+	if err := loaded.LoadFromFile(path); err != nil {
+		t.Fatalf("LoadFromFile failed: %v", err)
+	}
+
+	// Verify violations
+	if loaded.ViolationCount() != 2 {
+		t.Errorf("expected 2 violations, got %d", loaded.ViolationCount())
+	}
+	vs := loaded.Violations()
+	if vs[0].ID != "v1" || vs[1].ID != "v2" {
+		t.Errorf("violations mismatch: got %v", vs)
+	}
+
+	// Verify coupling
+	c := loaded.Coupling()
+	if c.Get("app", "domain") != 2 {
+		t.Errorf("expected coupling app->domain=2, got %d", c.Get("app", "domain"))
+	}
+	if c.Get("domain", "infra") != 1 {
+		t.Errorf("expected coupling domain->infra=1, got %d", c.Get("domain", "infra"))
+	}
+
+	// Verify debt
+	d := loaded.Debt()
+	if d.Total != 4 { // 1*3 + 1*1 = 4
+		t.Errorf("expected debt score 4, got %d", d.Total)
+	}
+
+	// Verify lastCheck was restored
+	if loaded.LastCheck().IsZero() {
+		t.Error("expected lastCheck to be set after load")
+	}
+}
+
+func TestServerState_SaveLoadCorrupted(t *testing.T) {
+	tmp := t.TempDir()
+	path := tmp + "/corrupt.json"
+
+	// Write invalid JSON
+	if err := os.WriteFile(path, []byte("{not valid json!!!}"), 0644); err != nil {
+		t.Fatalf("failed to write corrupt file: %v", err)
+	}
+
+	state := NewServerState(VersionInfo{Version: "test"})
+	err := state.LoadFromFile(path)
+	if err == nil {
+		t.Fatal("expected error loading corrupt JSON, got nil")
+	}
+}
+
+func TestServerState_LoadMissing(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test"})
+
+	// Loading a non-existent file should return nil (graceful miss)
+	err := state.LoadFromFile("/tmp/arx-nonexistent-cache-file-12345.json")
+	if err != nil {
+		t.Fatalf("expected no error for missing file, got: %v", err)
+	}
+
+	// State should remain at defaults
+	if state.ViolationCount() != 0 {
+		t.Errorf("expected 0 violations after missing load, got %d", state.ViolationCount())
+	}
+	if state.CheckError() != nil {
+		t.Errorf("expected nil error after missing load, got %v", state.CheckError())
 	}
 }

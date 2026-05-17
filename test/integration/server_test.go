@@ -52,7 +52,8 @@ func TestServerIntegration(t *testing.T) {
 	t.Logf("Debt score: %d", debt.Total)
 
 	// Create server on random port (verify it constructs without error)
-	srv := server.New(0, "127.0.0.1", fixtureDir, service, state)
+	cachePath := filepath.Join(fixtureDir, ".arx-cache", "server-state.json")
+	srv := server.New(0, "127.0.0.1", fixtureDir, cachePath, service, state)
 	if srv == nil {
 		t.Fatal("expected non-nil server")
 	}
@@ -166,7 +167,7 @@ func TestServerStateUpdatesAfterCheck(t *testing.T) {
 // TestServerGracefulShutdown verifies the server stops cleanly.
 func TestServerGracefulShutdown(t *testing.T) {
 	state := server.NewServerState(server.VersionInfo{})
-	srv := server.New(0, "127.0.0.1", ".", nil, state)
+	srv := server.New(0, "127.0.0.1", ".", "", nil, state)
 
 	errCh := make(chan error, 1)
 	go func() {

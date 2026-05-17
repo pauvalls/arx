@@ -73,6 +73,7 @@ var (
 	checkWatch      bool
 	checkInterval   time.Duration
 	checkSeverity   string
+	checkDiff       bool
 )
 
 func init() {
@@ -85,6 +86,7 @@ func init() {
 	checkCmd.Flags().BoolVar(&checkWatch, "watch", false, "Watch mode: re-run check on file changes")
 	checkCmd.Flags().DurationVar(&checkInterval, "interval", 500*time.Millisecond, "Debounce interval for watch mode")
 	checkCmd.Flags().StringVar(&checkSeverity, "severity", "", "Filter by severity: error|warning|info")
+	checkCmd.Flags().BoolVar(&checkDiff, "diff", false, "Show violations added/removed since last check")
 	rootCmd.AddCommand(checkCmd)
 }
 
@@ -191,6 +193,14 @@ func runCheck(cmd *cobra.Command, args []string) error {
 
 	// Report initial result
 	printCheckResult(result, format, false)
+
+	// Always persist violations for future --diff comparisons
+	saveLastCheck(result.violations, configHash, projectRoot)
+
+	// Show diff if --diff flag is set and format is terminal
+	if checkDiff && format == ports.OutputFormatTerminal {
+		showCheckDiff(result.violations, projectRoot)
+	}
 
 	// In single-shot mode, exit based on violations
 	if !checkWatch {
@@ -493,4 +503,95 @@ func capitalize(s string) string {
 		return s
 	}
 	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+// lastCheckPayload is the JSON format persisted for --diff comparisons.
+type lastCheckPayload struct {
+	Version    int               `json:"version"`
+	Timestamp  time.Time         `json:"timestamp"`
+	ConfigHash string            `json:"config_hash"`
+	Violations []domain.Violation `json:"violations"`
+}
+
+// saveLastCheck persists violations to .arx-cache/last-check.json for future --diff comparisons.
+func saveLastCheck(violations []domain.Violation, configHash, projectRoot string) {
+	cacheDir := filepath.Join(projectRoot, ".arx-cache")
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to create cache directory: %v\n", err)
+		return
+	}
+
+	payload := lastCheckPayload{
+		Version:    1,
+		Timestamp:  time.Now(),
+		ConfigHash: configHash,
+		Violations: violations,
+	}
+
+	data, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to marshal last-check data: %v\n", err)
+		return
+	}
+
+	cachePath := filepath.Join(cacheDir, "last-check.json")
+	if err := os.WriteFile(cachePath, data, 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to write last-check cache: %v\n", err)
+	}
+}
+
+// loadLastCheck reads .arx-cache/last-check.json and returns the previous violations.
+// Returns nil, nil if the file does not exist.
+func loadLastCheck(projectRoot string) ([]domain.Violation, error) {
+	cachePath := filepath.Join(projectRoot, ".arx-cache", "last-check.json")
+
+	data, err := os.ReadFile(cachePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to read last-check cache: %w", err)
+	}
+
+	var payload lastCheckPayload
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return nil, fmt.Errorf("failed to parse last-check cache: %w", err)
+	}
+
+	return payload.Violations, nil
+}
+
+// showCheckDiff compares current violations against the previous run and prints a summary.
+func showCheckDiff(current []domain.Violation, projectRoot string) {
+	previous, err := loadLastCheck(projectRoot)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
+		return
+	}
+
+	if previous == nil {
+		fmt.Fprintln(os.Stderr, "No previous check run to compare (first run).")
+		return
+	}
+
+	diff := domain.DiffViolations(previous, current)
+
+	// Color-coded diff summary
+	var parts []string
+	if len(diff.Added) > 0 {
+		parts = append(parts, fmt.Sprintf("\033[31m+%d violations\033[0m", len(diff.Added)))
+	}
+	if len(diff.Resolved) > 0 {
+		parts = append(parts, fmt.Sprintf("\033[32m-%d resolved\033[0m", len(diff.Resolved)))
+	}
+	if len(diff.Unchanged) > 0 {
+		parts = append(parts, fmt.Sprintf("\033[2m%d unchanged\033[0m", len(diff.Unchanged)))
+	}
+
+	if len(parts) == 0 {
+		fmt.Fprintln(os.Stderr, "No changes since last check.")
+		return
+	}
+
+	fmt.Fprintf(os.Stderr, "Diff: %s\n", strings.Join(parts, ", "))
 }

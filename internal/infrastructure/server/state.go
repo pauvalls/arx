@@ -1,6 +1,10 @@
 package server
 
 import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -124,4 +128,64 @@ func (s *ServerState) ViolationCount() int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return len(s.violations)
+}
+
+// CacheData represents the serializable state for persistence.
+type CacheData struct {
+	Violations []domain.Violation    `json:"violations"`
+	Coupling   domain.CouplingMatrix `json:"coupling"`
+	Debt       domain.DebtScore      `json:"debt"`
+	LastCheck  time.Time             `json:"last_check"`
+	Error      string                `json:"error,omitempty"`
+}
+
+// SaveToFile writes the current state to a JSON file.
+func (s *ServerState) SaveToFile(path string) error {
+	s.mu.RLock()
+	data := CacheData{
+		Violations: s.violations,
+		Coupling:   s.coupling,
+		Debt:       s.debt,
+		LastCheck:  s.lastCheck,
+	}
+	if s.checkError != nil {
+		data.Error = s.checkError.Error()
+	}
+	s.mu.RUnlock()
+
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return fmt.Errorf("create cache dir: %w", err)
+	}
+	bytes, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal state: %w", err)
+	}
+	return os.WriteFile(path, bytes, 0644)
+}
+
+// LoadFromFile reads state from a JSON file and updates the ServerState.
+// Returns nil if the file does not exist (graceful miss).
+// Returns an error on corrupt JSON or other read failures.
+func (s *ServerState) LoadFromFile(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil // graceful miss — start with empty state
+		}
+		return err
+	}
+	var cache CacheData
+	if err := json.Unmarshal(data, &cache); err != nil {
+		return fmt.Errorf("unmarshal state: %w", err)
+	}
+	s.mu.Lock()
+	s.violations = cache.Violations
+	s.coupling = cache.Coupling
+	s.debt = cache.Debt
+	s.lastCheck = cache.LastCheck
+	if cache.Error != "" {
+		s.checkError = fmt.Errorf("%s", cache.Error)
+	}
+	s.mu.Unlock()
+	return nil
 }

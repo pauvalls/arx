@@ -430,3 +430,107 @@ func TestBuildDashboardData_NoDebt(t *testing.T) {
 		t.Error("expected HasDebt to be false when no debt")
 	}
 }
+
+func TestDashboard_ContainsFilterBar(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test"})
+	violations := []domain.Violation{
+		{ID: "v1", RuleID: "r1", File: "a.go", Severity: domain.SeverityError, SourceLayer: "app"},
+	}
+	state.SetCheckResult(violations, domain.NewCouplingMatrix(), domain.NewDebtScore(), nil, nil)
+
+	srv := &Server{state: state}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+
+	srv.handleDashboard(rec, req)
+
+	body := rec.Body.String()
+
+	// Severity checkboxes
+	if !strings.Contains(body, `id="sev-error"`) {
+		t.Error("expected severity error checkbox in filter bar")
+	}
+	if !strings.Contains(body, `id="sev-warning"`) {
+		t.Error("expected severity warning checkbox in filter bar")
+	}
+	if !strings.Contains(body, `id="sev-info"`) {
+		t.Error("expected severity info checkbox in filter bar")
+	}
+
+	// Layer dropdown
+	if !strings.Contains(body, `id="layer-filter"`) {
+		t.Error("expected layer filter <select> in filter bar")
+	}
+	if !strings.Contains(body, "All layers") {
+		t.Error("expected 'All layers' default option in layer dropdown")
+	}
+
+	// Search input
+	if !strings.Contains(body, `id="search-input"`) {
+		t.Error("expected search input in filter bar")
+	}
+	if !strings.Contains(body, `type="text"`) {
+		t.Error("expected search input to be type=text")
+	}
+}
+
+func TestDashboard_ContainsSortableHeaders(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test"})
+	violations := []domain.Violation{
+		{ID: "v1", RuleID: "r1", File: "a.go", Severity: domain.SeverityError},
+	}
+	state.SetCheckResult(violations, domain.NewCouplingMatrix(), domain.NewDebtScore(), nil, nil)
+
+	srv := &Server{state: state}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+
+	srv.handleDashboard(rec, req)
+
+	body := rec.Body.String()
+
+	sortableColumns := []string{
+		`data-sortable="severity"`,
+		`data-sortable="rule_id"`,
+		`data-sortable="file"`,
+		`data-sortable="line"`,
+		`data-sortable="source_layer"`,
+		`data-sortable="target_layer"`,
+		`data-sortable="message"`,
+	}
+
+	for _, col := range sortableColumns {
+		if !strings.Contains(body, col) {
+			t.Errorf("expected violations table <th> to have %q", col)
+		}
+	}
+}
+
+func TestDashboard_ContainsFilterSummary(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test"})
+	violations := []domain.Violation{
+		{ID: "v1", RuleID: "r1", File: "a.go", Severity: domain.SeverityError},
+	}
+	state.SetCheckResult(violations, domain.NewCouplingMatrix(), domain.NewDebtScore(), nil, nil)
+
+	srv := &Server{state: state}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+
+	srv.handleDashboard(rec, req)
+
+	body := rec.Body.String()
+
+	if !strings.Contains(body, `id="filter-summary"`) {
+		t.Error("expected filter-summary element in dashboard")
+	}
+	if !strings.Contains(body, "Clear filters") {
+		t.Error("expected 'Clear filters' button in dashboard")
+	}
+	if !strings.Contains(body, "No violations match the current filter") {
+		t.Error("expected empty filter state message in dashboard")
+	}
+}

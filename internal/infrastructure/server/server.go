@@ -24,6 +24,7 @@ type Server struct {
 	port          int
 	bind          string
 	projectRoot   string
+	cachePath     string
 	service       *application.CheckService
 	state         *ServerState
 	mu            sync.Mutex
@@ -32,11 +33,12 @@ type Server struct {
 }
 
 // New creates a new Server with the given configuration.
-func New(port int, bind string, projectRoot string, service *application.CheckService, state *ServerState) *Server {
+func New(port int, bind string, projectRoot string, cachePath string, service *application.CheckService, state *ServerState) *Server {
 	return &Server{
 		port:        port,
 		bind:        bind,
 		projectRoot: projectRoot,
+		cachePath:   cachePath,
 		service:     service,
 		state:       state,
 	}
@@ -74,6 +76,13 @@ func (s *Server) Start() error {
 	s.mu.Lock()
 	s.watcherCancel = cancel
 	s.mu.Unlock()
+
+	// Try to load cached state for instant dashboard response
+	if s.cachePath != "" {
+		if err := s.state.LoadFromFile(s.cachePath); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to load cached state: %v\n", err)
+		}
+	}
 
 	// Start 30s auto-refresh ticker
 	go func() {
@@ -262,6 +271,11 @@ func NewDefaultCheckService() *application.CheckService {
 // This is the method version used by the ticker and file watcher.
 func (s *Server) runCheck(ctx context.Context) {
 	RunCheck(ctx, s.service, s.projectRoot, s.state)
+	if s.cachePath != "" {
+		if err := s.state.SaveToFile(s.cachePath); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to save state cache: %v\n", err)
+		}
+	}
 }
 
 // RunCheck performs a full architecture check and updates the ServerState.
