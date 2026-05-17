@@ -1,5 +1,14 @@
 # Roadmap
 
+## ✅ v0.24.0 (Web Server + Dashboard)
+
+- [x] `arx server` command with `--port`, `--bind`, `--path` flags
+- [x] Embedded HTML dashboard with responsive CSS and print styles
+- [x] REST API: `/api/health`, `/api/status`, `/api/violations`, `/api/coupling`, `/api/debt`
+- [x] Auto-refresh via 30s ticker + fsnotify file watcher (500ms debounce)
+- [x] Graceful shutdown on SIGINT/SIGTERM
+- [x] Integration tests for server lifecycle and state updates
+
 ## ✅ v0.23.0 (Current — Hardening & E2E Mega Release)
 
 - [x] E2E tests for all 6 language fixtures (Go, TS, Python, Java, Ruby, Swift)
@@ -193,12 +202,6 @@ Support for Swift projects via `import` statement parsing with SPM detection.
 
 Domain-specific language for complex architectural rules with JavaScript/TypeScript
 evaluation engine. Access to full dependency graph, custom violation messages.
-
-### Arx Server (Web UI)
-**Priority:** Low | **Effort:** XL
-
-Web interface for architecture visualization, violation timeline, team collaboration,
-and interactive dependency graphs.
 
 ### VSCode Extension
 **Priority:** Low | **Effort:** M

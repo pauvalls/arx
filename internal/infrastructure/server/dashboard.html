@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Arx Dashboard</title>
+<style>
+:root {
+  --color-error: #dc3545;
+  --color-warning: #ffc107;
+  --color-info: #17a2b8;
+  --color-success: #28a745;
+  --color-bg: #f8f9fa;
+  --color-surface: #ffffff;
+  --color-border: #dee2e6;
+  --color-text: #212529;
+  --color-text-muted: #6c757d;
+  --color-error-bg: #f8d7da;
+  --color-warning-bg: #fff3cd;
+  --color-info-bg: #d1ecf1;
+  --radius: 8px;
+  --shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  line-height: 1.6;
+  color: var(--color-text);
+  background: var(--color-bg);
+  padding: 20px;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 2px solid var(--color-border);
+}
+
+header h1 { font-size: 1.75rem; }
+
+header .meta {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+/* Summary Cards */
+.summary-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.summary-card {
+  background: var(--color-surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 20px;
+  text-align: center;
+}
+
+.summary-card .value {
+  font-size: 2.5rem;
+  font-weight: 700;
+  display: block;
+}
+
+.summary-card .label {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.summary-card.errors .value { color: var(--color-error); }
+.summary-card.warnings .value { color: var(--color-warning); }
+.summary-card.info .value { color: var(--color-info); }
+.summary-card.debt .value { color: var(--color-text); }
+
+/* Sections */
+section {
+  background: var(--color-surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 20px;
+  margin-bottom: 24px;
+}
+
+section h2 {
+  font-size: 1.25rem;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+/* Violations Table */
+.table-wrap { overflow-x: auto; }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+th, td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--color-border);
+}
+
+th {
+  background: var(--color-bg);
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+}
+
+tr:hover { background: var(--color-bg); }
+
+.severity-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.severity-badge.error { background: var(--color-error-bg); color: var(--color-error); }
+.severity-badge.warning { background: var(--color-warning-bg); color: #856404; }
+.severity-badge.info { background: var(--color-info-bg); color: #0c5460; }
+
+.file-path {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.85rem;
+}
+
+/* Debt Score */
+.debt-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+}
+
+.debt-item {
+  background: var(--color-bg);
+  padding: 12px;
+  border-radius: 6px;
+  text-align: center;
+}
+
+.debt-item .debt-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  display: block;
+}
+
+.debt-item .debt-label {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+/* Coupling Table */
+.coupling-high { background: var(--color-error-bg); }
+.coupling-medium { background: var(--color-warning-bg); }
+
+/* Empty State */
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+/* Footer */
+footer {
+  text-align: center;
+  padding: 16px;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+/* Polling indicator */
+#poll-status {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+#poll-status.polling::before {
+  content: "\25CF";
+  color: var(--color-success);
+  margin-right: 4px;
+}
+
+/* Print Styles */
+@media print {
+  body { background: white; padding: 0; }
+  .container { max-width: 100%; }
+  section, .summary-card { box-shadow: none; border: 1px solid var(--color-border); }
+  header { border-bottom: 2px solid #000; }
+  #poll-status { display: none; }
+  th { position: static; }
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  body { padding: 12px; }
+  header h1 { font-size: 1.25rem; }
+  .summary-cards { grid-template-columns: repeat(2, 1fr); }
+  .summary-card .value { font-size: 1.75rem; }
+  table { font-size: 0.8rem; }
+  th, td { padding: 6px 8px; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>Arx Dashboard</h1>
+    <div>
+      <span class="meta">Last check: {{if .LastCheck.IsZero}}never{{else}}{{.LastCheck.Format "2006-01-02 15:04:05"}}{{end}}</span>
+      &middot;
+      <span id="poll-status">polling</span>
+    </div>
+  </header>
+
+  <!-- Summary Cards -->
+  <div class="summary-cards">
+    <div class="summary-card errors">
+      <span class="value" id="error-count">{{.ErrorCount}}</span>
+      <span class="label">Errors</span>
+    </div>
+    <div class="summary-card warnings">
+      <span class="value" id="warning-count">{{.WarningCount}}</span>
+      <span class="label">Warnings</span>
+    </div>
+    <div class="summary-card info">
+      <span class="value" id="info-count">{{.InfoCount}}</span>
+      <span class="label">Info</span>
+    </div>
+    <div class="summary-card debt">
+      <span class="value" id="debt-score">{{.DebtTotal}}</span>
+      <span class="label">Debt Score</span>
+    </div>
+  </div>
+
+  <!-- Violations Table -->
+  <section id="violations-section">
+    <h2>Violations</h2>
+    {{if .Violations}}
+    <div class="table-wrap">
+      <table id="violations-table">
+        <thead>
+          <tr>
+            <th>Severity</th>
+            <th>Rule</th>
+            <th>File</th>
+            <th>Line</th>
+            <th>From</th>
+            <th>To</th>
+            <th>Message</th>
+          </tr>
+        </thead>
+        <tbody id="violations-body">
+          {{range .Violations}}
+          <tr>
+            <td><span class="severity-badge {{.SeverityClass}}">{{.Severity}}</span></td>
+            <td>{{.RuleID}}</td>
+            <td class="file-path">{{.File}}</td>
+            <td>{{.Line}}</td>
+            <td>{{.SourceLayer}}</td>
+            <td>{{.TargetLayer}}</td>
+            <td>{{.Message}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{else}}
+    <div class="empty-state" id="violations-empty">No violations found. Architecture is clean.</div>
+    {{end}}
+  </section>
+
+  <!-- Coupling Matrix -->
+  <section id="coupling-section">
+    <h2>Coupling Matrix</h2>
+    {{if .CouplingEntries}}
+    <div class="table-wrap">
+      <table id="coupling-table">
+        <thead>
+          <tr>
+            <th>From</th>
+            <th>To</th>
+            <th>Count</th>
+            <th>Percentage</th>
+          </tr>
+        </thead>
+        <tbody id="coupling-body">
+          {{range .CouplingEntries}}
+          <tr class="{{.Class}}">
+            <td>{{.From}}</td>
+            <td>{{.To}}</td>
+            <td>{{.Count}}</td>
+            <td>{{.Percentage}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{else}}
+    <div class="empty-state" id="coupling-empty">No coupling data available.</div>
+    {{end}}
+  </section>
+
+  <!-- Debt Score Detail -->
+  <section id="debt-section">
+    <h2>Technical Debt</h2>
+    {{if .HasDebt}}
+    <div class="debt-grid">
+      <div class="debt-item">
+        <span class="debt-value" id="debt-total">{{.DebtTotal}}</span>
+        <span class="debt-label">Total Score</span>
+      </div>
+      <div class="debt-item">
+        <span class="debt-value" style="color: var(--color-error);" id="debt-errors">{{.DebtErrors}}</span>
+        <span class="debt-label">Errors</span>
+      </div>
+      <div class="debt-item">
+        <span class="debt-value" style="color: var(--color-warning);" id="debt-warnings">{{.DebtWarnings}}</span>
+        <span class="debt-label">Warnings</span>
+      </div>
+      <div class="debt-item">
+        <span class="debt-value" style="color: var(--color-info);" id="debt-info">{{.DebtInfo}}</span>
+        <span class="debt-label">Info</span>
+      </div>
+    </div>
+    {{else}}
+    <div class="empty-state">No technical debt.</div>
+    {{end}}
+  </section>
+
+  <footer>
+    <span>Arx v{{.Version}} &middot; Uptime: {{.Uptime}}</span>
+  </footer>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  var pollInterval = 30000;
+  var statusEl = document.getElementById('poll-status');
+
+  function escapeHtml(str) {
+    var div = document.createElement('div');
+    div.appendChild(document.createTextNode(str));
+    return div.innerHTML;
+  }
+
+  function severityClass(sev) {
+    if (sev === 'warning') return 'warning';
+    if (sev === 'info') return 'info';
+    return 'error';
+  }
+
+  function renderViolations(violations) {
+    var tbody = document.getElementById('violations-body');
+    var empty = document.getElementById('violations-empty');
+    var section = document.getElementById('violations-section');
+
+    if (!violations || violations.length === 0) {
+      if (tbody) tbody.innerHTML = '';
+      if (!empty) {
+        empty = document.createElement('div');
+        empty.className = 'empty-state';
+        empty.id = 'violations-empty';
+        empty.textContent = 'No violations found. Architecture is clean.';
+        section.appendChild(empty);
+      }
+      empty.style.display = '';
+      if (tbody) tbody.parentElement.style.display = 'none';
+      return;
+    }
+
+    if (empty) empty.style.display = 'none';
+    if (tbody) tbody.parentElement.style.display = '';
+
+    var html = '';
+    for (var i = 0; i < violations.length; i++) {
+      var v = violations[i];
+      html += '<tr>';
+      html += '<td><span class="severity-badge ' + severityClass(v.severity) + '">' + escapeHtml(v.severity) + '</span></td>';
+      html += '<td>' + escapeHtml(v.rule_id) + '</td>';
+      html += '<td class="file-path">' + escapeHtml(v.file) + '</td>';
+      html += '<td>' + (v.line || '') + '</td>';
+      html += '<td>' + escapeHtml(v.source_layer || '') + '</td>';
+      html += '<td>' + escapeHtml(v.target_layer || '') + '</td>';
+      html += '<td>' + escapeHtml(v.message || '') + '</td>';
+      html += '</tr>';
+    }
+    if (tbody) tbody.innerHTML = html;
+  }
+
+  function renderCoupling(entries) {
+    var tbody = document.getElementById('coupling-body');
+    var empty = document.getElementById('coupling-empty');
+    var section = document.getElementById('coupling-section');
+
+    if (!entries || entries.length === 0) {
+      if (tbody) tbody.innerHTML = '';
+      if (!empty) {
+        empty = document.createElement('div');
+        empty.className = 'empty-state';
+        empty.id = 'coupling-empty';
+        empty.textContent = 'No coupling data available.';
+        section.appendChild(empty);
+      }
+      empty.style.display = '';
+      if (tbody) tbody.parentElement.style.display = 'none';
+      return;
+    }
+
+    if (empty) empty.style.display = 'none';
+    if (tbody) tbody.parentElement.style.display = '';
+
+    var html = '';
+    for (var i = 0; i < entries.length; i++) {
+      var e = entries[i];
+      var cls = '';
+      if (e.count > 10) cls = 'coupling-high';
+      else if (e.count > 5) cls = 'coupling-medium';
+      html += '<tr class="' + cls + '">';
+      html += '<td>' + escapeHtml(e.from_layer) + '</td>';
+      html += '<td>' + escapeHtml(e.to_layer) + '</td>';
+      html += '<td>' + e.count + '</td>';
+      html += '<td>' + e.percentage.toFixed(1) + '%</td>';
+      html += '</tr>';
+    }
+    if (tbody) tbody.innerHTML = html;
+  }
+
+  function updateCounts(data) {
+    var el = function(id) { return document.getElementById(id); };
+    if (el('error-count')) el('error-count').textContent = data.error_count;
+    if (el('warning-count')) el('warning-count').textContent = data.warning_count;
+    if (el('info-count')) el('info-count').textContent = data.info_count;
+    if (el('debt-score')) el('debt-score').textContent = data.debt_total;
+    if (el('debt-total')) el('debt-total').textContent = data.debt_total;
+    if (el('debt-errors')) el('debt-errors').textContent = data.debt_errors;
+    if (el('debt-warnings')) el('debt-warnings').textContent = data.debt_warnings;
+    if (el('debt-info')) el('debt-info').textContent = data.debt_info;
+  }
+
+  function fetchData() {
+    if (statusEl) statusEl.textContent = 'refreshing...';
+
+    var requests = {};
+    var pending = 0;
+    var results = {};
+
+    function checkDone() {
+      pending--;
+      if (pending === 0) {
+        var violations = results.violations || [];
+        var coupling = results.coupling || [];
+        var debt = results.debt || {};
+        var status = results.status || {};
+
+        var errorCount = 0, warningCount = 0, infoCount = 0;
+        for (var i = 0; i < violations.length; i++) {
+          if (violations[i].severity === 'warning') warningCount++;
+          else if (violations[i].severity === 'info') infoCount++;
+          else errorCount++;
+        }
+
+        var debtBySev = debt.by_severity || {};
+        var debtErrors = debtBySev['error'] || 0;
+        var debtWarnings = debtBySev['warning'] || 0;
+        var debtInfo = debtBySev['info'] || 0;
+
+        updateCounts({
+          error_count: errorCount,
+          warning_count: warningCount,
+          info_count: infoCount,
+          debt_total: debt.total || 0,
+          debt_errors: debtErrors,
+          debt_warnings: debtWarnings,
+          debt_info: debtInfo
+        });
+
+        renderViolations(violations);
+        renderCoupling(coupling);
+
+        if (statusEl) {
+          statusEl.textContent = 'updated ' + new Date().toLocaleTimeString();
+          statusEl.className = 'polling';
+        }
+      }
+    }
+
+    function fetchOne(url, key) {
+      pending++;
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', url, true);
+      xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4) {
+          if (xhr.status === 200) {
+            try { results[key] = JSON.parse(xhr.responseText); }
+            catch(e) { results[key] = null; }
+          } else {
+            results[key] = null;
+          }
+          checkDone();
+        }
+      };
+      xhr.send();
+    }
+
+    fetchOne('/api/violations', 'violations');
+    fetchOne('/api/coupling', 'coupling');
+    fetchOne('/api/debt', 'debt');
+    fetchOne('/api/status', 'status');
+  }
+
+  // Initial poll after 30s, then every 30s
+  setInterval(fetchData, pollInterval);
+})();
+</script>
+</body>
+</html>

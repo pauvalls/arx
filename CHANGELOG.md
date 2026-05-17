@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.24.0] - 2026-05
+
+### Added
+- `arx server` — Web server with interactive dashboard and REST API
+- Live dashboard with violation summary, coupling matrix, and debt score
+- REST API endpoints: `/api/health`, `/api/status`, `/api/violations`, `/api/coupling`, `/api/debt`
+- Auto-refresh via 30s ticker and fsnotify file watcher (debounced 500ms)
+- Responsive CSS with print-friendly styles and dark/light theming
+- Vanilla JS polling for real-time updates without page reload
+- `--port`, `--bind`, and `--path` flags for server configuration
+- Graceful shutdown on SIGINT/SIGTERM
+
 ## [v0.10.0] - 2026-05
 
 ### Added
@@ -152,3 +164,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | v0.8.0  | 2026-03     | Audit and circular detection |
 | v0.9.0  | 2026-04     | Rule overrides |
 | v0.10.0 | 2026-05     | Diagram CLI & DX improvements |
+| v0.24.0 | 2026-05     | Web server + dashboard |

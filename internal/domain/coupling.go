@@ -55,10 +55,10 @@ func resolveLayerForCoupling(filePath string, layerMap map[string]*Layer) string
 
 // CouplingEntry represents a single entry in the coupling matrix with percentage
 type CouplingEntry struct {
-	FromLayer  string
-	ToLayer    string
-	Count      int
-	Percentage float64
+	FromLayer  string  `json:"from"`
+	ToLayer    string  `json:"to"`
+	Count      int     `json:"count"`
+	Percentage float64 `json:"percentage"`
 }
 
 // GetEntriesWithPercentage returns all coupling entries with their percentages

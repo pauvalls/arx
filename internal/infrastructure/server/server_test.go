@@ -1,0 +1,724 @@
+package server
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/pauvalls/arx/internal/domain"
+)
+
+func TestServerState_ConcurrentReadWrite(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test"})
+
+	var wg sync.WaitGroup
+	done := make(chan struct{})
+
+	// Writer goroutine
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 100; i++ {
+			violations := []domain.Violation{
+				{ID: "rule-1", RuleID: "no-infra-dep", File: "test.go", Severity: domain.SeverityError},
+			}
+			coupling := domain.NewCouplingMatrix()
+			coupling.Add("app", "domain")
+			debt := domain.NewDebtScore()
+			debt.AddViolation("error")
+			debt.Calculate()
+
+			state.SetCheckResult(violations, coupling, debt, nil, nil)
+			time.Sleep(time.Microsecond)
+		}
+		close(done)
+	}()
+
+	// Reader goroutines
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-done:
+					return
+				default:
+					_ = state.Violations()
+					_ = state.Coupling()
+					_ = state.Debt()
+					_ = state.LastCheck()
+					_ = state.Version()
+					_ = state.ViolationCount()
+					_ = state.CheckError()
+					time.Sleep(time.Microsecond)
+				}
+			}
+		}()
+	}
+
+	wg.Wait()
+}
+
+func TestServerState_EmptyDefaults(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "0.1.0"})
+
+	if state.ViolationCount() != 0 {
+		t.Errorf("expected 0 violations, got %d", state.ViolationCount())
+	}
+
+	violations := state.Violations()
+	if len(violations) != 0 {
+		t.Errorf("expected empty violations slice, got %d items", len(violations))
+	}
+
+	entries := state.Coupling().FromTo
+	if len(entries) != 0 {
+		t.Errorf("expected empty coupling entries, got %d", len(entries))
+	}
+
+	debt := state.Debt()
+	if debt.Total != 0 {
+		t.Errorf("expected debt score 0, got %d", debt.Total)
+	}
+
+	if state.CheckError() != nil {
+		t.Errorf("expected nil check error, got %v", state.CheckError())
+	}
+
+	v := state.Version()
+	if v.Version != "0.1.0" {
+		t.Errorf("expected version 0.1.0, got %s", v.Version)
+	}
+
+	if state.Uptime().IsZero() {
+		t.Error("expected non-zero uptime")
+	}
+}
+
+func TestServerState_SetError(t *testing.T) {
+	state := NewServerState(VersionInfo{})
+
+	testErr := context.DeadlineExceeded
+	state.SetError(testErr)
+
+	if state.CheckError() != testErr {
+		t.Errorf("expected error %v, got %v", testErr, state.CheckError())
+	}
+
+	if state.LastCheck().IsZero() {
+		t.Error("expected lastCheck to be set after SetError")
+	}
+}
+
+func TestServer_HandlerHealth(t *testing.T) {
+	srv := &Server{state: NewServerState(VersionInfo{})}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
+	rec := httptest.NewRecorder()
+
+	srv.handleHealth(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+
+	ct := rec.Header().Get("Content-Type")
+	if ct != "application/json" {
+		t.Errorf("expected Content-Type application/json, got %s", ct)
+	}
+
+	var resp map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+	if resp["status"] != "ok" {
+		t.Errorf("expected status=ok, got %s", resp["status"])
+	}
+}
+
+func TestServer_HandlerStatus(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test-v1"})
+	srv := &Server{state: state}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
+	rec := httptest.NewRecorder()
+
+	srv.handleStatus(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+
+	var resp StatusResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	if resp.Version != "test-v1" {
+		t.Errorf("expected version test-v1, got %s", resp.Version)
+	}
+	if resp.Violations != 0 {
+		t.Errorf("expected 0 violations, got %d", resp.Violations)
+	}
+}
+
+func TestServer_HandlerStatusWithViolations(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test"})
+	violations := []domain.Violation{
+		{ID: "v1", RuleID: "r1", Severity: domain.SeverityError},
+		{ID: "v2", RuleID: "r2", Severity: domain.SeverityWarning},
+	}
+	state.SetCheckResult(violations, domain.NewCouplingMatrix(), domain.NewDebtScore(), nil, nil)
+
+	srv := &Server{state: state}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
+	rec := httptest.NewRecorder()
+
+	srv.handleStatus(rec, req)
+
+	var resp StatusResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	if resp.Violations != 2 {
+		t.Errorf("expected 2 violations, got %d", resp.Violations)
+	}
+}
+
+func TestServer_HandlerViolations(t *testing.T) {
+	state := NewServerState(VersionInfo{})
+	violations := []domain.Violation{
+		{ID: "v1", RuleID: "r1", File: "a.go", Severity: domain.SeverityError},
+	}
+	state.SetCheckResult(violations, domain.NewCouplingMatrix(), domain.NewDebtScore(), nil, nil)
+
+	srv := &Server{state: state}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/violations", nil)
+	rec := httptest.NewRecorder()
+
+	srv.handleViolations(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+
+	var result []domain.Violation
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	if len(result) != 1 {
+		t.Errorf("expected 1 violation, got %d", len(result))
+	}
+	if result[0].ID != "v1" {
+		t.Errorf("expected violation ID v1, got %s", result[0].ID)
+	}
+}
+
+func TestServer_HandlerViolationsEmpty(t *testing.T) {
+	state := NewServerState(VersionInfo{})
+	srv := &Server{state: state}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/violations", nil)
+	rec := httptest.NewRecorder()
+
+	srv.handleViolations(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+
+	// Should return empty array, not null
+	var result []domain.Violation
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+	if result == nil {
+		t.Error("expected empty array, not null")
+	}
+}
+
+func TestServer_HandlerCoupling(t *testing.T) {
+	state := NewServerState(VersionInfo{})
+	coupling := domain.NewCouplingMatrix()
+	coupling.Add("app", "domain")
+	coupling.Add("app", "domain")
+	coupling.Add("domain", "infra")
+	state.SetCheckResult(nil, coupling, domain.NewDebtScore(), nil, nil)
+
+	srv := &Server{state: state}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/coupling", nil)
+	rec := httptest.NewRecorder()
+
+	srv.handleCoupling(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+
+	var entries []domain.CouplingEntry
+	if err := json.Unmarshal(rec.Body.Bytes(), &entries); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	if len(entries) != 2 {
+		t.Errorf("expected 2 coupling entries, got %d", len(entries))
+	}
+}
+
+func TestServer_HandlerCouplingEmpty(t *testing.T) {
+	state := NewServerState(VersionInfo{})
+	srv := &Server{state: state}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/coupling", nil)
+	rec := httptest.NewRecorder()
+
+	srv.handleCoupling(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+
+	var entries []domain.CouplingEntry
+	if err := json.Unmarshal(rec.Body.Bytes(), &entries); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+	if entries == nil {
+		t.Error("expected empty array, not null")
+	}
+}
+
+func TestServer_HandlerDebt(t *testing.T) {
+	state := NewServerState(VersionInfo{})
+	debt := domain.NewDebtScore()
+	debt.AddViolation("error")
+	debt.AddViolation("error")
+	debt.AddViolation("warning")
+	debt.Calculate()
+	state.SetCheckResult(nil, domain.NewCouplingMatrix(), debt, nil, nil)
+
+	srv := &Server{state: state}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/debt", nil)
+	rec := httptest.NewRecorder()
+
+	srv.handleDebt(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+
+	var result domain.DebtScore
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	// 2 errors * 3 + 1 warning * 1 = 7
+	if result.Total != 7 {
+		t.Errorf("expected debt score 7, got %d", result.Total)
+	}
+}
+
+func TestServer_HandlerStatusMethodNotAllowed(t *testing.T) {
+	srv := &Server{state: NewServerState(VersionInfo{})}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/status", nil)
+	rec := httptest.NewRecorder()
+
+	srv.handleStatus(rec, req)
+
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected status 405, got %d", rec.Code)
+	}
+}
+
+func TestServer_HandlerDashboard(t *testing.T) {
+	srv := &Server{state: NewServerState(VersionInfo{})}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+
+	srv.handleDashboard(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+
+	ct := rec.Header().Get("Content-Type")
+	if ct != "text/html; charset=utf-8" {
+		t.Errorf("expected Content-Type text/html; charset=utf-8, got %s", ct)
+	}
+}
+
+func TestServer_GracefulShutdown(t *testing.T) {
+	state := NewServerState(VersionInfo{})
+	srv := &Server{
+		port:  0, // let OS pick a port
+		bind:  "127.0.0.1",
+		state: state,
+	}
+
+	// Start server in goroutine
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- srv.Start()
+	}()
+
+	// Give server time to start
+	time.Sleep(100 * time.Millisecond)
+
+	// Shutdown with context
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	if err := srv.Stop(ctx); err != nil {
+		t.Fatalf("Stop failed: %v", err)
+	}
+
+	// Verify server stopped
+	select {
+	case err := <-errCh:
+		if err != nil && err.Error() != "server failed: http: Server closed" {
+			// http.ErrServerClosed is expected on graceful shutdown
+			t.Logf("server exited with: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("server did not stop within timeout")
+	}
+}
+
+func TestServer_UnknownRouteReturns404(t *testing.T) {
+	state := NewServerState(VersionInfo{})
+	srv := &Server{state: state}
+
+	// Use a mux without the catch-all "/" handler to test 404 behavior
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/health", srv.handleHealth)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/nonexistent", nil)
+	rec := httptest.NewRecorder()
+
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected status 404 for unknown route, got %d", rec.Code)
+	}
+}
+
+func TestServer_HandlerStatusWithSeverityBreakdown(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test-v2"})
+	violations := []domain.Violation{
+		{ID: "v1", RuleID: "r1", Severity: domain.SeverityError},
+		{ID: "v2", RuleID: "r2", Severity: domain.SeverityError},
+		{ID: "v3", RuleID: "r3", Severity: domain.SeverityWarning},
+		{ID: "v4", RuleID: "r4", Severity: domain.SeverityInfo},
+	}
+	debt := domain.NewDebtScore()
+	debt.AddViolation("error")
+	debt.AddViolation("error")
+	debt.AddViolation("warning")
+	debt.Calculate()
+	state.SetCheckResult(violations, domain.NewCouplingMatrix(), debt, nil, nil)
+
+	srv := &Server{state: state}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
+	rec := httptest.NewRecorder()
+
+	srv.handleStatus(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+
+	var resp StatusResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	if resp.Violations != 4 {
+		t.Errorf("expected 4 violations, got %d", resp.Violations)
+	}
+	if resp.ViolationsBySeverity["error"] != 2 {
+		t.Errorf("expected 2 error violations, got %d", resp.ViolationsBySeverity["error"])
+	}
+	if resp.ViolationsBySeverity["warning"] != 1 {
+		t.Errorf("expected 1 warning violation, got %d", resp.ViolationsBySeverity["warning"])
+	}
+	if resp.ViolationsBySeverity["info"] != 1 {
+		t.Errorf("expected 1 info violation, got %d", resp.ViolationsBySeverity["info"])
+	}
+	if resp.DebtScore != 7 {
+		t.Errorf("expected debt score 7, got %d", resp.DebtScore)
+	}
+}
+
+func TestServer_HandlerStatusEmptyState(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test-v1"})
+	srv := &Server{state: state}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
+	rec := httptest.NewRecorder()
+
+	srv.handleStatus(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+
+	var resp StatusResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	if resp.Violations != 0 {
+		t.Errorf("expected 0 violations, got %d", resp.Violations)
+	}
+	if resp.ViolationsBySeverity == nil {
+		t.Error("expected violations_by_severity map, got nil")
+	}
+	if resp.DebtScore != 0 {
+		t.Errorf("expected debt score 0, got %d", resp.DebtScore)
+	}
+}
+
+func TestServer_HandlerViolationsFullDataShape(t *testing.T) {
+	state := NewServerState(VersionInfo{})
+	violations := []domain.Violation{
+		{
+			ID:          "v-001",
+			RuleID:      "no-infra-in-domain",
+			Severity:    domain.SeverityError,
+			File:        "internal/domain/service.go",
+			Line:        42,
+			Message:     "domain layer must not import infrastructure",
+			SourceLayer: "domain",
+			TargetLayer: "infrastructure",
+			Import:      "github.com/example/infra",
+		},
+	}
+	state.SetCheckResult(violations, domain.NewCouplingMatrix(), domain.NewDebtScore(), nil, nil)
+
+	srv := &Server{state: state}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/violations", nil)
+	rec := httptest.NewRecorder()
+
+	srv.handleViolations(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+
+	var result []domain.Violation
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	if len(result) != 1 {
+		t.Fatalf("expected 1 violation, got %d", len(result))
+	}
+
+	v := result[0]
+	if v.ID != "v-001" {
+		t.Errorf("expected ID v-001, got %s", v.ID)
+	}
+	if v.RuleID != "no-infra-in-domain" {
+		t.Errorf("expected rule_id no-infra-in-domain, got %s", v.RuleID)
+	}
+	if v.Severity != domain.SeverityError {
+		t.Errorf("expected severity error, got %s", v.Severity)
+	}
+	if v.File != "internal/domain/service.go" {
+		t.Errorf("expected file internal/domain/service.go, got %s", v.File)
+	}
+	if v.Line != 42 {
+		t.Errorf("expected line 42, got %d", v.Line)
+	}
+	if v.Message != "domain layer must not import infrastructure" {
+		t.Errorf("expected message, got %s", v.Message)
+	}
+	if v.SourceLayer != "domain" {
+		t.Errorf("expected source_layer domain, got %s", v.SourceLayer)
+	}
+	if v.TargetLayer != "infrastructure" {
+		t.Errorf("expected target_layer infrastructure, got %s", v.TargetLayer)
+	}
+	if v.Import != "github.com/example/infra" {
+		t.Errorf("expected import github.com/example/infra, got %s", v.Import)
+	}
+}
+
+func TestServer_HandlerCouplingEntriesFormat(t *testing.T) {
+	state := NewServerState(VersionInfo{})
+	coupling := domain.NewCouplingMatrix()
+	coupling.Add("application", "domain")
+	coupling.Add("application", "domain")
+	coupling.Add("application", "infrastructure")
+	coupling.Add("domain", "infrastructure")
+	state.SetCheckResult(nil, coupling, domain.NewDebtScore(), nil, nil)
+
+	srv := &Server{state: state}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/coupling", nil)
+	rec := httptest.NewRecorder()
+
+	srv.handleCoupling(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+
+	var entries []domain.CouplingEntry
+	if err := json.Unmarshal(rec.Body.Bytes(), &entries); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	if len(entries) != 3 {
+		t.Fatalf("expected 3 coupling entries, got %d", len(entries))
+	}
+
+	// Find the application->domain entry
+	var appDomain *domain.CouplingEntry
+	for i := range entries {
+		if entries[i].FromLayer == "application" && entries[i].ToLayer == "domain" {
+			appDomain = &entries[i]
+			break
+		}
+	}
+	if appDomain == nil {
+		t.Fatal("expected application->domain entry not found")
+	}
+	if appDomain.Count != 2 {
+		t.Errorf("expected count 2 for application->domain, got %d", appDomain.Count)
+	}
+	// 2 out of 4 total = 50%
+	if appDomain.Percentage != 50.0 {
+		t.Errorf("expected percentage 50.0 for application->domain, got %.1f", appDomain.Percentage)
+	}
+}
+
+func TestServer_HandlerDebtFullStructure(t *testing.T) {
+	state := NewServerState(VersionInfo{})
+	debt := domain.NewDebtScore()
+	debt.AddViolation("error")
+	debt.AddViolation("error")
+	debt.AddViolation("error")
+	debt.AddViolation("warning")
+	debt.AddViolation("warning")
+	debt.AddViolation("info")
+	debt.Calculate()
+	debt.SetTrend(5)
+	state.SetCheckResult(nil, domain.NewCouplingMatrix(), debt, nil, nil)
+
+	srv := &Server{state: state}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/debt", nil)
+	rec := httptest.NewRecorder()
+
+	srv.handleDebt(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+
+	var result domain.DebtScore
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	// 3 errors * 3 + 2 warnings * 1 + 1 info * 0 = 11
+	if result.Total != 11 {
+		t.Errorf("expected debt score 11, got %d", result.Total)
+	}
+	if result.BySeverity["error"] != 3 {
+		t.Errorf("expected 3 error violations, got %d", result.BySeverity["error"])
+	}
+	if result.BySeverity["warning"] != 2 {
+		t.Errorf("expected 2 warning violations, got %d", result.BySeverity["warning"])
+	}
+	if result.BySeverity["info"] != 1 {
+		t.Errorf("expected 1 info violation, got %d", result.BySeverity["info"])
+	}
+	if result.Trend != "up" {
+		t.Errorf("expected trend 'up', got %s", result.Trend)
+	}
+	if result.TrendDelta != 5 {
+		t.Errorf("expected trend_delta 5, got %d", result.TrendDelta)
+	}
+}
+
+func TestServer_HandlerDebtEmptyState(t *testing.T) {
+	state := NewServerState(VersionInfo{})
+	srv := &Server{state: state}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/debt", nil)
+	rec := httptest.NewRecorder()
+
+	srv.handleDebt(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+
+	var result domain.DebtScore
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	if result.Total != 0 {
+		t.Errorf("expected debt score 0, got %d", result.Total)
+	}
+	// Empty state returns zero-value DebtScore (BySeverity may be nil)
+}
+
+func TestServer_AllEndpointsReturnValidJSON(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test"})
+	srv := &Server{state: state}
+
+	endpoints := []string{"/api/health", "/api/status", "/api/violations", "/api/coupling", "/api/debt"}
+
+	for _, ep := range endpoints {
+		t.Run(ep, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, ep, nil)
+			rec := httptest.NewRecorder()
+
+			switch ep {
+			case "/api/health":
+				srv.handleHealth(rec, req)
+			case "/api/status":
+				srv.handleStatus(rec, req)
+			case "/api/violations":
+				srv.handleViolations(rec, req)
+			case "/api/coupling":
+				srv.handleCoupling(rec, req)
+			case "/api/debt":
+				srv.handleDebt(rec, req)
+			}
+
+			if rec.Code != http.StatusOK {
+				t.Errorf("expected status 200, got %d", rec.Code)
+			}
+
+			ct := rec.Header().Get("Content-Type")
+			if ct != "application/json" {
+				t.Errorf("expected Content-Type application/json, got %s", ct)
+			}
+
+			// Verify body is valid JSON
+			var raw json.RawMessage
+			if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
+				t.Fatalf("response body is not valid JSON: %v\nbody: %s", err, rec.Body.String())
+			}
+		})
+	}
+}
