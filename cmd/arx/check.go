@@ -194,6 +194,14 @@ func runCheck(cmd *cobra.Command, args []string) error {
 	// Report initial result
 	printCheckResult(result, format, false)
 
+	// Show dependency stats (terminal mode only)
+	if format == ports.OutputFormatTerminal {
+		importSummary, err := application.ScanImports(projectRoot, config.Layers)
+		if err == nil && importSummary != nil && importSummary.ImportsFound > 0 {
+			fmt.Println(importSummary.ShortStats())
+		}
+	}
+
 	// Always persist violations for future --diff comparisons
 	saveLastCheck(result.violations, configHash, projectRoot)
 
@@ -205,6 +213,7 @@ func runCheck(cmd *cobra.Command, args []string) error {
 	// In single-shot mode, exit based on violations
 	if !checkWatch {
 		if len(result.violations) > 0 {
+			fmt.Println()
 			os.Exit(output.ExitCode(result.violations, result.config.MaxViolations))
 		}
 		// Print baseline summary if applicable

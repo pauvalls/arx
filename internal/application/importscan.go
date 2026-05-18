@@ -29,124 +29,180 @@ type ImportSummary struct {
 	ImportsFound int
 }
 
-// ScanImports does a lightweight scan of Go files to find imports.
-// Unlike the full detector pipeline, this is fast and doesn't require
-// parsing the entire AST (uses regex).
+// languageScanner defines how to scan imports for a specific language.
+type languageScanner struct {
+	extensions []string
+	scannerFn  func(path string, layer string) ([]ImportEntry, error)
+}
+
+// ScanImports does a lightweight scan of source files to find imports
+// across multiple languages. Uses regex (fast) — no AST parsing needed.
 func ScanImports(projectRoot string, layers []domain.Layer) (*ImportSummary, error) {
 	summary := &ImportSummary{
 		ByLayer: make(map[string]map[string]int),
 	}
 
-	// Build layer path matchers
-	type layerMatcher struct {
+	scanners := []languageScanner{
+		{extensions: []string{".go"}, scannerFn: scanGoImports},
+		{extensions: []string{".ts", ".tsx", ".js", ".jsx"}, scannerFn: scanTSImports},
+	}
+
+	resolveLayer := buildLayerResolver(projectRoot, layers)
+
+	for _, lang := range scanners {
+		for _, ext := range lang.extensions {
+			err := filepath.Walk(projectRoot, func(path string, info os.FileInfo, err error) error {
+				if err != nil || info.IsDir() {
+					return nil
+				}
+				if !strings.HasSuffix(path, ext) {
+					return nil
+				}
+				rel, _ := filepath.Rel(projectRoot, path)
+				if isSkippedDir(rel) {
+					return nil
+				}
+
+				summary.FilesScanned++
+				sourceLayer := resolveLayer(rel)
+				entries, err := lang.scannerFn(path, sourceLayer)
+				if err != nil {
+					return nil
+				}
+				for _, e := range entries {
+					e.File = rel
+					e.Layer = resolveImportLayer(e.Import, layers)
+					summary.Entries = append(summary.Entries, e)
+					summary.ImportsFound++
+					if _, ok := summary.ByLayer[sourceLayer]; !ok {
+						summary.ByLayer[sourceLayer] = make(map[string]int)
+					}
+					summary.ByLayer[sourceLayer][e.Layer]++
+				}
+				return nil
+			})
+			if err != nil {
+				return summary, err
+			}
+		}
+	}
+
+	return summary, nil
+}
+
+// isSkippedDir returns true for directory prefixes that should be skipped.
+func isSkippedDir(rel string) bool {
+	return strings.HasPrefix(rel, "vendor") ||
+		strings.HasPrefix(rel, ".git") ||
+		strings.HasPrefix(rel, "node_modules") ||
+		strings.HasPrefix(rel, "dist") ||
+		strings.HasPrefix(rel, "build") ||
+		strings.HasPrefix(rel, "target")
+}
+
+// buildLayerResolver creates a function that resolves a file's layer from its path.
+func buildLayerResolver(projectRoot string, layers []domain.Layer) func(string) string {
+	type matcher struct {
 		name  string
 		paths []string
 	}
-	var matchers []layerMatcher
+	var matchers []matcher
 	for _, l := range layers {
-		matchers = append(matchers, layerMatcher{name: l.Name, paths: l.Paths})
+		matchers = append(matchers, matcher{name: l.Name, paths: l.Paths})
 	}
 
-	// Resolve layer for a file path
-	resolveLayer := func(filePath string) string {
-		rel, err := filepath.Rel(projectRoot, filePath)
-		if err != nil {
-			return "unknown"
-		}
+	return func(relPath string) string {
 		for _, m := range matchers {
 			for _, p := range m.paths {
 				globPath := strings.TrimSuffix(p, "/**")
-				if strings.HasPrefix(rel, globPath) || strings.HasPrefix(rel, strings.TrimPrefix(globPath, "./")) {
+				if strings.HasPrefix(relPath, globPath) || strings.HasPrefix(relPath, strings.TrimPrefix(globPath, "./")) {
 					return m.name
 				}
 			}
 		}
 		return "unknown"
 	}
+}
 
-	// Regex for Go imports: import ( "path" or import "path"
-	importRE := regexp.MustCompile(`^\s*import\s+(?:"([^"]+)"|\(|$)`)
-	importLineRE := regexp.MustCompile(`^\s+(?:"([^"]+)"|([a-zA-Z0-9_]+)\s+"([^"]+)")`)
+// scanGoImports extracts import statements from a Go source file.
+func scanGoImports(path, sourceLayer string) ([]ImportEntry, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
 
-	// Walk Go files
-	err := filepath.Walk(projectRoot, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
-			return nil
+	var entries []ImportEntry
+	inImportBlock := false
+	lineNum := 0
+
+	singleRE := regexp.MustCompile(`^\s*import\s+(?:"([^"]+)"|\(|$)`)
+	blockRE := regexp.MustCompile(`^\s+(?:"([^"]+)"|([a-zA-Z0-9_]+)\s+"([^"]+)")`)
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		lineNum++
+		line := scanner.Text()
+
+		if strings.HasPrefix(line, "import (") {
+			inImportBlock = true
+			continue
 		}
-		if !strings.HasSuffix(path, ".go") {
-			return nil
-		}
-		// Skip vendor, node_modules, .git
-		rel, _ := filepath.Rel(projectRoot, path)
-		if strings.HasPrefix(rel, "vendor") || strings.HasPrefix(rel, ".git") || strings.HasPrefix(rel, "node_modules") {
-			return nil
-		}
-
-		summary.FilesScanned++
-		file, err := os.Open(path)
-		if err != nil {
-			return nil
-		}
-		defer file.Close()
-
-		sourceLayer := resolveLayer(path)
-		inImportBlock := false
-		lineNum := 0
-		scanner := bufio.NewScanner(file)
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-
-			if strings.HasPrefix(line, "import (") {
-				inImportBlock = true
+		if inImportBlock {
+			if strings.HasPrefix(line, ")") {
+				inImportBlock = false
 				continue
 			}
-			if inImportBlock {
-				if strings.HasPrefix(line, ")") {
-					inImportBlock = false
-					continue
+			if matches := blockRE.FindStringSubmatch(line); matches != nil {
+				importPath := matches[1]
+				if importPath == "" {
+					importPath = matches[3]
 				}
-				// Parse import within block: "path" or alias "path"
-				matches := importLineRE.FindStringSubmatch(line)
-				if matches != nil {
-					importPath := matches[1]
-					if importPath == "" {
-						importPath = matches[3]
-					}
-					if importPath != "" {
-						targetLayer := resolveImportLayer(importPath, layers)
-						summary.Entries = append(summary.Entries, ImportEntry{
-							File: rel, Line: lineNum, Import: importPath,
-							Language: "go", Layer: targetLayer,
-						})
-						summary.ImportsFound++
-						// Track by layer
-						if _, ok := summary.ByLayer[sourceLayer]; !ok {
-							summary.ByLayer[sourceLayer] = make(map[string]int)
-						}
-						summary.ByLayer[sourceLayer][targetLayer]++
-					}
+				if importPath != "" {
+					entries = append(entries, ImportEntry{Line: lineNum, Import: importPath, Language: "go"})
 				}
-				continue
 			}
-			// Single import line: import "path"
-			if matches := importRE.FindStringSubmatch(line); matches != nil && matches[1] != "" {
-				targetLayer := resolveImportLayer(matches[1], layers)
-				summary.Entries = append(summary.Entries, ImportEntry{
-					File: rel, Line: lineNum, Import: matches[1],
-					Language: "go", Layer: targetLayer,
-				})
-				summary.ImportsFound++
-				if _, ok := summary.ByLayer[sourceLayer]; !ok {
-					summary.ByLayer[sourceLayer] = make(map[string]int)
-				}
-				summary.ByLayer[sourceLayer][targetLayer]++
-			}
+			continue
 		}
-		return nil
-	})
+		if matches := singleRE.FindStringSubmatch(line); matches != nil && matches[1] != "" {
+			entries = append(entries, ImportEntry{Line: lineNum, Import: matches[1], Language: "go"})
+		}
+	}
+	return entries, nil
+}
 
-	return summary, err
+// scanTSImports extracts import statements from TypeScript/JavaScript files.
+func scanTSImports(path, sourceLayer string) ([]ImportEntry, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	var entries []ImportEntry
+	lineNum := 0
+
+	// Match: import ... from '...' or import ... from "..."
+	importRE := regexp.MustCompile(`^\s*import\s+(?:\{[^}]*\}\s*from\s+)?(?:\*\s*as\s+\w+\s+from\s+)?(?:\w+\s*,?\s*)?(?:\{[^}]*\}\s*from\s+)?['"]([^'"]+)['"]`)
+	// Match: const ... = require('...') or var ... = require('...')
+	requireRE := regexp.MustCompile(`(?:const|let|var)\s+\w+\s*=\s*require\s*\(\s*['"]([^'"]+)['"]\s*\)`)
+	// Match: import '...' (side-effect import)
+	sideEffectRE := regexp.MustCompile(`^\s*import\s+['"]([^'"]+)['"]`)
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		lineNum++
+		line := scanner.Text()
+
+		if matches := importRE.FindStringSubmatch(line); matches != nil && matches[1] != "" {
+			entries = append(entries, ImportEntry{Line: lineNum, Import: matches[1], Language: "typescript"})
+		} else if matches := requireRE.FindStringSubmatch(line); matches != nil && matches[1] != "" {
+			entries = append(entries, ImportEntry{Line: lineNum, Import: matches[1], Language: "typescript"})
+		} else if matches := sideEffectRE.FindStringSubmatch(line); matches != nil && matches[1] != "" {
+			entries = append(entries, ImportEntry{Line: lineNum, Import: matches[1], Language: "typescript"})
+		}
+	}
+	return entries, nil
 }
 
 // resolveImportLayer tries to determine which layer an import belongs to.
@@ -161,6 +217,18 @@ func resolveImportLayer(importPath string, layers []domain.Layer) string {
 		}
 	}
 	return "external"
+}
+
+// ShortStats returns a one-line summary of the dependency scan.
+func (s *ImportSummary) ShortStats() string {
+	if s == nil || s.ImportsFound == 0 {
+		return ""
+	}
+	var layerCount int
+	for range s.ByLayer {
+		layerCount++
+	}
+	return fmt.Sprintf("  Dependencies: %d imports across %d layers (%d files scanned)", s.ImportsFound, layerCount, s.FilesScanned)
 }
 
 // FormatSummary returns a human-readable dependency summary.
