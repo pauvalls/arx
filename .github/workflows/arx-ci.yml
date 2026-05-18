@@ -19,17 +19,23 @@ jobs:
         with:
           go-version: "1.24"
 
+      - name: "Check Go version"
+        run: go version
+
       - name: "Vet"
         run: go vet ./...
 
-      - name: "Test with race detector"
-        run: go test -race ./... 2>&1 | tail -5
+      - name: "Test unit (race detector)"
+        run: go test -count=1 -race ./internal/... ./cmd/... ./test/unit/... 2>&1 | tail -5
 
-      - name: "Coverage"
+      - name: "Test integration (race detector)"
+        run: go test -count=1 -race ./test/integration/... 2>&1 | tail -5
+
+      - name: "Coverage check (core >50%)"
         run: |
-          go test -cover ./... 2>&1 | tee /tmp/coverage.txt
+          go test -cover -count=1 ./internal/... 2>&1 | tee /tmp/coverage.txt
           # Ensure all core packages have >50% coverage
-          ! grep -E "internal/(domain|application|infrastructure/(detector|server|output))" /tmp/coverage.txt | grep -E "coverage: [0-4][0-9]"
+          ! grep -E "coverage: [0-4][0-9]" /tmp/coverage.txt | grep -v "^?"
 
   architecture-audit:
     name: "Architecture Audit"
