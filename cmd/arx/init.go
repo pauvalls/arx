@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/pauvalls/arx/internal/application"
 	"github.com/pauvalls/arx/internal/domain"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -169,15 +170,40 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 		fmt.Printf("Project: %s\n", projectRoot)
 		fmt.Printf("Languages: %s\n", strings.Join(info.Languages, ", "))
-		fmt.Printf("Layers detected: %d\n", len(cfg.Layers))
-		for _, layer := range cfg.Layers {
-			fmt.Printf("  %s: %s\n", layer.Name, strings.Join(layer.Paths, ", "))
-		}
-		fmt.Printf("Rules generated: %d\n", len(cfg.Rules))
-		fmt.Println()
-		fmt.Println("--- Generated Configuration ---")
 		fmt.Println()
 
+		// Import analysis
+		fmt.Println("─── Import Analysis ───")
+		importSummary, err := application.ScanImports(projectRoot, cfg.Layers)
+		if err == nil && importSummary != nil {
+			fmt.Println(importSummary.FormatSummary())
+		}
+		fmt.Println()
+
+		// Detected layers
+		fmt.Println("─── Detected Layers ───")
+		fmt.Printf("  %d layer(s) detected\n", len(cfg.Layers))
+		for _, layer := range cfg.Layers {
+			fmt.Printf("  • %s: %s\n", layer.Name, strings.Join(layer.Paths, ", "))
+		}
+		fmt.Println()
+
+		// Generated rules
+		fmt.Println("─── Generated Rules ───")
+		fmt.Printf("  %d rule(s)\n", len(cfg.Rules))
+		for _, rule := range cfg.Rules {
+			if rule.Check.Raw != "" {
+				fmt.Printf("  • %s: check: %s (%s)\n", rule.ID, rule.Check.Raw, rule.Severity)
+			} else {
+				to := strings.Join(rule.To, ", ")
+				fmt.Printf("  • %s: %s → [%s] (%s)\n", rule.ID, rule.From, to, rule.Severity)
+			}
+		}
+		fmt.Println()
+
+		// Generated YAML
+		fmt.Println("─── Generated Configuration ───")
+		fmt.Println()
 		yamlBytes, err := yaml.Marshal(cfg)
 		if err != nil {
 			return fmt.Errorf("failed to marshal config: %w", err)
