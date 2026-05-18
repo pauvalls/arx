@@ -163,6 +163,14 @@
 - [x] Maps imports to detected layers for real architecture understanding
 - [x] Detected layers, rules, and generated YAML in unified output
 
+## ✅ v0.39.0 — TypeScript scanner + dependency stats in arx check
+**Priority:** Medium | **Effort:** M
+
+- [x] TypeScript/JavaScript import scanner (import, require, side-effect)
+- [x] Multi-language scanner architecture (extensible per extension)
+- [x] `arx check` now shows: "Dependencies: 1044 imports across 4 layers (221 files scanned)"
+- [x] Works for both Go and TypeScript projects
+
 ---
 
 ### Cross-Language Dependency Resolution
