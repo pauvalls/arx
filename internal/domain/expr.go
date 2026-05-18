@@ -27,6 +27,7 @@ const (
 	TokenLParen
 	TokenRParen
 	TokenComma
+	TokenString
 	TokenEOF
 )
 
@@ -44,7 +45,8 @@ var tokenNames = map[TokenType]string{
 	TokenNot:     "!",
 	TokenLParen:  "(",
 	TokenRParen:  ")",
-	TokenComma:   ",",
+	TokenComma:    ",",
+	TokenString:   "STRING",
 	TokenEOF:     "EOF",
 }
 
@@ -156,6 +158,22 @@ func tokenize(input string) ([]Token, error) {
 			continue
 		}
 
+		// String literals (double-quoted)
+		if ch == '"' {
+			i++ // skip opening quote
+			start := i
+			for i < len(runes) && runes[i] != '"' {
+				i++
+			}
+			if i >= len(runes) {
+				return nil, fmt.Errorf("unterminated string literal starting at position %d", pos)
+			}
+			val := string(runes[start:i])
+			i++ // skip closing quote
+			tokens = append(tokens, Token{Type: TokenString, Value: val, Pos: pos})
+			continue
+		}
+
 		return nil, fmt.Errorf("unexpected character %q at position %d", ch, pos)
 	}
 
@@ -183,6 +201,7 @@ const (
 	ValueInt ValueKind = iota
 	ValueBool
 	ValueDeps
+	ValueKindList
 )
 
 type Value struct {
@@ -190,10 +209,11 @@ type Value struct {
 	Int  int
 	Bool bool
 	Deps []Dependency
+	List []string
 }
 
 // AsBool converts a Value to bool for logical operations.
-// Int > 0 is true; Deps with len > 0 is true.
+// Int > 0 is true; Deps with len > 0 is true; List with len > 0 is true.
 func (v Value) AsBool() bool {
 	switch v.Kind {
 	case ValueBool:
@@ -202,12 +222,14 @@ func (v Value) AsBool() bool {
 		return v.Int > 0
 	case ValueDeps:
 		return len(v.Deps) > 0
+	case ValueKindList:
+		return len(v.List) > 0
 	}
 	return false
 }
 
 // AsInt converts a Value to int.
-// Bool true is 1, false is 0; Deps len is the int value.
+// Bool true is 1, false is 0; Deps len is the int value; List len is the int value.
 func (v Value) AsInt() int {
 	switch v.Kind {
 	case ValueInt:
@@ -219,6 +241,8 @@ func (v Value) AsInt() int {
 		return 0
 	case ValueDeps:
 		return len(v.Deps)
+	case ValueKindList:
+		return len(v.List)
 	}
 	return 0
 }
@@ -463,6 +487,8 @@ var builtins = map[string]func(args []Expr, ctx EvalContext) (Value, error){
 	"threshold":    builtinThreshold,
 	"all":          builtinAll,
 	"any":          builtinAny,
+	"filter":       builtinFilter,
+	"map":          builtinMap,
 }
 
 func builtinCount(args []Expr, ctx EvalContext) (Value, error) {
@@ -634,6 +660,152 @@ func builtinAny(args []Expr, ctx EvalContext) (Value, error) {
 	return Value{Kind: ValueBool, Bool: len(v.Deps) > 0}, nil
 }
 
+// ─── Filter/Map Helpers ──────────────────────────────────────────────────────
+
+// evalPredicate evaluates a simple "field op value" predicate against a Dependency.
+// Predicate format: exactly 3 space-separated tokens: field, operator, value.
+// Supported fields: SourceFile, ImportPath, ResolvedLayer (==/!= only), SourceLine (all ops).
+func evalPredicate(dep Dependency, predicate string) (bool, error) {
+	parts := strings.Fields(predicate)
+	if len(parts) != 3 {
+		return false, fmt.Errorf("invalid predicate %q: expected exactly 3 tokens (field op value)", predicate)
+	}
+	field, op, value := parts[0], parts[1], parts[2]
+
+	switch field {
+	case "SourceFile":
+		if op == "==" {
+			return dep.SourceFile == value, nil
+		}
+		if op == "!=" {
+			return dep.SourceFile != value, nil
+		}
+		return false, fmt.Errorf("invalid operator %q for string field %q (allowed: ==, !=)", op, field)
+	case "ImportPath":
+		if op == "==" {
+			return dep.ImportPath == value, nil
+		}
+		if op == "!=" {
+			return dep.ImportPath != value, nil
+		}
+		return false, fmt.Errorf("invalid operator %q for string field %q (allowed: ==, !=)", op, field)
+	case "ResolvedLayer":
+		if op == "==" {
+			return dep.ResolvedLayer == value, nil
+		}
+		if op == "!=" {
+			return dep.ResolvedLayer != value, nil
+		}
+		return false, fmt.Errorf("invalid operator %q for string field %q (allowed: ==, !=)", op, field)
+	case "SourceLine":
+		target, err := strconv.Atoi(value)
+		if err != nil {
+			return false, fmt.Errorf("invalid number %q for SourceLine comparison", value)
+		}
+		switch op {
+		case "==":
+			return dep.SourceLine == target, nil
+		case "!=":
+			return dep.SourceLine != target, nil
+		case ">":
+			return dep.SourceLine > target, nil
+		case "<":
+			return dep.SourceLine < target, nil
+		case ">=":
+			return dep.SourceLine >= target, nil
+		case "<=":
+			return dep.SourceLine <= target, nil
+		default:
+			return false, fmt.Errorf("invalid operator %q for field %q", op, field)
+		}
+	default:
+		return false, fmt.Errorf("unknown field %q in predicate", field)
+	}
+}
+
+// depFieldByName extracts a string representation of a field from a Dependency by name.
+// Supports the same field names as evalPredicate.
+func depFieldByName(dep Dependency, field string) (string, error) {
+	switch field {
+	case "SourceFile":
+		return dep.SourceFile, nil
+	case "ImportPath":
+		return dep.ImportPath, nil
+	case "ResolvedLayer":
+		return dep.ResolvedLayer, nil
+	case "SourceLine":
+		return strconv.Itoa(dep.SourceLine), nil
+	default:
+		return "", fmt.Errorf("unknown field %q", field)
+	}
+}
+
+// builtinFilter filters a ValueDeps by a predicate string.
+// Usage: filter(deps(from, to), "field op value")
+func builtinFilter(args []Expr, ctx EvalContext) (Value, error) {
+	if len(args) != 2 {
+		return Value{}, fmt.Errorf("filter() expects exactly 2 arguments, got %d", len(args))
+	}
+
+	depsVal, err := args[0].Eval(ctx)
+	if err != nil {
+		return Value{}, err
+	}
+	if depsVal.Kind != ValueDeps {
+		return Value{}, fmt.Errorf("filter() first argument must evaluate to deps, got %v", depsVal.Kind)
+	}
+
+	predicate, err := resolveStringArg(args[1], ctx)
+	if err != nil {
+		return Value{}, fmt.Errorf("filter() second argument must be a string literal (predicate)")
+	}
+
+	var matched []Dependency
+	for _, dep := range depsVal.Deps {
+		ok, err := evalPredicate(dep, predicate)
+		if err != nil {
+			return Value{}, fmt.Errorf("filter() predicate error: %w", err)
+		}
+		if ok {
+			matched = append(matched, dep)
+		}
+	}
+
+	return Value{Kind: ValueDeps, Deps: matched}, nil
+}
+
+// builtinMap extracts a field from each dep in a ValueDeps into a ValueList.
+// Usage: map(deps(from, to), "FieldName")
+func builtinMap(args []Expr, ctx EvalContext) (Value, error) {
+	if len(args) != 2 {
+		return Value{}, fmt.Errorf("map() expects exactly 2 arguments, got %d", len(args))
+	}
+
+	depsVal, err := args[0].Eval(ctx)
+	if err != nil {
+		return Value{}, err
+	}
+	if depsVal.Kind != ValueDeps {
+		return Value{}, fmt.Errorf("map() first argument must evaluate to deps, got %v", depsVal.Kind)
+	}
+
+	fieldName, err := resolveStringArg(args[1], ctx)
+	if err != nil {
+		return Value{}, fmt.Errorf("map() second argument must be a string literal (field name)")
+	}
+
+	var result []string
+	for _, dep := range depsVal.Deps {
+		val, err := depFieldByName(dep, fieldName)
+		if err != nil {
+			return Value{}, fmt.Errorf("map() field error: %w", err)
+		}
+		result = append(result, val)
+	}
+
+	return Value{Kind: ValueKindList, List: result}, nil
+}
+
 // ─── Parser ──────────────────────────────────────────────────────────────────
 
 type parser struct {
@@ -791,6 +963,10 @@ func (p *parser) parsePrimary() (Expr, error) {
 		// Otherwise it's a string literal (layer name or identifier)
 		return &StringLiteral{Value: tok.Value}, nil
 
+	case TokenString:
+		p.advance()
+		return &StringLiteral{Value: tok.Value}, nil
+
 	case TokenLParen:
 		p.advance()
 		expr, err := p.parseExpr()
@@ -923,6 +1099,8 @@ func (v Value) String() string {
 		return strconv.FormatBool(v.Bool)
 	case ValueDeps:
 		return fmt.Sprintf("deps[%d]", len(v.Deps))
+	case ValueKindList:
+		return fmt.Sprintf("list[%d]", len(v.List))
 	}
 	return "unknown"
 }

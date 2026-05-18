@@ -67,22 +67,21 @@
 
 ---
 
+## ✅ v0.30.0 — filter()/map() (DSL completion)
+**Priority:** Medium | **Effort:** M
+
+- [x] `filter(deps(a,b), "field op value")` — filter deps by predicate string
+- [x] `map(deps(a,b), "field")` — extract field values as ValueList
+- [x] `ValueList` type with `count()` support
+- [x] Predicate evaluator: ==/!= for string fields, all 6 ops for SourceLine
+- [x] Tokenizer enhancement: quoted string support for predicate args
+
 ## ✅ v0.29.0 — Rule Hot-Reload
 **Priority:** Medium | **Effort:** S
 
 - [x] `POST /api/reload` — endpoint to force config re-read and full re-check
 - [x] `GET /api/config` — endpoint returning layers, rules summary, and function names
 - [x] File watcher logs when `arx.yaml` changes — config hot-reload with no restart
-
----
-
-## 🔜 v0.30.0 — filter()/map() (completar el DSL)
-**Priority:** Medium | **Effort:** M
-
-Completar el expression engine con funciones de colección:
-- `filter(deps(a,b), predicate_string)` — filtrar dependencias por campo
-- `map(deps(a,b), field_name)` — extraer campo de cada dependencia
-- Predicados string-based (sin lambdas) para mantener simple el parser
 
 ---
 

@@ -1748,7 +1748,7 @@ func TestConfig_Validate_UserFunctionSelfReference(t *testing.T) {
 }
 
 func TestConfig_Validate_UserFunctionBuiltinShadowing(t *testing.T) {
-	tests := []string{"deps", "count", "layers", "has_circular", "files", "ratio", "violations", "threshold", "all", "any"}
+	tests := []string{"deps", "count", "layers", "has_circular", "files", "ratio", "violations", "threshold", "all", "any", "filter", "map"}
 	for _, name := range tests {
 		t.Run(name, func(t *testing.T) {
 			config := Config{
@@ -2063,6 +2063,234 @@ func TestEvaluateRules_UserFunctionNoViolation(t *testing.T) {
 	}
 }
 
+// ─── ValueList Tests (Phase 1) ───────────────────────────────────────────────
+
+func TestValueList_AsBool(t *testing.T) {
+	tests := []struct {
+		name   string
+		values []string
+		want   bool
+	}{
+		{"non-empty", []string{"a", "b", "c"}, true},
+		{"empty", []string{}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v := Value{Kind: ValueKindList, List: tt.values}
+			if got := v.AsBool(); got != tt.want {
+				t.Errorf("AsBool() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestValueList_AsInt(t *testing.T) {
+	tests := []struct {
+		name   string
+		values []string
+		want   int
+	}{
+		{"three items", []string{"a", "b", "c"}, 3},
+		{"empty", []string{}, 0},
+		{"single item", []string{"hello"}, 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v := Value{Kind: ValueKindList, List: tt.values}
+			if got := v.AsInt(); got != tt.want {
+				t.Errorf("AsInt() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestValueList_String(t *testing.T) {
+	tests := []struct {
+		name   string
+		values []string
+		want   string
+	}{
+		{"non-empty", []string{"a", "b", "c"}, "list[3]"},
+		{"empty", []string{}, "list[0]"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v := Value{Kind: ValueKindList, List: tt.values}
+			if got := v.String(); got != tt.want {
+				t.Errorf("String() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestValueList_Count(t *testing.T) {
+	// count() builtin uses AsInt(), so it works on ValueList
+	v := Value{Kind: ValueKindList, List: []string{"x", "y", "z", "w"}}
+	// builtinCount evals the arg then returns AsInt()
+	// We'll test via direct builtinCount call with a mock arg
+	val, err := builtinCount([]Expr{&mockListExpr{val: v}}, EvalContext{})
+	if err != nil {
+		t.Fatalf("builtinCount error: %v", err)
+	}
+	if val.Kind != ValueInt || val.Int != 4 {
+		t.Errorf("expected count=4, got %v", val)
+	}
+}
+
+// mockListExpr is an Expr that returns a predefined Value (for testing builtins).
+type mockListExpr struct {
+	val Value
+}
+
+func (m *mockListExpr) Eval(_ EvalContext) (Value, error) {
+	return m.val, nil
+}
+
+// ─── Predicate Evaluator Tests (Phase 2) ──────────────────────────────────────
+
+func TestEvalPredicate_StringFields(t *testing.T) {
+	dep := Dependency{
+		SourceFile:    "domain/a.go",
+		SourceLine:    42,
+		ImportPath:    "github.com/pauvalls/arx/internal/domain",
+		ResolvedLayer: "domain",
+	}
+
+	tests := []struct {
+		name      string
+		predicate string
+		want      bool
+		wantErr   bool
+	}{
+		// SourceFile
+		{name: "SourceFile == match", predicate: "SourceFile == domain/a.go", want: true},
+		{name: "SourceFile == no match", predicate: "SourceFile == other.go", want: false},
+		{name: "SourceFile != match", predicate: "SourceFile != other.go", want: true},
+		{name: "SourceFile != no match", predicate: "SourceFile != domain/a.go", want: false},
+		// ImportPath
+		{name: "ImportPath == match", predicate: "ImportPath == github.com/pauvalls/arx/internal/domain", want: true},
+		{name: "ImportPath == no match", predicate: "ImportPath == other/path", want: false},
+		{name: "ImportPath != match", predicate: "ImportPath != other/path", want: true},
+		{name: "ImportPath != no match", predicate: "ImportPath != github.com/pauvalls/arx/internal/domain", want: false},
+		// ResolvedLayer
+		{name: "ResolvedLayer == match", predicate: "ResolvedLayer == domain", want: true},
+		{name: "ResolvedLayer == no match", predicate: "ResolvedLayer == infra", want: false},
+		{name: "ResolvedLayer != match", predicate: "ResolvedLayer != infra", want: true},
+		{name: "ResolvedLayer != no match", predicate: "ResolvedLayer != domain", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := evalPredicate(dep, tt.predicate)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("evalPredicate() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestEvalPredicate_NumericField(t *testing.T) {
+	dep := Dependency{
+		SourceFile:    "app.go",
+		SourceLine:    42,
+		ImportPath:    "pkg/app",
+		ResolvedLayer: "app",
+	}
+
+	tests := []struct {
+		name      string
+		predicate string
+		want      bool
+		wantErr   bool
+	}{
+		// SourceLine ==
+		{name: "SourceLine == match", predicate: "SourceLine == 42", want: true},
+		{name: "SourceLine == no match", predicate: "SourceLine == 0", want: false},
+		// SourceLine !=
+		{name: "SourceLine != match", predicate: "SourceLine != 0", want: true},
+		{name: "SourceLine != no match", predicate: "SourceLine != 42", want: false},
+		// SourceLine >
+		{name: "SourceLine > true", predicate: "SourceLine > 10", want: true},
+		{name: "SourceLine > false", predicate: "SourceLine > 100", want: false},
+		// SourceLine <
+		{name: "SourceLine < true", predicate: "SourceLine < 100", want: true},
+		{name: "SourceLine < false", predicate: "SourceLine < 10", want: false},
+		// SourceLine >=
+		{name: "SourceLine >= equal", predicate: "SourceLine >= 42", want: true},
+		{name: "SourceLine >= greater", predicate: "SourceLine >= 10", want: true},
+		{name: "SourceLine >= false", predicate: "SourceLine >= 100", want: false},
+		// SourceLine <=
+		{name: "SourceLine <= equal", predicate: "SourceLine <= 42", want: true},
+		{name: "SourceLine <= lesser", predicate: "SourceLine <= 100", want: true},
+		{name: "SourceLine <= false", predicate: "SourceLine <= 10", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := evalPredicate(dep, tt.predicate)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("evalPredicate() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestEvalPredicate_Errors(t *testing.T) {
+	dep := Dependency{
+		SourceFile:    "app.go",
+		SourceLine:    1,
+		ImportPath:    "pkg/app",
+		ResolvedLayer: "app",
+	}
+
+	tests := []struct {
+		name      string
+		predicate string
+		wantErr   string
+	}{
+		{name: "unknown field", predicate: "Foo == bar", wantErr: "unknown field"},
+		{name: "too few tokens", predicate: "SourceFile", wantErr: "invalid predicate"},
+		{name: "too many tokens", predicate: "SourceFile == a b", wantErr: "invalid predicate"},
+		{name: "empty", predicate: "", wantErr: "invalid predicate"},
+		{name: "string field with >", predicate: "SourceFile > a", wantErr: "invalid operator"},
+		{name: "string field with <", predicate: "ImportPath < b", wantErr: "invalid operator"},
+		{name: "string field with >=", predicate: "ResolvedLayer >= a", wantErr: "invalid operator"},
+		{name: "string field with <=", predicate: "SourceFile <= a", wantErr: "invalid operator"},
+		{name: "SourceLine non-numeric value", predicate: "SourceLine == abc", wantErr: "invalid"},
+		{name: "SourceLine unknown op", predicate: "SourceLine ?? 10", wantErr: "invalid operator"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := evalPredicate(dep, tt.predicate)
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("error %q does not contain %q", err.Error(), tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestEvaluateRules_UserFunctionAllBuiltin(t *testing.T) {
 	// Integration: user function uses all() builtin
 	deps := []Dependency{
@@ -2100,5 +2328,438 @@ func TestEvaluateRules_UserFunctionAllBuiltin(t *testing.T) {
 	violations := EvaluateRules(deps, config.Rules, layers, config.UserFunctions())
 	if len(violations) != 0 {
 		t.Fatalf("expected 0 violations (deps exist, !has_deps=false), got %d", len(violations))
+	}
+}
+
+// ─── filter() Builtin Tests (Phase 3) ─────────────────────────────────────────
+
+func TestBuiltinFilter_ByResolvedLayer(t *testing.T) {
+	deps := []Dependency{
+		{SourceFile: "domain/a.go", ResolvedLayer: "domain"},
+		{SourceFile: "infra/x.go", ResolvedLayer: "infra"},
+		{SourceFile: "domain/b.go", ResolvedLayer: "domain"},
+		{SourceFile: "db/db.go", ResolvedLayer: "db"},
+	}
+	val, err := builtinFilter([]Expr{
+		&mockListExpr{val: Value{Kind: ValueDeps, Deps: deps}},
+		&StringLiteral{Value: "ResolvedLayer == domain"},
+	}, EvalContext{})
+	if err != nil {
+		t.Fatalf("builtinFilter error: %v", err)
+	}
+	if val.Kind != ValueDeps {
+		t.Fatalf("expected ValueDeps, got %v", val.Kind)
+	}
+	if len(val.Deps) != 2 {
+		t.Fatalf("expected 2 filtered deps, got %d", len(val.Deps))
+	}
+	for _, d := range val.Deps {
+		if d.ResolvedLayer != "domain" {
+			t.Errorf("expected ResolvedLayer=domain, got %q", d.ResolvedLayer)
+		}
+	}
+}
+
+func TestBuiltinFilter_BySourceFile(t *testing.T) {
+	deps := []Dependency{
+		{SourceFile: "domain/a.go", ResolvedLayer: "domain"},
+		{SourceFile: "domain/b.go", ResolvedLayer: "domain"},
+		{SourceFile: "infra/x.go", ResolvedLayer: "infra"},
+	}
+	val, err := builtinFilter([]Expr{
+		&mockListExpr{val: Value{Kind: ValueDeps, Deps: deps}},
+		&StringLiteral{Value: "SourceFile == domain/a.go"},
+	}, EvalContext{})
+	if err != nil {
+		t.Fatalf("builtinFilter error: %v", err)
+	}
+	if len(val.Deps) != 1 || val.Deps[0].SourceFile != "domain/a.go" {
+		t.Errorf("expected 1 dep with SourceFile=domain/a.go, got %v", val.Deps)
+	}
+}
+
+func TestBuiltinFilter_ByNotEqual(t *testing.T) {
+	deps := []Dependency{
+		{SourceFile: "domain/a.go", ResolvedLayer: "domain"},
+		{SourceFile: "infra/x.go", ResolvedLayer: "infra"},
+	}
+	val, err := builtinFilter([]Expr{
+		&mockListExpr{val: Value{Kind: ValueDeps, Deps: deps}},
+		&StringLiteral{Value: "ResolvedLayer != domain"},
+	}, EvalContext{})
+	if err != nil {
+		t.Fatalf("builtinFilter error: %v", err)
+	}
+	if len(val.Deps) != 1 || val.Deps[0].ResolvedLayer != "infra" {
+		t.Errorf("expected 1 dep with ResolvedLayer=infra, got %v", val.Deps)
+	}
+}
+
+func TestBuiltinFilter_EmptyResult(t *testing.T) {
+	deps := []Dependency{
+		{SourceFile: "domain/a.go", ResolvedLayer: "domain"},
+	}
+	val, err := builtinFilter([]Expr{
+		&mockListExpr{val: Value{Kind: ValueDeps, Deps: deps}},
+		&StringLiteral{Value: "ResolvedLayer == nonexistent"},
+	}, EvalContext{})
+	if err != nil {
+		t.Fatalf("builtinFilter error: %v", err)
+	}
+	if len(val.Deps) != 0 {
+		t.Errorf("expected empty result, got %d deps", len(val.Deps))
+	}
+}
+
+func TestBuiltinFilter_BySourceLine(t *testing.T) {
+	deps := []Dependency{
+		{SourceFile: "a.go", SourceLine: 10, ResolvedLayer: "app"},
+		{SourceFile: "b.go", SourceLine: 25, ResolvedLayer: "app"},
+		{SourceFile: "c.go", SourceLine: 50, ResolvedLayer: "app"},
+	}
+	tests := []struct {
+		name      string
+		predicate string
+		want      int
+	}{
+		{name: "SourceLine > 20", predicate: "SourceLine > 20", want: 2},
+		{name: "SourceLine >= 25", predicate: "SourceLine >= 25", want: 2},
+		{name: "SourceLine < 25", predicate: "SourceLine < 25", want: 1},
+		{name: "SourceLine <= 10", predicate: "SourceLine <= 10", want: 1},
+		{name: "SourceLine == 25", predicate: "SourceLine == 25", want: 1},
+		{name: "SourceLine != 25", predicate: "SourceLine != 25", want: 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			val, err := builtinFilter([]Expr{
+				&mockListExpr{val: Value{Kind: ValueDeps, Deps: deps}},
+				&StringLiteral{Value: tt.predicate},
+			}, EvalContext{})
+			if err != nil {
+				t.Fatalf("builtinFilter error: %v", err)
+			}
+			if len(val.Deps) != tt.want {
+				t.Errorf("expected %d filtered deps, got %d", tt.want, len(val.Deps))
+			}
+		})
+	}
+}
+
+func TestBuiltinFilter_WrongArgCount(t *testing.T) {
+	// Zero args
+	_, err := builtinFilter([]Expr{}, EvalContext{})
+	if err == nil {
+		t.Fatal("expected error for 0 args")
+	}
+	if !strings.Contains(err.Error(), "expects exactly 2") {
+		t.Errorf("error should mention arg count, got: %v", err)
+	}
+
+	// One arg
+	_, err = builtinFilter([]Expr{&NumberLiteral{Value: 1}}, EvalContext{})
+	if err == nil {
+		t.Fatal("expected error for 1 arg")
+	}
+	if !strings.Contains(err.Error(), "expects exactly 2") {
+		t.Errorf("error should mention arg count, got: %v", err)
+	}
+}
+
+func TestBuiltinFilter_WrongArgType(t *testing.T) {
+	// First arg is not deps
+	_, err := builtinFilter([]Expr{
+		&NumberLiteral{Value: 42},
+		&StringLiteral{Value: "SourceFile == test.go"},
+	}, EvalContext{})
+	if err == nil {
+		t.Fatal("expected error for non-deps first arg")
+	}
+	if !strings.Contains(err.Error(), "first argument") {
+		t.Errorf("error should mention first argument, got: %v", err)
+	}
+
+	// Second arg is not a string literal
+	_, err = builtinFilter([]Expr{
+		&mockListExpr{val: Value{Kind: ValueDeps, Deps: []Dependency{}}},
+		&NumberLiteral{Value: 42},
+	}, EvalContext{})
+	if err == nil {
+		t.Fatal("expected error for non-string second arg")
+	}
+}
+
+func TestBuiltinFilter_InvalidPredicate(t *testing.T) {
+	deps := []Dependency{
+		{SourceFile: "a.go", ResolvedLayer: "app"},
+	}
+	_, err := builtinFilter([]Expr{
+		&mockListExpr{val: Value{Kind: ValueDeps, Deps: deps}},
+		&StringLiteral{Value: "UnknownField == x"},
+	}, EvalContext{})
+	if err == nil {
+		t.Fatal("expected error for invalid predicate")
+	}
+	if !strings.Contains(err.Error(), "predicate error") {
+		t.Errorf("error should mention predicate error, got: %v", err)
+	}
+}
+
+// ─── map() Builtin Tests (Phase 4) ────────────────────────────────────────────
+
+func TestBuiltinMap_SourceFile(t *testing.T) {
+	deps := []Dependency{
+		{SourceFile: "domain/a.go", SourceLine: 10, ImportPath: "pkg/a", ResolvedLayer: "domain"},
+		{SourceFile: "domain/b.go", SourceLine: 20, ImportPath: "pkg/b", ResolvedLayer: "domain"},
+	}
+	val, err := builtinMap([]Expr{
+		&mockListExpr{val: Value{Kind: ValueDeps, Deps: deps}},
+		&StringLiteral{Value: "SourceFile"},
+	}, EvalContext{})
+	if err != nil {
+		t.Fatalf("builtinMap error: %v", err)
+	}
+	if val.Kind != ValueKindList {
+		t.Fatalf("expected ValueKindList, got %v", val.Kind)
+	}
+	want := []string{"domain/a.go", "domain/b.go"}
+	if len(val.List) != len(want) {
+		t.Fatalf("expected %d items, got %d: %v", len(want), len(val.List), val.List)
+	}
+	for i, v := range want {
+		if val.List[i] != v {
+			t.Errorf("expected [%d]=%q, got %q", i, v, val.List[i])
+		}
+	}
+}
+
+func TestBuiltinMap_ResolvedLayer(t *testing.T) {
+	deps := []Dependency{
+		{SourceFile: "a.go", ResolvedLayer: "domain"},
+		{SourceFile: "b.go", ResolvedLayer: "infra"},
+		{SourceFile: "c.go", ResolvedLayer: "domain"},
+	}
+	val, err := builtinMap([]Expr{
+		&mockListExpr{val: Value{Kind: ValueDeps, Deps: deps}},
+		&StringLiteral{Value: "ResolvedLayer"},
+	}, EvalContext{})
+	if err != nil {
+		t.Fatalf("builtinMap error: %v", err)
+	}
+	want := []string{"domain", "infra", "domain"}
+	if len(val.List) != len(want) {
+		t.Fatalf("expected %d items, got %d: %v", len(want), len(val.List), val.List)
+	}
+	for i, v := range want {
+		if val.List[i] != v {
+			t.Errorf("expected [%d]=%q, got %q", i, v, val.List[i])
+		}
+	}
+}
+
+func TestBuiltinMap_ImportPath(t *testing.T) {
+	deps := []Dependency{
+		{ImportPath: "github.com/user/pkg/a"},
+		{ImportPath: "github.com/user/pkg/b"},
+	}
+	val, err := builtinMap([]Expr{
+		&mockListExpr{val: Value{Kind: ValueDeps, Deps: deps}},
+		&StringLiteral{Value: "ImportPath"},
+	}, EvalContext{})
+	if err != nil {
+		t.Fatalf("builtinMap error: %v", err)
+	}
+	want := []string{"github.com/user/pkg/a", "github.com/user/pkg/b"}
+	for i, v := range want {
+		if val.List[i] != v {
+			t.Errorf("expected [%d]=%q, got %q", i, v, val.List[i])
+		}
+	}
+}
+
+func TestBuiltinMap_SourceLine(t *testing.T) {
+	deps := []Dependency{
+		{SourceFile: "a.go", SourceLine: 5},
+		{SourceFile: "b.go", SourceLine: 42},
+	}
+	val, err := builtinMap([]Expr{
+		&mockListExpr{val: Value{Kind: ValueDeps, Deps: deps}},
+		&StringLiteral{Value: "SourceLine"},
+	}, EvalContext{})
+	if err != nil {
+		t.Fatalf("builtinMap error: %v", err)
+	}
+	want := []string{"5", "42"}
+	for i, v := range want {
+		if val.List[i] != v {
+			t.Errorf("expected [%d]=%q, got %q", i, v, val.List[i])
+		}
+	}
+}
+
+func TestBuiltinMap_EmptyDeps(t *testing.T) {
+	val, err := builtinMap([]Expr{
+		&mockListExpr{val: Value{Kind: ValueDeps, Deps: []Dependency{}}},
+		&StringLiteral{Value: "SourceFile"},
+	}, EvalContext{})
+	if err != nil {
+		t.Fatalf("builtinMap error: %v", err)
+	}
+	if val.Kind != ValueKindList || len(val.List) != 0 {
+		t.Errorf("expected empty list, got %v", val)
+	}
+}
+
+func TestBuiltinMap_UnknownField(t *testing.T) {
+	deps := []Dependency{
+		{SourceFile: "a.go"},
+	}
+	_, err := builtinMap([]Expr{
+		&mockListExpr{val: Value{Kind: ValueDeps, Deps: deps}},
+		&StringLiteral{Value: "NoSuchField"},
+	}, EvalContext{})
+	if err == nil {
+		t.Fatal("expected error for unknown field")
+	}
+	if !strings.Contains(err.Error(), "unknown field") {
+		t.Errorf("error should mention unknown field, got: %v", err)
+	}
+}
+
+func TestBuiltinMap_WrongArgCount(t *testing.T) {
+	// Zero args
+	_, err := builtinMap([]Expr{}, EvalContext{})
+	if err == nil {
+		t.Fatal("expected error for 0 args")
+	}
+	if !strings.Contains(err.Error(), "expects exactly 2") {
+		t.Errorf("error should mention arg count, got: %v", err)
+	}
+}
+
+func TestBuiltinMap_WrongArgType(t *testing.T) {
+	// First arg is not deps
+	_, err := builtinMap([]Expr{
+		&NumberLiteral{Value: 42},
+		&StringLiteral{Value: "SourceFile"},
+	}, EvalContext{})
+	if err == nil {
+		t.Fatal("expected error for non-deps first arg")
+	}
+	if !strings.Contains(err.Error(), "first argument") {
+		t.Errorf("error should mention first argument, got: %v", err)
+	}
+}
+
+// ─── Integration Tests (Phase 5) ─────────────────────────────────────────────
+
+func TestParse_FilterMapExpression(t *testing.T) {
+	// Parse, but don't eval — just verify parse succeeds
+	exprs := []string{
+		`count(filter(deps(domain, infra), "ResolvedLayer == infra"))`,
+		`count(map(deps(domain, infra), "SourceFile"))`,
+		`count(filter(deps(domain, infra), "SourceLine > 10"))`,
+	}
+	for _, input := range exprs {
+		t.Run(input, func(t *testing.T) {
+			_, err := Parse(input)
+			if err != nil {
+				t.Errorf("Parse(%q) error: %v", input, err)
+			}
+		})
+	}
+}
+
+func TestEval_FilterCountIntegration(t *testing.T) {
+	deps := []Dependency{
+		{SourceFile: "domain/a.go", ResolvedLayer: "infra"},
+		{SourceFile: "domain/b.go", ResolvedLayer: "infra"},
+		{SourceFile: "domain/c.go", ResolvedLayer: "domain"}, // self, filtered out
+		{SourceFile: "domain/d.go", ResolvedLayer: "infra"},
+	}
+	layers := []Layer{
+		{Name: "domain", Paths: []string{"domain/"}},
+		{Name: "infra", Paths: []string{"infra/"}},
+	}
+	ctx := EvalContext{Deps: deps, Layers: layers}
+
+	// count(filter(deps(domain, infra), "ResolvedLayer == infra"))
+	expr, err := Parse(`count(filter(deps(domain, infra), "ResolvedLayer == infra"))`)
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	val, err := expr.Eval(ctx)
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	if val.Kind != ValueInt || val.Int != 3 {
+		t.Errorf("expected count=3 (3 filtered to infra), got %v", val)
+	}
+}
+
+func TestEval_MapCountIntegration(t *testing.T) {
+	deps := []Dependency{
+		{SourceFile: "domain/a.go", ResolvedLayer: "infra"},
+		{SourceFile: "domain/b.go", ResolvedLayer: "infra"},
+	}
+	layers := []Layer{
+		{Name: "domain", Paths: []string{"domain/"}},
+		{Name: "infra", Paths: []string{"infra/"}},
+	}
+	ctx := EvalContext{Deps: deps, Layers: layers}
+
+	// count(map(deps(domain, infra), "SourceFile")) == 2
+	expr, err := Parse(`count(map(deps(domain, infra), "SourceFile")) == 2`)
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	val, err := expr.Eval(ctx)
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	if val.Kind != ValueBool || !val.Bool {
+		t.Errorf("expected true (count(map(...)) == 2), got %v", val)
+	}
+}
+
+func TestEval_FilterThenMapIntegration(t *testing.T) {
+	deps := []Dependency{
+		{SourceFile: "domain/a.go", ResolvedLayer: "infra", ImportPath: "pkg/a"},
+		{SourceFile: "domain/b.go", ResolvedLayer: "db", ImportPath: "pkg/b"},
+		{SourceFile: "domain/c.go", ResolvedLayer: "infra", ImportPath: "pkg/c"},
+	}
+	layers := []Layer{
+		{Name: "domain", Paths: []string{"domain/"}},
+		{Name: "infra", Paths: []string{"infra/"}},
+		{Name: "db", Paths: []string{"db/"}},
+	}
+	ctx := EvalContext{Deps: deps, Layers: layers}
+
+	// count(filter(deps(domain, infra), "ResolvedLayer == infra")) == 2
+	expr, err := Parse(`count(filter(deps(domain, infra), "ResolvedLayer == infra")) == 2`)
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	val, err := expr.Eval(ctx)
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	if val.Kind != ValueBool || !val.Bool {
+		t.Errorf("expected true (2 infra deps), got %v", val)
+	}
+}
+
+func TestParse_FilterMapExpressions(t *testing.T) {
+	// Verify these expressions parse successfully
+	tests := []string{
+		`count(filter(deps(domain, infra), "ResolvedLayer == infra")) > 3`,
+		`count(map(deps(domain, infra), "SourceFile")) == 0`,
+	}
+	for _, input := range tests {
+		t.Run(input, func(t *testing.T) {
+			_, err := Parse(input)
+			if err != nil {
+				t.Errorf("Parse(%q) error: %v", input, err)
+			}
+		})
 	}
 }
