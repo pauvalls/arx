@@ -137,6 +137,15 @@
 - [x] `contrib/opencode/arx-setup/SKILL.md` — distributable skill file
 - [x] `docs/ai-integration.md` — documentation with examples
 
+## ✅ v0.36.0 — arx explain: real code context + code-aware fixes
+**Priority:** Medium | **Effort:** M
+
+- [x] CODE CONTEXT section in explain: reads actual file, shows lines around violation
+- [x] AUTO-FIX SUGGESTION with real diffs based on actual file content
+- [x] FixEngine: layer-based fallback matching (source→target)
+- [x] FixEngine: code-aware fix generation (reads file, finds import, generates suggestion)
+- [x] Template aliases for common rule IDs (domain-no-infra, app-no-infra, etc.)
+
 ---
 
 ### Cross-Language Dependency Resolution
