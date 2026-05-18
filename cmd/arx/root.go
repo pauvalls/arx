@@ -8,6 +8,7 @@ import (
 	"github.com/pauvalls/arx/internal/infrastructure/detector"
 	"github.com/pauvalls/arx/internal/infrastructure/fs"
 	"github.com/pauvalls/arx/internal/infrastructure/output"
+	"github.com/pauvalls/arx/internal/infrastructure/preset"
 	"github.com/pauvalls/arx/internal/ports"
 	"github.com/spf13/cobra"
 )
@@ -41,9 +42,20 @@ func Execute() error {
 }
 
 // newInitService creates an InitService with the default file writer and preset service
+// presetLoader adapts the infrastructure preset.LoadPreset function to the PresetLoader interface.
+type presetLoader struct{}
+
+func (presetLoader) LoadPreset(name string) ([]byte, error) {
+	return preset.LoadPreset(name)
+}
+
+func (presetLoader) ListPresets() []string {
+	return preset.ListPresets()
+}
+
 func newInitService() *application.InitService {
 	writer := fs.NewWalker(nil)
-	presetService := application.NewPresetService()
+	presetService := application.NewPresetService(presetLoader{})
 	return application.NewInitServiceWithPreset(writer, presetService)
 }
 
@@ -52,6 +64,7 @@ func newInitService() *application.InitService {
 func newCheckService(format ports.OutputFormat, cache ports.Cache) *application.CheckService {
 	reader := config.NewYAMLReader()
 	detectors := detector.GetDetectors()
+	// Cross-language detector will be added dynamically by Check() when config has mappings
 
 	var reporter ports.Reporter
 	switch format {

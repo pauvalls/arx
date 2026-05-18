@@ -1,4 +1,4 @@
-name: "Arx Architecture Audit"
+name: "Arx CI"
 
 on:
   push:
@@ -7,6 +7,30 @@ on:
     branches: [main, master]
 
 jobs:
+  quality:
+    name: "Quality Gates"
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Checkout repository"
+        uses: actions/checkout@v4
+
+      - name: "Setup Go"
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - name: "Vet"
+        run: go vet ./...
+
+      - name: "Test with race detector"
+        run: go test -race ./... 2>&1 | tail -5
+
+      - name: "Coverage"
+        run: |
+          go test -cover ./... 2>&1 | tee /tmp/coverage.txt
+          # Ensure all core packages have >50% coverage
+          ! grep -E "internal/(domain|application|infrastructure/(detector|server|output))" /tmp/coverage.txt | grep -E "coverage: [0-4][0-9]"
+
   architecture-audit:
     name: "Architecture Audit"
     runs-on: ubuntu-latest

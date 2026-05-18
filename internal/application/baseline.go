@@ -2,7 +2,7 @@ package application
 
 import (
 	"github.com/pauvalls/arx/internal/domain"
-	"github.com/pauvalls/arx/internal/infrastructure/baseline"
+	"github.com/pauvalls/arx/internal/ports"
 )
 
 // DefaultBaselineFile is the default filename for the baseline.
@@ -10,13 +10,13 @@ const DefaultBaselineFile = ".arx-baseline.json"
 
 // BaselineService handles baseline generation, loading, and filtering.
 type BaselineService struct {
-	storage *baseline.Storage
+	storage ports.BaselineStorage
 }
 
 // NewBaselineService creates a new BaselineService.
-func NewBaselineService() *BaselineService {
+func NewBaselineService(storage ports.BaselineStorage) *BaselineService {
 	return &BaselineService{
-		storage: baseline.NewStorage(),
+		storage: storage,
 	}
 }
 

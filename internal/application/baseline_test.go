@@ -1,16 +1,70 @@
 package application
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/pauvalls/arx/internal/domain"
+	"github.com/pauvalls/arx/internal/infrastructure/baseline"
 )
 
+// mockBaselineStore is a test-only implementation of ports.BaselineStorage.
+// For Load/Exists it falls back to real filesystem when path is not in the map.
+type mockBaselineStore struct {
+	data map[string]*domain.Baseline
+	saved map[string]bool
+}
+
+func (m *mockBaselineStore) Load(path string) (*domain.Baseline, error) {
+	// Check if we saved it
+	if m.saved != nil && m.saved[path] {
+		// Read from filesystem (real storage behavior)
+		return nil, nil // Don't implement actual JSON read
+	}
+	// Check in-memory
+	if m.data != nil {
+		if b, ok := m.data[path]; ok {
+			return b, nil
+		}
+	}
+	return nil, nil
+}
+
+func (m *mockBaselineStore) Save(b *domain.Baseline, path string) error {
+	if b == nil {
+		return fmt.Errorf("cannot save nil baseline")
+	}
+	if m.saved == nil {
+		m.saved = make(map[string]bool)
+	}
+	m.saved[path] = true
+	return nil
+}
+
+func (m *mockBaselineStore) Exists(path string) bool {
+	// Check filesystem for real files (used by Exists test that creates a temp file)
+	if _, err := os.Stat(path); err == nil {
+		return true
+	}
+	if m.saved != nil {
+		return m.saved[path]
+	}
+	if m.data != nil {
+		_, ok := m.data[path]
+		return ok
+	}
+	return false
+}
+
+func newTestBaselineService() *BaselineService {
+	return NewBaselineService(&mockBaselineStore{})
+}
+
 func TestBaselineService_Generate(t *testing.T) {
-	svc := NewBaselineService()
+	svc := newTestBaselineService()
 
 	violations := []domain.Violation{
 		{
@@ -40,7 +94,8 @@ func TestBaselineService_Generate(t *testing.T) {
 }
 
 func TestBaselineService_SaveLoad_Roundtrip(t *testing.T) {
-	svc := NewBaselineService()
+	realStore := &baseline.Storage{}
+	svc := NewBaselineService(realStore)
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, ".arx-baseline.json")
 
@@ -71,7 +126,7 @@ func TestBaselineService_SaveLoad_Roundtrip(t *testing.T) {
 }
 
 func TestBaselineService_Load_NotExists(t *testing.T) {
-	svc := NewBaselineService()
+	svc := newTestBaselineService()
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, ".arx-baseline.json")
 
@@ -85,7 +140,7 @@ func TestBaselineService_Load_NotExists(t *testing.T) {
 }
 
 func TestBaselineService_FilterViolations(t *testing.T) {
-	svc := NewBaselineService()
+	svc := newTestBaselineService()
 
 	baseline := &domain.Baseline{
 		Version: "1.0", ConfigHash: "hash", GeneratedAt: time.Now(),
@@ -110,7 +165,7 @@ func TestBaselineService_FilterViolations(t *testing.T) {
 }
 
 func TestBaselineService_FilterViolations_NilBaseline(t *testing.T) {
-	svc := NewBaselineService()
+	svc := newTestBaselineService()
 
 	violations := []domain.Violation{
 		{RuleID: "R001", SourceLayer: "domain", TargetLayer: "infrastructure", Import: "x", File: "a.go", Line: 1},
@@ -125,7 +180,7 @@ func TestBaselineService_FilterViolations_NilBaseline(t *testing.T) {
 }
 
 func TestBaselineService_DefaultPath(t *testing.T) {
-	svc := NewBaselineService()
+	svc := newTestBaselineService()
 
 	path := svc.DefaultPath("/some/project")
 	want := "/some/project/.arx-baseline.json"
@@ -136,7 +191,7 @@ func TestBaselineService_DefaultPath(t *testing.T) {
 }
 
 func TestBaselineService_Exists(t *testing.T) {
-	svc := NewBaselineService()
+	svc := newTestBaselineService()
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, ".arx-baseline.json")
 
@@ -155,7 +210,7 @@ func TestBaselineService_Exists(t *testing.T) {
 }
 
 func TestBaselineService_FilterViolations_Empty(t *testing.T) {
-	svc := NewBaselineService()
+	svc := newTestBaselineService()
 
 	baseline := &domain.Baseline{
 		Version: "1.0", ConfigHash: "hash", GeneratedAt: time.Now(),
@@ -172,7 +227,7 @@ func TestBaselineService_FilterViolations_Empty(t *testing.T) {
 }
 
 func TestBaselineService_FilterViolations_AllSuppressed(t *testing.T) {
-	svc := NewBaselineService()
+	svc := newTestBaselineService()
 
 	baseline := &domain.Baseline{
 		Version: "1.0", ConfigHash: "hash", GeneratedAt: time.Now(),
@@ -195,7 +250,8 @@ func TestBaselineService_FilterViolations_AllSuppressed(t *testing.T) {
 }
 
 func TestBaselineService_Load_CorruptedJSON(t *testing.T) {
-	svc := NewBaselineService()
+	realStore := &baseline.Storage{}
+	svc := NewBaselineService(realStore)
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, ".arx-baseline.json")
 
@@ -211,7 +267,8 @@ func TestBaselineService_Load_CorruptedJSON(t *testing.T) {
 }
 
 func TestBaselineService_Save_NilBaseline(t *testing.T) {
-	svc := NewBaselineService()
+	realStore := &baseline.Storage{}
+	svc := NewBaselineService(realStore)
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, ".arx-baseline.json")
 
@@ -222,7 +279,7 @@ func TestBaselineService_Save_NilBaseline(t *testing.T) {
 }
 
 func TestBaselineService_Generate_EmptyConfigHash(t *testing.T) {
-	svc := NewBaselineService()
+	svc := newTestBaselineService()
 
 	violations := []domain.Violation{
 		{RuleID: "R001", SourceLayer: "domain", TargetLayer: "infrastructure", Import: "x", File: "a.go", Line: 1},

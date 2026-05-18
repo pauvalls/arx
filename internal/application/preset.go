@@ -4,17 +4,24 @@ import (
 	"fmt"
 
 	"github.com/pauvalls/arx/internal/domain"
-	"github.com/pauvalls/arx/internal/infrastructure/preset"
 	"gopkg.in/yaml.v3"
 )
 
-// PresetServiceImpl loads preset templates from the embedded infrastructure layer,
-// parses them into domain.Config, and validates the resulting configuration.
-type PresetServiceImpl struct{}
+// PresetLoader loads raw YAML preset data by name.
+type PresetLoader interface {
+	LoadPreset(name string) ([]byte, error)
+	ListPresets() []string
+}
 
-// NewPresetService creates a new PresetServiceImpl.
-func NewPresetService() *PresetServiceImpl {
-	return &PresetServiceImpl{}
+// PresetServiceImpl loads preset templates from a PresetLoader,
+// parses them into domain.Config, and validates the resulting configuration.
+type PresetServiceImpl struct {
+	loader PresetLoader
+}
+
+// NewPresetService creates a new PresetServiceImpl with the given loader.
+func NewPresetService(loader PresetLoader) *PresetServiceImpl {
+	return &PresetServiceImpl{loader: loader}
 }
 
 // LoadPreset loads a preset by name, parses the YAML into a domain.Config,
@@ -28,8 +35,8 @@ func (s *PresetServiceImpl) LoadPreset(name string) (*domain.Config, error) {
 		return nil, fmt.Errorf("preset name is required")
 	}
 
-	// Load raw YAML from infrastructure layer
-	rawYAML, err := preset.LoadPreset(name)
+	// Load raw YAML via the loader
+	rawYAML, err := s.loader.LoadPreset(name)
 	if err != nil {
 		return nil, fmt.Errorf("loading preset %q: %w", name, err)
 	}
@@ -50,5 +57,5 @@ func (s *PresetServiceImpl) LoadPreset(name string) (*domain.Config, error) {
 
 // ListPresets returns the names of all available presets.
 func (s *PresetServiceImpl) ListPresets() []string {
-	return preset.ListPresets()
+	return s.loader.ListPresets()
 }

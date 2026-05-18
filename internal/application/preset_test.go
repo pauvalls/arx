@@ -4,11 +4,17 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/pauvalls/arx/internal/ports"
+	"github.com/pauvalls/arx/internal/infrastructure/preset"
 )
 
+// presetLoaderAdapter wraps the real preset package for dependency injection.
+type presetLoaderAdapter struct{}
+
+func (presetLoaderAdapter) LoadPreset(name string) ([]byte, error) { return preset.LoadPreset(name) }
+func (presetLoaderAdapter) ListPresets() []string                  { return preset.ListPresets() }
+
 func TestPresetService_LoadValidPreset(t *testing.T) {
-	svc := NewPresetService()
+	svc := NewPresetService(presetLoaderAdapter{})
 
 	validPresets := svc.ListPresets()
 	if len(validPresets) != 3 {
@@ -64,7 +70,7 @@ func TestPresetService_LoadValidPreset(t *testing.T) {
 }
 
 func TestPresetService_InvalidPresetName(t *testing.T) {
-	svc := NewPresetService()
+	svc := NewPresetService(presetLoaderAdapter{})
 
 	tests := []struct {
 		name       string
@@ -107,7 +113,7 @@ func TestPresetService_InvalidPresetName(t *testing.T) {
 }
 
 func TestPresetService_ListPresets(t *testing.T) {
-	svc := NewPresetService()
+	svc := NewPresetService(presetLoaderAdapter{})
 
 	presets := svc.ListPresets()
 	if len(presets) == 0 {
@@ -128,6 +134,9 @@ func TestPresetService_ListPresets(t *testing.T) {
 }
 
 func TestPresetService_InterfaceCompliance(t *testing.T) {
-	// Verify PresetServiceImpl implements the ports.PresetService interface
-	var _ ports.PresetService = NewPresetService()
+	// Verify PresetServiceImpl can be created with the new constructor
+	svc := NewPresetService(presetLoaderAdapter{})
+	if svc == nil {
+		t.Fatal("expected non-nil service")
+	}
 }

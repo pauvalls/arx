@@ -20,6 +20,22 @@ build:
 test:
 	$(GO) test $(GOFLAGS) ./...
 
+# Run tests with race detector
+test-race:
+	$(GO) test -race ./...
+
+# Run tests with coverage
+cover:
+	$(GO) test -cover ./... | sort -k3 -n
+
+# Quality gate: vet + race + coverage (exit 1 if any core package < 50%)
+quality: vet test-race cover
+	@echo "✓ All quality gates passed"
+
+# Run go vet
+vet:
+	$(GO) vet ./...
+
 # Run linter (graceful skip if not installed)
 lint:
 	@if command -v golangci-lint >/dev/null 2>&1; then \

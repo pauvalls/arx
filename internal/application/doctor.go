@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/pauvalls/arx/internal/infrastructure/config"
-	"github.com/pauvalls/arx/internal/infrastructure/detector"
 	"github.com/pauvalls/arx/internal/ports"
 )
 
@@ -35,11 +34,11 @@ type DoctorService struct {
 	detectors []ports.Detector
 }
 
-// NewDoctorService creates a new DoctorService
-func NewDoctorService(version string) *DoctorService {
+// NewDoctorService creates a new DoctorService with the given detectors.
+func NewDoctorService(version string, detectors []ports.Detector) *DoctorService {
 	return &DoctorService{
 		version:   version,
-		detectors: detector.GetDetectors(),
+		detectors: detectors,
 	}
 }
 

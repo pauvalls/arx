@@ -5,12 +5,17 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/pauvalls/arx/internal/infrastructure/detector"
 )
+
+// testDetectors returns the real detectors for tests that need them.
+var testDetectors = detector.GetDetectors()
 
 // TestDoctorServiceCheckProjectRootExists tests project root check when directory exists
 func TestDoctorServiceCheckProjectRootExists(t *testing.T) {
 	tmpDir := t.TempDir()
-	service := NewDoctorService("test-version")
+	service := NewDoctorService("test-version", nil)
 
 	result := service.checkProjectRoot(tmpDir)
 
@@ -25,7 +30,7 @@ func TestDoctorServiceCheckProjectRootExists(t *testing.T) {
 
 // TestDoctorServiceCheckProjectRootNotExists tests project root check when directory doesn't exist
 func TestDoctorServiceCheckProjectRootNotExists(t *testing.T) {
-	service := NewDoctorService("test-version")
+	service := NewDoctorService("test-version", nil)
 
 	result := service.checkProjectRoot("/nonexistent/path")
 
@@ -55,7 +60,7 @@ rules:
 		t.Fatalf("failed to write test config: %v", err)
 	}
 
-	service := NewDoctorService("test-version")
+	service := NewDoctorService("test-version", nil)
 	result := service.checkConfigFile(tmpDir)
 
 	if !result.OK {
@@ -69,7 +74,7 @@ rules:
 // TestDoctorServiceCheckConfigFileMissing tests config check when file is missing
 func TestDoctorServiceCheckConfigFileMissing(t *testing.T) {
 	tmpDir := t.TempDir()
-	service := NewDoctorService("test-version")
+	service := NewDoctorService("test-version", nil)
 
 	result := service.checkConfigFile(tmpDir)
 
@@ -92,7 +97,7 @@ func TestDoctorServiceCheckConfigFileInvalid(t *testing.T) {
 		t.Fatalf("failed to write test config: %v", err)
 	}
 
-	service := NewDoctorService("test-version")
+	service := NewDoctorService("test-version", nil)
 	result := service.checkConfigFile(tmpDir)
 
 	if result.OK {
@@ -106,7 +111,7 @@ func TestDoctorServiceCheckConfigFileInvalid(t *testing.T) {
 // TestDoctorServiceCheckDetectorsNoFiles tests detector check when no files found
 func TestDoctorServiceCheckDetectorsNoFiles(t *testing.T) {
 	tmpDir := t.TempDir()
-	service := NewDoctorService("test-version")
+	service := NewDoctorService("test-version", nil)
 
 	result := service.checkDetectors(tmpDir)
 
@@ -164,7 +169,7 @@ rules:
 		t.Fatalf("failed to write test config: %v", err)
 	}
 
-	service := NewDoctorService("test-version")
+	service := NewDoctorService("test-version", testDetectors)
 	result := service.checkDetectors(tmpDir)
 
 	if !result.OK {
@@ -174,7 +179,7 @@ rules:
 
 // TestDoctorServiceCheckVersion tests version check
 func TestDoctorServiceCheckVersion(t *testing.T) {
-	service := NewDoctorService("v1.2.3")
+	service := NewDoctorService("v1.2.3", nil)
 
 	result := service.checkVersion()
 
@@ -225,7 +230,7 @@ go 1.23
 		t.Fatalf("failed to write test file: %v", err)
 	}
 
-	service := NewDoctorService("test-version")
+	service := NewDoctorService("test-version", testDetectors)
 	result := service.Check(tmpDir)
 
 	if !result.AllChecksPassed {
@@ -250,7 +255,7 @@ func TestDoctorServiceCheckAllChecksFailed(t *testing.T) {
 	tmpDir := t.TempDir()
 	// No config, no source files
 
-	service := NewDoctorService("test-version")
+	service := NewDoctorService("test-version", nil)
 	result := service.Check(tmpDir)
 
 	if result.AllChecksPassed {
