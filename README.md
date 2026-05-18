@@ -45,7 +45,10 @@ arx baseline
 | **[Presets](docs/presets/README.md)** | Clean, Hexagonal, DDD architecture templates |
 | **[Diagrams](docs/diagrams/README.md)** | Architecture diagrams (ASCII, DOT, Mermaid) |
 | **[Installation](docs/installation.md)** | Install from source, brew, or Docker |
-| **[Roadmap](docs/roadmap.md)** | Full release history v0.1.0 → v0.32.0 |
+| **[Expression Rules](docs/expression-rules.md)** | Expression DSL — builtins, filter/map, user functions |
+| **[Cross-Language](docs/cross-language.md)** | Detect proto→generated code, OpenAPI→client |
+| **[Suggest & Explain](docs/suggest.md)** | Auto-fix suggestions and violation explanations |
+| **[Roadmap](docs/roadmap.md)** | Full release history v0.1.0 → v0.33.0 |
 
 ## Commands
 

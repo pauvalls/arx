@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/pauvalls/arx/internal/application"
+	"github.com/pauvalls/arx/internal/domain"
 	"github.com/pauvalls/arx/internal/infrastructure/output"
 	"github.com/spf13/cobra"
 	"golang.org/x/text/cases"
@@ -161,6 +163,29 @@ func explainViolation(v output.CachedViolation) error {
 		fmt.Println("└──────────────────────────────────────────────────────────────────┘")
 		fmt.Println()
 		fmt.Println(codeExample)
+		fmt.Println()
+	}
+
+	// Fix suggestion from suggest engine
+	fixEngine := application.NewFixEngine()
+	fix := fixEngine.SuggestFix(domain.Violation{
+		ID:          v.ID,
+		RuleID:      v.RuleID,
+		File:        v.File,
+		Line:        v.Line,
+		SourceLayer: v.SourceLayer,
+		TargetLayer: v.TargetLayer,
+		Import:      v.Import,
+		Severity:    domain.Severity(v.Severity),
+	})
+	if fix != nil && fix.Diff != "" {
+		fmt.Println("┌──────────────────────────────────────────────────────────────────┐")
+		fmt.Println("│ AUTO-FIX SUGGESTION                                              │")
+		fmt.Println("└──────────────────────────────────────────────────────────────────┘")
+		fmt.Println()
+		fmt.Printf("  Run 'arx suggest %s' to auto-apply this fix.\n", v.ID)
+		fmt.Println()
+		fmt.Println(fix.Diff)
 		fmt.Println()
 	}
 
