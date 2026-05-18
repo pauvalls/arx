@@ -16,7 +16,7 @@ Not a linter — an **architecture guard with a teaching soul**.
 go install github.com/pauvalls/arx/cmd/arx@latest
 
 # Or via Homebrew
-brew install pauvalls/tap/arx
+brew install pauvalls/arx/arx
 
 # Or use Docker
 docker pull ghcr.io/pauvalls/arx:latest
@@ -45,7 +45,7 @@ arx baseline
 | **[Presets](docs/presets/README.md)** | Clean, Hexagonal, DDD architecture templates |
 | **[Diagrams](docs/diagrams/README.md)** | Architecture diagrams (ASCII, DOT, Mermaid) |
 | **[Installation](docs/installation.md)** | Install from source, brew, or Docker |
-| **[Roadmap](docs/roadmap.md)** | Full release history v0.1.0 → v0.14.0 |
+| **[Roadmap](docs/roadmap.md)** | Full release history v0.1.0 → v0.27.0 |
 
 ## Commands
 
