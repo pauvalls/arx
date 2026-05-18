@@ -45,6 +45,7 @@ arx baseline
 | **[Presets](docs/presets/README.md)** | Clean, Hexagonal, DDD architecture templates |
 | **[Diagrams](docs/diagrams/README.md)** | Architecture diagrams (ASCII, DOT, Mermaid) |
 | **[Installation](docs/installation.md)** | Install from source, brew, or Docker |
+| **[AI Integration](docs/ai-integration.md)** | Install arx-setup skill to AI coding assistants |
 | **[Expression Rules](docs/expression-rules.md)** | Expression DSL — builtins, filter/map, user functions |
 | **[Cross-Language](docs/cross-language.md)** | Detect proto→generated code, OpenAPI→client |
 | **[Suggest & Explain](docs/suggest.md)** | Auto-fix suggestions and violation explanations |

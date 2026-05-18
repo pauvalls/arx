@@ -127,9 +127,17 @@
 - [x] `docs/suggest.md` — auto-fix, explain, fix templates
 - [x] Strict TDD enabled for all future SDD phases
 
----
+## ✅ v0.35.0 — AI Assistant Integration (arx skill install)
+**Priority:** Medium | **Effort:** S
 
-## 🔜 v0.35.0+ (Next)
+- [x] `arx skill install` command — installs arx-setup skill to AI coding assistants
+- [x] Auto-detects opencode, Claude Code, and Cursor
+- [x] Interactive selector when run without arguments
+- [x] `--all` flag to install to all detected tools
+- [x] `contrib/opencode/arx-setup/SKILL.md` — distributable skill file
+- [x] `docs/ai-integration.md` — documentation with examples
+
+---
 
 ### Cross-Language Dependency Resolution
 **Priority:** Low | **Effort:** XL
