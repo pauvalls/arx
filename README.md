@@ -45,7 +45,7 @@ arx baseline
 | **[Presets](docs/presets/README.md)** | Clean, Hexagonal, DDD architecture templates |
 | **[Diagrams](docs/diagrams/README.md)** | Architecture diagrams (ASCII, DOT, Mermaid) |
 | **[Installation](docs/installation.md)** | Install from source, brew, or Docker |
-| **[Roadmap](docs/roadmap.md)** | Full release history v0.1.0 → v0.27.0 |
+| **[Roadmap](docs/roadmap.md)** | Full release history v0.1.0 → v0.32.0 |
 
 ## Commands
 
