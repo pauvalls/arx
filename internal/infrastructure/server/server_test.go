@@ -686,7 +686,28 @@ func TestServer_AllEndpointsReturnValidJSON(t *testing.T) {
 	state := NewServerState(VersionInfo{Version: "test"})
 	srv := &Server{state: state}
 
-	endpoints := []string{"/api/health", "/api/status", "/api/violations", "/api/coupling", "/api/debt"}
+	cfg := &domain.Config{
+		Version: "1.0",
+		Layers:  []domain.Layer{{Name: "domain", Paths: []string{"internal/domain/**"}}},
+		Rules: []domain.Rule{
+			{
+				ID:       "no-infra",
+				Severity: domain.SeverityError,
+				Check: domain.CheckExpr{
+					Raw: "count(deps(domain, infra)) == 0",
+				},
+			},
+		},
+		Functions: map[string]string{
+			"is_clean": "violations(no-infra) == 0",
+		},
+	}
+	state.SetCheckResult(nil, domain.CouplingMatrix{}, domain.DebtScore{}, cfg, Metrics{}, nil)
+
+	endpoints := []string{
+		"/api/health", "/api/status", "/api/violations",
+		"/api/coupling", "/api/debt", "/api/metrics", "/api/config",
+	}
 
 	for _, ep := range endpoints {
 		t.Run(ep, func(t *testing.T) {
@@ -704,6 +725,10 @@ func TestServer_AllEndpointsReturnValidJSON(t *testing.T) {
 				srv.handleCoupling(rec, req)
 			case "/api/debt":
 				srv.handleDebt(rec, req)
+			case "/api/metrics":
+				srv.handleMetrics(rec, req)
+			case "/api/config":
+				srv.handleConfig(rec, req)
 			}
 
 			if rec.Code != http.StatusOK {
@@ -770,6 +795,157 @@ func TestConfigPathFor(t *testing.T) {
 		got := configPathFor(tt.root)
 		if got != tt.expected {
 			t.Errorf("configPathFor(%q) = %q, want %q", tt.root, got, tt.expected)
+		}
+	}
+}
+
+func TestServer_HandlerConfigEmpty(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test"})
+	srv := &Server{state: state}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/config", nil)
+	rec := httptest.NewRecorder()
+
+	srv.handleConfig(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	if loaded, ok := result["loaded"].(bool); !ok || loaded != false {
+		t.Errorf("expected loaded=false, got %v", result["loaded"])
+	}
+}
+
+func TestServer_HandlerConfigWithData(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test"})
+	cfg := &domain.Config{
+		Version: "2.0",
+		Layers:  []domain.Layer{{Name: "domain", Paths: []string{"internal/domain/**"}}},
+		Rules: []domain.Rule{
+			{
+				ID:       "r1",
+				Severity: domain.SeverityError,
+				Check:    domain.CheckExpr{Raw: "count(deps(domain, infra)) > 0"},
+			},
+		},
+		Functions: map[string]string{"is_clean": "violations(r1) == 0"},
+	}
+	state.SetCheckResult(nil, domain.CouplingMatrix{}, domain.DebtScore{}, cfg, Metrics{}, nil)
+
+	srv := &Server{state: state}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/config", nil)
+	rec := httptest.NewRecorder()
+
+	srv.handleConfig(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	if loaded, ok := result["loaded"].(bool); !ok || loaded != true {
+		t.Errorf("expected loaded=true, got %v", result["loaded"])
+	}
+	if layers, ok := result["layers"].([]any); !ok || len(layers) != 1 || layers[0] != "domain" {
+		t.Errorf("expected layers [domain], got %v", result["layers"])
+	}
+	if funcs, ok := result["functions"].([]any); !ok || len(funcs) != 1 || funcs[0] != "is_clean" {
+		t.Errorf("expected functions [is_clean], got %v", result["functions"])
+	}
+}
+
+func TestServer_HandlerConfigMethodNotAllowed(t *testing.T) {
+	srv := &Server{state: NewServerState(VersionInfo{})}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/config", nil)
+	rec := httptest.NewRecorder()
+
+	srv.handleConfig(rec, req)
+
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected 405, got %d", rec.Code)
+	}
+}
+
+func TestServer_HandlerReloadNoService(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test"})
+	srv := &Server{state: state}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/reload", nil)
+	rec := httptest.NewRecorder()
+
+	srv.handleReload(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500, got %d", rec.Code)
+	}
+
+	var result map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+	if result["status"] != "error" {
+		t.Errorf("expected status=error, got %s", result["status"])
+	}
+}
+
+func TestServer_HandlerReloadWithService(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test"})
+	srv := &Server{state: state, service: NewDefaultCheckService()}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/reload", nil)
+	rec := httptest.NewRecorder()
+
+	srv.handleReload(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestServer_HandlerReloadMethodNotAllowed(t *testing.T) {
+	srv := &Server{state: NewServerState(VersionInfo{})}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/reload", nil)
+	rec := httptest.NewRecorder()
+
+	srv.handleReload(rec, req)
+
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected 405, got %d", rec.Code)
+	}
+}
+
+func TestIsConfigPath(t *testing.T) {
+	tests := []struct {
+		path     string
+		expected bool
+	}{
+		{"arx.yaml", true},
+		{"arx.yml", true},
+		{"/home/user/project/arx.yaml", true},
+		{"/home/user/project/arx.yml", true},
+		{"/project/src/something.go", false},
+		{"arx.txt", false},
+		{"config.yaml", false},
+		{"Arx.yaml", false},
+		{"/home/user/project/.arx/arx.yaml", true},
+	}
+	for _, tt := range tests {
+		got := isConfigPath(tt.path)
+		if got != tt.expected {
+			t.Errorf("isConfigPath(%q) = %v, want %v", tt.path, got, tt.expected)
 		}
 	}
 }

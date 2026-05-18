@@ -57,6 +57,8 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/coupling", s.handleCoupling)
 	mux.HandleFunc("/api/debt", s.handleDebt)
 	mux.HandleFunc("/api/metrics", s.handleMetrics)
+	mux.HandleFunc("/api/config", s.handleConfig)
+	mux.HandleFunc("/api/reload", s.handleReload)
 
 	// Dashboard root
 	mux.HandleFunc("/", s.handleDashboard)
@@ -110,7 +112,11 @@ func (s *Server) Start() error {
 				case <-ctx.Done():
 					w.Close()
 					return
-				case <-w.Events():
+				case evt := <-w.Events():
+					// Log when arx.yaml changes (config hot-reload)
+					if isConfigPath(evt.Path) {
+						fmt.Fprintf(os.Stderr, "Config changed: %s — reloading\n", evt.Path)
+					}
 					s.runCheck(ctx)
 				case err := <-w.Errors():
 					fmt.Fprintf(os.Stderr, "Watcher error: %v\n", err)
@@ -257,6 +263,100 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, s.state.Metrics())
+}
+
+// handleConfig returns the current config summary.
+func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	cfg := s.state.Config()
+	if cfg == nil {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"loaded": false,
+			"config": nil,
+		})
+		return
+	}
+
+	ruleSummary := make([]map[string]any, len(cfg.Rules))
+	for i, rule := range cfg.Rules {
+		r := map[string]any{
+			"id":       rule.ID,
+			"severity": rule.Severity,
+			"type":     "expression",
+		}
+		if rule.From != "" {
+			r["type"] = "from-to"
+			r["from"] = rule.From
+			r["to"] = rule.To
+		}
+		if rule.Template != "" {
+			r["type"] = "template"
+			r["template"] = rule.Template
+		}
+		ruleSummary[i] = r
+	}
+
+	funcNames := make([]string, 0, len(cfg.Functions))
+	for name := range cfg.Functions {
+		funcNames = append(funcNames, name)
+	}
+
+	layerNames := make([]string, len(cfg.Layers))
+	for i, layer := range cfg.Layers {
+		layerNames[i] = layer.Name
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"loaded":    true,
+		"layers":    layerNames,
+		"rules":     ruleSummary,
+		"functions": funcNames,
+	})
+}
+
+// handleReload forces a config reload and re-check.
+func (s *Server) handleReload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if s.service == nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{
+			"status":  "error",
+			"message": "No check service configured",
+		})
+		return
+	}
+
+	fmt.Fprintln(os.Stderr, "Config reload requested via /api/reload")
+	s.runCheck(r.Context())
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status":  "reloaded",
+		"message": "Config reloaded and check completed",
+	})
+}
+
+// isConfigPath returns true if the given path looks like a top-level arx config file.
+// This matches /any/path/arx.yaml (single filename component in the last path element).
+func isConfigPath(path string) bool {
+	// Get the filename portion
+	var filename string
+	for i := len(path) - 1; i >= 0; i-- {
+		if path[i] == '/' {
+			filename = path[i+1:]
+			break
+		}
+	}
+	if filename == "" {
+		filename = path
+	}
+	return filename == "arx.yaml" || filename == "arx.yml"
 }
 
 // writeJSON marshals and writes a JSON response.
