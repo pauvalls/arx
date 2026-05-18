@@ -160,6 +160,7 @@ func (d *Detector) extractFileImports(filePath, projectRoot string, layers []dom
 			SourceLine:    line,
 			ImportPath:    importPath,
 			ResolvedLayer: resolvedLayer,
+			Language:      "go",
 		})
 	}
 

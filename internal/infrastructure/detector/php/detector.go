@@ -172,6 +172,7 @@ func (d *PHPDetector) parseFile(filePath, projectRoot string, layerMap map[strin
 					SourceLine:    lineNum,
 					ImportPath:    importPath,
 					ResolvedLayer: resolvedLayer,
+					Language:      "php",
 				})
 			}
 		}

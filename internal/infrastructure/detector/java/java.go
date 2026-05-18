@@ -196,6 +196,7 @@ func (d *JavaDetector) parseFile(filePath, projectRoot string, layerMap map[stri
 					SourceLine:    lineNum,
 					ImportPath:    importPath,
 					ResolvedLayer: resolvedLayer,
+					Language:      "java",
 				})
 			}
 		}

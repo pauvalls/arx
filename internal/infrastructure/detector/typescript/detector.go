@@ -200,6 +200,7 @@ func (d *Detector) extractFileImports(filePath, projectRoot string, layers []dom
 				SourceLine:    lineNum,
 				ImportPath:    importPath,
 				ResolvedLayer: resolvedLayer,
+				Language:      "typescript",
 			})
 		}
 	}

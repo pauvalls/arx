@@ -173,6 +173,7 @@ func (d *RustDetector) parseFile(filePath, projectRoot string, layerMap map[stri
 					SourceLine:    lineNum,
 					ImportPath:    importPath,
 					ResolvedLayer: resolvedLayer,
+					Language:      "rust",
 				})
 			}
 		}

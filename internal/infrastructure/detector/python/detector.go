@@ -181,6 +181,7 @@ func (d *Detector) parseFile(filePath, projectRoot string, layerMap map[string]*
 					SourceLine:    lineNum,
 					ImportPath:    importPath,
 					ResolvedLayer: resolvedLayer,
+					Language:      "python",
 				})
 			}
 		}

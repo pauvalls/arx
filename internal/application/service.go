@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/pauvalls/arx/internal/domain"
+	crosslanguage "github.com/pauvalls/arx/internal/infrastructure/detector/crosslanguage"
 	"github.com/pauvalls/arx/internal/ports"
 	"gopkg.in/yaml.v3"
 )
@@ -192,7 +193,13 @@ func (s *CheckService) Check(ctx context.Context, configPath, projectRoot string
 		return err
 	}
 
-	dependencies, err := s.Detect(ctx, projectRoot, config.Layers)
+	// Build detector list including cross-language detector if configured
+	allDetectors := s.detectors
+	if config.CrossLanguage != nil {
+		allDetectors = append(allDetectors, crosslanguage.New(config.CrossLanguage))
+	}
+
+	dependencies, err := RunDetectors(ctx, projectRoot, config.Layers, allDetectors)
 	if err != nil {
 		return err
 	}

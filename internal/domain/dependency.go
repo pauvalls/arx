@@ -8,6 +8,7 @@ type Dependency struct {
 	SourceLine    int    `json:"source_line" yaml:"source_line"`
 	ImportPath    string `json:"import_path" yaml:"import_path"`
 	ResolvedLayer string `json:"resolved_layer,omitempty" yaml:"resolved_layer,omitempty"`
+	Language      string `json:"language,omitempty" yaml:"language,omitempty"`
 }
 
 // String returns a human-readable representation of the dependency

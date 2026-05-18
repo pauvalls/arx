@@ -192,6 +192,7 @@ func (d *CSharpDetector) parseFile(filePath, projectRoot string, layerMap map[st
 					SourceLine:    lineNum,
 					ImportPath:    importPath,
 					ResolvedLayer: resolvedLayer,
+					Language:      "csharp",
 				})
 			}
 		}

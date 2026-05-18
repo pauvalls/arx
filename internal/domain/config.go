@@ -20,6 +20,18 @@ type SeverityConfig struct {
 	ShowInUI  bool `json:"show_in_ui" yaml:"show_in_ui"`
 }
 
+// CrossLanguageConfig holds configuration for cross-language dependency detection
+type CrossLanguageConfig struct {
+	Mappings []CrossLanguageMapping `yaml:"mappings" json:"mappings"`
+}
+
+// CrossLanguageMapping defines a mapping from source files to generated files
+type CrossLanguageMapping struct {
+	SourcePattern     string `yaml:"source_pattern" json:"source_pattern"`
+	GeneratedPattern  string `yaml:"generated_pattern" json:"generated_pattern"`
+	GeneratedLanguage string `yaml:"language" json:"language"`
+}
+
 // Config represents the complete Arx configuration
 type Config struct {
 	Schema         string                      `json:"$schema,omitempty" yaml:"$schema,omitempty"`
@@ -32,6 +44,7 @@ type Config struct {
 	MaxViolations  int                         `json:"max_violations,omitempty" yaml:"max_violations,omitempty"`
 	SeverityMapping map[string]string           `json:"severity_mapping,omitempty" yaml:"severity_mapping,omitempty"`
 	Functions      map[string]string            `json:"functions,omitempty" yaml:"functions,omitempty"`
+	CrossLanguage  *CrossLanguageConfig         `json:"cross_language,omitempty" yaml:"cross_language,omitempty"`
 
 	userFunctions map[string]Expr `json:"-" yaml:"-"`
 }
@@ -109,6 +122,21 @@ func (c *Config) Validate() error {
 		if c.Rules[i].Template != "" && c.Rules[i].Params != nil {
 			if err := validateTemplateLayerRefs(c.Rules[i].Template, c.Rules[i].Params, layerNames, i); err != nil {
 				return err
+			}
+		}
+	}
+
+	// Validate cross-language mappings
+	if c.CrossLanguage != nil {
+		for i, m := range c.CrossLanguage.Mappings {
+			if m.SourcePattern == "" {
+				return fmt.Errorf("cross_language.mappings[%d]: source_pattern is required", i)
+			}
+			if m.GeneratedPattern == "" {
+				return fmt.Errorf("cross_language.mappings[%d]: generated_pattern is required", i)
+			}
+			if m.GeneratedLanguage == "" {
+				return fmt.Errorf("cross_language.mappings[%d]: language is required", i)
 			}
 		}
 	}

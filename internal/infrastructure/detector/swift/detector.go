@@ -172,6 +172,7 @@ func (d *SwiftDetector) parseFile(filePath, projectRoot string, layerMap map[str
 					SourceLine:    lineNum,
 					ImportPath:    importPath,
 					ResolvedLayer: resolvedLayer,
+					Language:      "swift",
 				})
 			}
 		}
