@@ -116,7 +116,20 @@
 
 ---
 
-## 🔜 v0.34.0+ (Next)
+## ✅ v0.34.0 — Explain + Suggest, Benchmarks, Fuzz, Docs
+**Priority:** Medium | **Effort:** M
+
+- [x] `arx explain` now shows auto-fix suggestions from the suggest engine
+- [x] Expression parser benchmarks (parse + eval, all builtins)
+- [x] Expression parser fuzz tests (FuzzParseExpression, FuzzEvaluateExpression)
+- [x] `docs/expression-rules.md` — full DSL reference with examples
+- [x] `docs/cross-language.md` — proto, OpenAPI, custom headers
+- [x] `docs/suggest.md` — auto-fix, explain, fix templates
+- [x] Strict TDD enabled for all future SDD phases
+
+---
+
+## 🔜 v0.35.0+ (Next)
 
 ### Cross-Language Dependency Resolution
 **Priority:** Low | **Effort:** XL
