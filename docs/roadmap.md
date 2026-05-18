@@ -105,9 +105,18 @@
 - [x] Wired into `Check()` pipeline as post-processing phase
 - [x] Synthetic `Dependency{Language: "cross"}` linking proto definitions to generated code
 
+## ✅ v0.33.0 — Cross-Language Extensions (OpenAPI, glob strategy)
+**Priority:** High | **Effort:** M
+
+- [x] `MatchStrategy` field: `stem` (default) or `glob` (source×generated matching)
+- [x] OpenAPI spec detection via `glob` strategy + auto-generated header
+- [x] `HeaderPatterns` field for custom generated-file header patterns
+- [x] Default patterns include protoc-gen, @generated, OpenAPI Generator, auto-generated
+- [x] Config validation for match_strategy values
+
 ---
 
-## 🔜 v0.33.0+ (Next)
+## 🔜 v0.34.0+ (Next)
 
 ### Cross-Language Dependency Resolution
 **Priority:** Low | **Effort:** XL

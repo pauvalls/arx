@@ -1,0 +1,15 @@
+schema: spec-driven
+
+context: |
+  Tech stack: Go CLI
+  Architecture: Hexagonal (domain/application/infrastructure/ports/cmd)
+  Testing: Standard go test, table-driven, go test -race
+  Style: Conventional commits, table-driven tests
+
+rules:
+  apply:
+    tdd: true
+    test_command: "go test -race ./..."
+  verify:
+    test_command: "go test -race ./..."
+    build_command: "go build ./cmd/arx"
