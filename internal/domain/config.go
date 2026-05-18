@@ -25,11 +25,12 @@ type CrossLanguageConfig struct {
 	Mappings []CrossLanguageMapping `yaml:"mappings" json:"mappings"`
 }
 
-// CrossLanguageMapping defines a mapping from source files to generated files
 type CrossLanguageMapping struct {
 	SourcePattern     string `yaml:"source_pattern" json:"source_pattern"`
 	GeneratedPattern  string `yaml:"generated_pattern" json:"generated_pattern"`
 	GeneratedLanguage string `yaml:"language" json:"language"`
+	MatchStrategy     string `yaml:"match_strategy,omitempty" json:"match_strategy,omitempty"`
+	HeaderPatterns    []string `yaml:"header_patterns,omitempty" json:"header_patterns,omitempty"`
 }
 
 // Config represents the complete Arx configuration
@@ -137,6 +138,9 @@ func (c *Config) Validate() error {
 			}
 			if m.GeneratedLanguage == "" {
 				return fmt.Errorf("cross_language.mappings[%d]: language is required", i)
+			}
+			if m.MatchStrategy != "" && m.MatchStrategy != "stem" && m.MatchStrategy != "glob" {
+				return fmt.Errorf("cross_language.mappings[%d]: match_strategy must be 'stem' or 'glob'", i)
 			}
 		}
 	}
