@@ -173,6 +173,112 @@
 
 ---
 
+## 🔜 v0.40.0 — v0.50.0 Roadmap
+
+### v0.40 — Language Detector Hardening
+**Effort:** M
+
+Harden all 10 regex-based detectors:
+- Add more test fixtures (edge cases, unusual syntax)
+- Fuzz all parsers with larger corpora
+- Add Python AST parser (replace regex)
+- Add Java parser improvements (annotation imports)
+- Cross-language test matrix (every detector tested against every fixture)
+
+### v0.41 — Config Strict Mode + Validation
+**Effort:** S
+
+- `arx config validate --strict` fails on unknown keys
+- Better error messages with violation IDs and line numbers
+- Schema `--dry-run` shows what would change
+- Config upgrade command: `arx config upgrade` migrates old formats
+
+### v0.42 — Dashboard Dependency Graph
+**Effort:** M
+
+- Interactive SVG dependency graph in the dashboard
+- Visual layer bubbles with dependency arrows
+- Click to filter violations by layer
+- Color-coded by severity (red = violations, green = clean)
+- Powered by the import scanner data
+
+### v0.43 — Rule Testing Framework
+**Effort:** L
+
+- `arx test` command — test rules against fixtures
+- YAML-based test definitions: `given violations, expect result`
+- Built-in test fixtures for common architecture patterns
+- CI integration: `arx test --ci` with JUnit output
+- Examples in docs for writing custom rule tests
+
+### v0.44 — Multi-Project / Workspace Mode
+**Effort:** L
+
+- `arx workspace` — run check across multiple sub-projects
+- Shared config with per-project overrides
+- Aggregated violation reports across the workspace
+- `arx.yaml` workspace discovery (globs, monorepo layout)
+- GitHub Action supports workspace mode
+
+### v0.45 — Performance Pass
+**Effort:** M
+
+- Profile-guided optimization of the detection pipeline
+- Parallel detector execution tuning
+- Benchmark-driven improvements (target: 2x faster detection)
+- Optimize the cross-language detector (file caching)
+- Add `arx check --profile` for performance breakdown
+
+### v0.46 — Baseline Auto-Refresh + History
+**Effort:** M
+
+- Auto-refresh baseline when violations are consistently resolved
+- Baseline history tracking (`.arx-baseline-history/`)
+- Trend visualization: "violations over time"
+- `arx baseline --diff` shows what changed since last baseline
+- Integration with `arx check --diff`
+
+### v0.47 — Config Includes + Schema Generation
+**Effort:** M
+
+- `!include` directive for splitting configs
+- `arx schema generate` — generates JSON Schema from existing arx.yaml
+- Config composition: base config + overrides
+- Environment variable interpolation in config
+- YAML anchor support (`&defaults`, `<<: *defaults`)
+
+### v0.48 — Suggest Batch Mode + Conflict Detection
+**Effort:** M
+
+- `arx suggest --all` applies ALL fixes with smart conflict detection
+- Staged changes (like git add -p): review fixes before applying
+- Rollback per-file (not just full rollback)
+- Fix preview with `--dry-run`
+- Integration with `arx explain` for each fix
+
+### v0.49 — Dashboard Real-Time (WebSocket)
+**Effort:** M
+
+- Replace polling with WebSocket for real-time updates
+- Push notifications when violations change
+- Live config reload indicator (already supported server-side)
+- Connection status indicator
+- Auto-reconnect on disconnect
+
+### v0.50 — Ultimate Quality Pass
+**Effort:** L
+
+- 100% test coverage in all core packages (`internal/domain`, `internal/application`)
+- Fuzz tests for ALL language parsers (10 languages)
+- `go test -race -count=10 ./...` — flaky test detection
+- Performance benchmarks in CI (regression detection)
+- All dogfooding violations in arx's own codebase fixed
+- Documentation audit: every feature has a doc with examples
+- Security audit: no secret leaks, proper file permissions
+- Final v50.0 release — the most polished version of arx
+
+---
+
 ### Cross-Language Dependency Resolution
 **Priority:** Low | **Effort:** XL
 
