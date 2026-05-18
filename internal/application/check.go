@@ -127,8 +127,9 @@ func RunDetectors(ctx context.Context, projectRoot string, layers []domain.Layer
 
 // EvaluateArchitecture checks dependencies against architectural rules and returns violations.
 // It enriches violations with explanations from the built-in explanations library.
-func EvaluateArchitecture(dependencies []domain.Dependency, rules []domain.Rule, layers []domain.Layer) []domain.Violation {
-	violations := domain.EvaluateRules(dependencies, rules, layers)
+// userFuncs is an optional compiled user-function map (may be nil).
+func EvaluateArchitecture(dependencies []domain.Dependency, rules []domain.Rule, layers []domain.Layer, userFuncs ...map[string]domain.Expr) []domain.Violation {
+	violations := domain.EvaluateRules(dependencies, rules, layers, userFuncs...)
 
 	// Enrich violations with explanations from the built-in library
 	for i := range violations {

@@ -96,8 +96,14 @@
             "description": "Parameters for template rules"
           },
           "check": {
-            "type": "string",
-            "description": "Expression for check-based rules"
+            "oneOf": [
+              {"type": "string", "description": "Single expression"},
+              {
+                "type": "array",
+                "items": {"type": "string", "description": "Expression ANDed together"},
+                "description": "Multiple expressions ANDed together"
+              }
+            ]
           },
           "overrides": {
             "type": "array",
@@ -195,6 +201,14 @@
       "additionalProperties": {
         "type": "string",
         "enum": ["error", "warning", "info"]
+      }
+    },
+    "functions": {
+      "type": "object",
+      "description": "User-defined expression functions",
+      "additionalProperties": {
+        "type": "string",
+        "description": "Expression string (e.g. 'count(deps(domain, infra)) > 0')"
       }
     }
   }

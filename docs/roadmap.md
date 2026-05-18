@@ -67,14 +67,14 @@
 
 ---
 
-## 🔜 v0.28.0 — Custom Rule DSL (Extended)
+## ✅ v0.28.0 — Custom Rule DSL (Extended)
 **Priority:** Medium | **Effort:** L
 
-Extended expression engine with:
-- More built-in functions: `all()`, `any()`, `filter()`, `map()`
-- Multi-line rule checks
-- Rule composition (AND/OR/NOT across rules)
-- User-definable functions in arx.yaml
+- [x] `CheckExpr` type — `string | []string` rule check expressions with AND-tree composition
+- [x] `all()`/`any()` built-in functions for dependency aggregation
+- [x] `functions` config section — user-defined expression functions with DAG validation
+- [x] Cycle detection via Kahn's topological sort (direct, indirect, self-ref)
+- [x] Schema: `check` field accepts `string | string[]`; `functions` as `map[string]string`
 
 ---
 

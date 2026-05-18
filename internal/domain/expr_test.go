@@ -3,6 +3,8 @@ package domain
 import (
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 // ─── Tokenizer Tests ─────────────────────────────────────────────────────────
@@ -449,7 +451,7 @@ func TestEval_BooleanExpression(t *testing.T) {
 func TestRule_CheckField_Valid(t *testing.T) {
 	rule := Rule{
 		ID:       "R-EXPR",
-		Check:    "count(deps(domain, infra)) > 3",
+		Check:    CheckExpr{Raw: "count(deps(domain, infra)) > 3"},
 		Severity: SeverityError,
 	}
 	err := rule.Validate()
@@ -464,7 +466,7 @@ func TestRule_CheckField_Valid(t *testing.T) {
 func TestRule_CheckField_InvalidExpression(t *testing.T) {
 	rule := Rule{
 		ID:       "R-EXPR-BAD",
-		Check:    "count(invalid_syntax",
+		Check:    CheckExpr{Raw: "count(invalid_syntax"},
 		Severity: SeverityError,
 	}
 	err := rule.Validate()
@@ -487,7 +489,7 @@ func TestConfig_Validate_CheckRuleStandalone(t *testing.T) {
 		Rules: []Rule{
 			{
 				ID:       "R-CHECK",
-				Check:    "count(deps(domain, infra)) > 3",
+				Check:    CheckExpr{Raw: "count(deps(domain, infra)) > 3"},
 				Severity: SeverityError,
 			},
 		},
@@ -510,7 +512,7 @@ func TestConfig_Validate_CheckRuleWithFromRejected(t *testing.T) {
 				ID:       "R-CHECK-BAD",
 				From:     "domain",
 				To:       []string{"infra"},
-				Check:    "count(deps(domain, infra)) > 3",
+				Check:    CheckExpr{Raw: "count(deps(domain, infra)) > 3"},
 				Type:     RuleTypeCannot,
 				Severity: SeverityError,
 			},
@@ -535,7 +537,7 @@ func TestConfig_Validate_CheckRuleWithToRejected(t *testing.T) {
 		Rules: []Rule{
 			{
 				ID:       "R-CHECK-BAD",
-				Check:    "count(deps(domain, infra)) > 3",
+				Check:    CheckExpr{Raw: "count(deps(domain, infra)) > 3"},
 				To:       []string{"infra"},
 				Severity: SeverityError,
 			},
@@ -559,7 +561,7 @@ func TestConfig_Validate_CheckRuleWithTemplateRejected(t *testing.T) {
 		Rules: []Rule{
 			{
 				ID:       "R-CHECK-BAD",
-				Check:    "count(deps(domain, infra)) > 3",
+				Check:    CheckExpr{Raw: "count(deps(domain, infra)) > 3"},
 				Template: "max-deps",
 				Severity: SeverityError,
 				Params:   map[string]interface{}{"from": "domain", "to": []interface{}{"infra"}, "max": 3},
@@ -589,7 +591,7 @@ func TestEvaluateRules_CheckExpression(t *testing.T) {
 	rules := []Rule{
 		{
 			ID:       "R-CHECK",
-			Check:    "count(deps(domain, infra)) > 3",
+			Check:    CheckExpr{Raw: "count(deps(domain, infra)) > 3"},
 			Severity: SeverityError,
 		},
 	}
@@ -621,7 +623,7 @@ func TestEvaluateRules_CheckExpressionNoViolation(t *testing.T) {
 	rules := []Rule{
 		{
 			ID:       "R-CHECK",
-			Check:    "count(deps(domain, infra)) > 3",
+			Check:    CheckExpr{Raw: "count(deps(domain, infra)) > 3"},
 			Severity: SeverityError,
 		},
 	}
@@ -662,7 +664,7 @@ func TestEvaluateRules_MixedTraditionalAndExpression(t *testing.T) {
 		},
 		{
 			ID:       "R-CHECK",
-			Check:    "count(deps(domain, infra)) > 3",
+			Check:    CheckExpr{Raw: "count(deps(domain, infra)) > 3"},
 			Severity: SeverityWarning,
 		},
 	}
@@ -709,7 +711,7 @@ func TestEvaluateRules_CheckExpressionWithExplanation(t *testing.T) {
 	rules := []Rule{
 		{
 			ID:          "R-CHECK",
-			Check:       "count(deps(domain, infra)) > 3",
+			Check:       CheckExpr{Raw: "count(deps(domain, infra)) > 3"},
 			Severity:    SeverityError,
 			Explanation: "Too many domain->infra dependencies",
 		},
@@ -1081,5 +1083,1022 @@ func TestEval_ViolationsInExpression(t *testing.T) {
 	}
 	if !val.Bool {
 		t.Errorf("expected true (violations(R1)=2), got %v", val)
+	}
+}
+
+// ─── all() / any() Builtin Tests ─────────────────────────────────────────────
+
+func TestEval_BuiltinAll_WithDeps(t *testing.T) {
+	deps := []Dependency{
+		{SourceFile: "domain/a.go", ResolvedLayer: "infra"},
+		{SourceFile: "domain/b.go", ResolvedLayer: "infra"},
+	}
+	layers := []Layer{
+		{Name: "domain", Paths: []string{"domain/"}},
+		{Name: "infra", Paths: []string{"infra/"}},
+	}
+	ctx := EvalContext{Deps: deps, Layers: layers}
+
+	expr := &FuncCallExpr{
+		Name: "all",
+		Args: []Expr{
+			&FuncCallExpr{
+				Name: "deps",
+				Args: []Expr{
+					&StringLiteral{Value: "domain"},
+					&StringLiteral{Value: "infra"},
+				},
+			},
+		},
+	}
+	val, err := expr.Eval(ctx)
+	if err != nil {
+		t.Fatalf("all(deps(domain, infra)) eval error: %v", err)
+	}
+	if val.Kind != ValueBool || !val.Bool {
+		t.Errorf("expected true, got %v", val)
+	}
+}
+
+func TestEval_BuiltinAll_EmptyDeps(t *testing.T) {
+	// No deps from domain to db
+	deps := []Dependency{
+		{SourceFile: "domain/a.go", ResolvedLayer: "infra"},
+	}
+	layers := []Layer{
+		{Name: "domain", Paths: []string{"domain/"}},
+		{Name: "db", Paths: []string{"db/"}},
+		{Name: "infra", Paths: []string{"infra/"}},
+	}
+	ctx := EvalContext{Deps: deps, Layers: layers}
+
+	expr := &FuncCallExpr{
+		Name: "all",
+		Args: []Expr{
+			&FuncCallExpr{
+				Name: "deps",
+				Args: []Expr{
+					&StringLiteral{Value: "domain"},
+					&StringLiteral{Value: "db"},
+				},
+			},
+		},
+	}
+	val, err := expr.Eval(ctx)
+	if err != nil {
+		t.Fatalf("all(deps(domain, db)) eval error: %v", err)
+	}
+	if val.Kind != ValueBool || val.Bool {
+		t.Errorf("expected false for empty deps, got %v", val)
+	}
+}
+
+func TestEval_BuiltinAll_WrongArgCount(t *testing.T) {
+	// Zero args
+	expr := &FuncCallExpr{Name: "all", Args: []Expr{}}
+	_, err := expr.Eval(EvalContext{})
+	if err == nil {
+		t.Fatal("expected error for all() with no args")
+	}
+	if !strings.Contains(err.Error(), "expects exactly 1 argument") {
+		t.Errorf("error should mention arg count, got: %v", err)
+	}
+
+	// Two args
+	expr2 := &FuncCallExpr{
+		Name: "all",
+		Args: []Expr{&NumberLiteral{Value: 1}, &NumberLiteral{Value: 2}},
+	}
+	_, err = expr2.Eval(EvalContext{})
+	if err == nil {
+		t.Fatal("expected error for all() with two args")
+	}
+	if !strings.Contains(err.Error(), "expects exactly 1 argument") {
+		t.Errorf("error should mention arg count, got: %v", err)
+	}
+}
+
+func TestEval_BuiltinAll_WrongArgType(t *testing.T) {
+	// Passing a number instead of deps()
+	expr := &FuncCallExpr{
+		Name: "all",
+		Args: []Expr{&NumberLiteral{Value: 42}},
+	}
+	_, err := expr.Eval(EvalContext{})
+	if err == nil {
+		t.Fatal("expected error for all() with non-deps arg")
+	}
+	if !strings.Contains(err.Error(), "expects a deps() call") {
+		t.Errorf("error should mention deps() call, got: %v", err)
+	}
+}
+
+func TestEval_BuiltinAny_WithDeps(t *testing.T) {
+	deps := []Dependency{
+		{SourceFile: "domain/a.go", ResolvedLayer: "infra"},
+	}
+	layers := []Layer{
+		{Name: "domain", Paths: []string{"domain/"}},
+		{Name: "infra", Paths: []string{"infra/"}},
+	}
+	ctx := EvalContext{Deps: deps, Layers: layers}
+
+	expr := &FuncCallExpr{
+		Name: "any",
+		Args: []Expr{
+			&FuncCallExpr{
+				Name: "deps",
+				Args: []Expr{
+					&StringLiteral{Value: "domain"},
+					&StringLiteral{Value: "infra"},
+				},
+			},
+		},
+	}
+	val, err := expr.Eval(ctx)
+	if err != nil {
+		t.Fatalf("any(deps(domain, infra)) eval error: %v", err)
+	}
+	if val.Kind != ValueBool || !val.Bool {
+		t.Errorf("expected true, got %v", val)
+	}
+}
+
+func TestEval_BuiltinAny_EmptyDeps(t *testing.T) {
+	deps := []Dependency{
+		{SourceFile: "domain/a.go", ResolvedLayer: "infra"},
+	}
+	layers := []Layer{
+		{Name: "domain", Paths: []string{"domain/"}},
+		{Name: "db", Paths: []string{"db/"}},
+		{Name: "infra", Paths: []string{"infra/"}},
+	}
+	ctx := EvalContext{Deps: deps, Layers: layers}
+
+	// No deps from domain to db
+	expr := &FuncCallExpr{
+		Name: "any",
+		Args: []Expr{
+			&FuncCallExpr{
+				Name: "deps",
+				Args: []Expr{
+					&StringLiteral{Value: "domain"},
+					&StringLiteral{Value: "db"},
+				},
+			},
+		},
+	}
+	val, err := expr.Eval(ctx)
+	if err != nil {
+		t.Fatalf("any(deps(domain, db)) eval error: %v", err)
+	}
+	if val.Kind != ValueBool || val.Bool {
+		t.Errorf("expected false for empty deps, got %v", val)
+	}
+}
+
+func TestEval_BuiltinAny_WrongArgCount(t *testing.T) {
+	// Zero args
+	expr := &FuncCallExpr{Name: "any", Args: []Expr{}}
+	_, err := expr.Eval(EvalContext{})
+	if err == nil {
+		t.Fatal("expected error for any() with no args")
+	}
+	if !strings.Contains(err.Error(), "expects exactly 1 argument") {
+		t.Errorf("error should mention arg count, got: %v", err)
+	}
+}
+
+func TestEval_BuiltinAny_WrongArgType(t *testing.T) {
+	expr := &FuncCallExpr{
+		Name: "any",
+		Args: []Expr{&StringLiteral{Value: "not_a_deps_call"}},
+	}
+	_, err := expr.Eval(EvalContext{})
+	if err == nil {
+		t.Fatal("expected error for any() with non-deps arg")
+	}
+	if !strings.Contains(err.Error(), "expects a deps() call") {
+		t.Errorf("error should mention deps() call, got: %v", err)
+	}
+}
+
+func TestEval_AllInExpression(t *testing.T) {
+	// Parse and eval all(deps(domain, infra))
+	deps := []Dependency{
+		{SourceFile: "domain/a.go", ResolvedLayer: "infra"},
+		{SourceFile: "domain/b.go", ResolvedLayer: "infra"},
+	}
+	layers := []Layer{
+		{Name: "domain", Paths: []string{"domain/"}},
+		{Name: "infra", Paths: []string{"infra/"}},
+	}
+	ctx := EvalContext{Deps: deps, Layers: layers}
+
+	expr, err := Parse("all(deps(domain, infra))")
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	val, err := expr.Eval(ctx)
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	if val.Kind != ValueBool || !val.Bool {
+		t.Errorf("expected true for all(deps(domain, infra)), got %v", val)
+	}
+}
+
+func TestEval_AnyInExpression(t *testing.T) {
+	// Parse and eval any(deps(domain, infra))
+	deps := []Dependency{
+		{SourceFile: "domain/a.go", ResolvedLayer: "infra"},
+	}
+	layers := []Layer{
+		{Name: "domain", Paths: []string{"domain/"}},
+		{Name: "infra", Paths: []string{"infra/"}},
+	}
+	ctx := EvalContext{Deps: deps, Layers: layers}
+
+	expr, err := Parse("any(deps(domain, infra))")
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	val, err := expr.Eval(ctx)
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	if val.Kind != ValueBool || !val.Bool {
+		t.Errorf("expected true for any(deps(domain, infra)), got %v", val)
+	}
+}
+
+func TestEval_AllInExpression_EmptyDeps(t *testing.T) {
+	// Parse and eval all(deps(domain, db)) — no deps exist
+	deps := []Dependency{
+		{SourceFile: "domain/a.go", ResolvedLayer: "infra"},
+	}
+	layers := []Layer{
+		{Name: "domain", Paths: []string{"domain/"}},
+		{Name: "db", Paths: []string{"db/"}},
+		{Name: "infra", Paths: []string{"infra/"}},
+	}
+	ctx := EvalContext{Deps: deps, Layers: layers}
+
+	expr, err := Parse("all(deps(domain, db))")
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	val, err := expr.Eval(ctx)
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	if val.Kind != ValueBool || val.Bool {
+		t.Errorf("expected false for all(deps(domain, db)) with no deps, got %v", val)
+	}
+}
+
+// ─── CheckExpr Tests ─────────────────────────────────────────────────────────
+
+func TestCheckExpr_UnmarshalYAML_SingleString(t *testing.T) {
+	// Backward compat: single string works exactly as before
+	input := `check: "count(deps(domain, infra)) > 3"`
+	var cfg struct {
+		Check CheckExpr `yaml:"check"`
+	}
+	err := yaml.Unmarshal([]byte(input), &cfg)
+	if err != nil {
+		t.Fatalf("UnmarshalYAML error: %v", err)
+	}
+	if cfg.Check.Raw != "count(deps(domain, infra)) > 3" {
+		t.Errorf("Raw = %q, want %q", cfg.Check.Raw, "count(deps(domain, infra)) > 3")
+	}
+	if cfg.Check.items != nil {
+		t.Error("items should be nil for single string")
+	}
+	// Validate compiles successfully
+	if err := cfg.Check.Validate(); err != nil {
+		t.Fatalf("Validate() error: %v", err)
+	}
+	if cfg.Check.Expr == nil {
+		t.Fatal("Expr should be set after Validate()")
+	}
+}
+
+func TestCheckExpr_UnmarshalYAML_List(t *testing.T) {
+	input := `check: ["deps(a, b)", "violations(c) == 0"]`
+	var cfg struct {
+		Check CheckExpr `yaml:"check"`
+	}
+	err := yaml.Unmarshal([]byte(input), &cfg)
+	if err != nil {
+		t.Fatalf("UnmarshalYAML error: %v", err)
+	}
+	if cfg.Check.Raw != "deps(a, b) && violations(c) == 0" {
+		t.Errorf("Raw = %q, want %q", cfg.Check.Raw, "deps(a, b) && violations(c) == 0")
+	}
+	if len(cfg.Check.items) != 2 {
+		t.Fatalf("items length = %d, want 2", len(cfg.Check.items))
+	}
+	if cfg.Check.items[0] != "deps(a, b)" || cfg.Check.items[1] != "violations(c) == 0" {
+		t.Errorf("items = %v, want [deps(a, b) violations(c) == 0]", cfg.Check.items)
+	}
+	// Validate compiles successfully
+	if err := cfg.Check.Validate(); err != nil {
+		t.Fatalf("Validate() error: %v", err)
+	}
+	if cfg.Check.Expr == nil {
+		t.Fatal("Expr should be set after Validate()")
+	}
+	// Verify it's an AND tree
+	bin, ok := cfg.Check.Expr.(*BinaryExpr)
+	if !ok {
+		t.Fatalf("expected *BinaryExpr for AND tree, got %T", cfg.Check.Expr)
+	}
+	if bin.Op != TokenAnd {
+		t.Errorf("expected AND op, got %v", bin.Op)
+	}
+}
+
+func TestCheckExpr_Validate_List_AllTruthy(t *testing.T) {
+	ce := &CheckExpr{
+		Raw: "layers() > 0 && !has_circular()",
+	}
+	// Validate triggers compilation
+	if err := ce.Validate(); err != nil {
+		t.Fatalf("Validate() error: %v", err)
+	}
+	if ce.Expr == nil {
+		t.Fatal("Expr is nil after Validate()")
+	}
+	// Eval with a context that makes both true
+	ctx := EvalContext{
+		Layers: []Layer{{Name: "a"}, {Name: "b"}},
+	}
+	val, err := ce.Expr.Eval(ctx)
+	if err != nil {
+		t.Fatalf("Eval() error: %v", err)
+	}
+	if !val.IsTruthy() {
+		t.Error("expected truthy (layers > 0 && !circular)")
+	}
+}
+
+func TestCheckExpr_Validate_List_AnyFalse(t *testing.T) {
+	// layes() > 0 is true, but has_circular() is also true (no deps = no circular = false)
+	// Actually !has_circular() when there IS no circular deps should be true
+	// Let's use a different expression: layers() > 0 && layers() == 0 — always false
+	ce := &CheckExpr{
+		Raw: "layers() > 0 && layers() == 0",
+	}
+	if err := ce.Validate(); err != nil {
+		t.Fatalf("Validate() error: %v", err)
+	}
+	ctx := EvalContext{
+		Layers: []Layer{{Name: "a"}},
+	}
+	val, err := ce.Expr.Eval(ctx)
+	if err != nil {
+		t.Fatalf("Eval() error: %v", err)
+	}
+	if val.IsTruthy() {
+		t.Error("expected falsy (layers > 0 && layers == 0)")
+	}
+}
+
+func TestCheckExpr_Validate_List_CompileError(t *testing.T) {
+	// List with one valid and one broken expression
+	ce := &CheckExpr{
+		Raw:   "layers() > 0 && broken((",
+		items: []string{"layers() > 0", "broken(("},
+	}
+	err := ce.Validate()
+	if err == nil {
+		t.Fatal("expected error for broken expression in list")
+	}
+	if !strings.Contains(err.Error(), "broken((") {
+		t.Errorf("error should mention the broken item, got: %v", err)
+	}
+}
+
+func TestCheckExpr_UnmarshalYAML_InvalidType(t *testing.T) {
+	// A mapping is not accepted — not a string or list of strings
+	input := `check: {bad: type}`
+	var cfg struct {
+		Check CheckExpr `yaml:"check"`
+	}
+	err := yaml.Unmarshal([]byte(input), &cfg)
+	if err == nil {
+		t.Fatal("expected error for mapping check, got nil")
+	}
+	if !strings.Contains(err.Error(), "must be a string or list of strings") {
+		t.Errorf("error should mention valid types, got: %v", err)
+	}
+}
+
+func TestCheckExpr_UnmarshalYAML_EmptyList(t *testing.T) {
+	input := `check: []`
+	var cfg struct {
+		Check CheckExpr `yaml:"check"`
+	}
+	err := yaml.Unmarshal([]byte(input), &cfg)
+	if err == nil {
+		t.Fatal("expected error for empty list, got nil")
+	}
+	if !strings.Contains(err.Error(), "must not be empty") {
+		t.Errorf("error should mention empty list, got: %v", err)
+	}
+}
+
+func TestCheckExpr_Rule_Validate_ListForm(t *testing.T) {
+	// Integration test: Rule with list-form Check validates and evaluates correctly
+	rule := Rule{
+		ID:    "R-LIST",
+		Check: CheckExpr{Raw: "layers() > 0 && layers() < 10"},
+		Severity: SeverityError,
+	}
+	if err := rule.Validate(); err != nil {
+		t.Fatalf("Rule.Validate() error: %v", err)
+	}
+	if rule.compiledExpr == nil {
+		t.Fatal("compiledExpr should be set after Validate()")
+	}
+	// CheckExpressionIsStandalone returns true
+	if !rule.CheckExpressionIsStandalone() {
+		t.Error("CheckExpressionIsStandalone should be true for check-based rule")
+	}
+}
+
+func TestCheckExpr_Empty_Raw(t *testing.T) {
+	// Empty CheckExpr — no check expression
+	ce := &CheckExpr{Raw: ""}
+	if err := ce.Validate(); err != nil {
+		t.Fatalf("Validate() error for empty: %v", err)
+	}
+	if ce.Expr != nil {
+		t.Error("Expr should be nil for empty check")
+	}
+}
+
+func TestCheckExpr_String(t *testing.T) {
+	ce := CheckExpr{Raw: "deps(a, b) > 0"}
+	if ce.String() != "deps(a, b) > 0" {
+		t.Errorf("String() = %q, want %q", ce.String(), "deps(a, b) > 0")
+	}
+}
+
+// ─── User-Defined Function Tests ──────────────────────────────────────────────
+
+func TestIsValidIdentifier(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  bool
+	}{
+		{"valid simple", "my_func", true},
+		{"valid with digits", "fn123", true},
+		{"valid underscore prefix", "_private", true},
+		{"empty", "", false},
+		{"starts with digit", "123bad", false},
+		{"contains special", "bad-func", false},
+		{"contains space", "my func", false},
+		{"single letter", "f", true},
+		{"single underscore", "_", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsValidIdentifier(tt.input); got != tt.want {
+				t.Errorf("IsValidIdentifier(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsBuiltinName(t *testing.T) {
+	tests := []struct {
+		name string
+		want bool
+	}{
+		{"count", true},
+		{"deps", true},
+		{"layers", true},
+		{"has_circular", true},
+		{"files", true},
+		{"ratio", true},
+		{"violations", true},
+		{"threshold", true},
+		{"all", true},
+		{"any", true},
+		{"my_func", false},
+		{"unknown", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsBuiltinName(tt.name); got != tt.want {
+				t.Errorf("IsBuiltinName(%q) = %v, want %v", tt.name, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCollectFuncCalls(t *testing.T) {
+	expr, err := Parse("a(b(c(), d())) && e()")
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+	calls := CollectFuncCalls(expr)
+	expected := []string{"a", "b", "c", "d", "e"}
+	if len(calls) != len(expected) {
+		t.Fatalf("got %d calls, want %d: %v", len(calls), len(expected), calls)
+	}
+	for i, want := range expected {
+		if calls[i] != want {
+			t.Errorf("call[%d] = %q, want %q", i, calls[i], want)
+		}
+	}
+}
+
+func TestCollectFuncCalls_Nil(t *testing.T) {
+	// Should not panic
+	names := CollectFuncCalls(nil)
+	if names != nil {
+		t.Errorf("expected nil, got %v", names)
+	}
+}
+
+// ─── Config-level user function validation ──────────────────────────────────
+
+func TestConfig_Validate_ValidUserFunctions(t *testing.T) {
+	config := Config{
+		Version: "1.0.0",
+		Layers: []Layer{
+			{Name: "domain", Paths: []string{"domain/"}},
+			{Name: "infra", Paths: []string{"infra/"}},
+		},
+		Functions: map[string]string{
+			"no_forbidden": "violations(forbidden_dep) == 0",
+		},
+	}
+	err := config.Validate()
+	if err != nil {
+		t.Fatalf("Config.Validate() error: %v", err)
+	}
+	if config.UserFunctions() == nil {
+		t.Fatal("expected UserFunctions to be non-nil after Validate()")
+	}
+	if _, ok := config.UserFunctions()["no_forbidden"]; !ok {
+		t.Error("expected no_forbidden to be compiled")
+	}
+}
+
+func TestConfig_Validate_UserFunctionCallsBuiltin(t *testing.T) {
+	// User function body that uses builtins and comparisons
+	config := Config{
+		Version: "1.0.0",
+		Layers: []Layer{
+			{Name: "domain", Paths: []string{"domain/"}},
+			{Name: "infra", Paths: []string{"infra/"}},
+		},
+		Functions: map[string]string{
+			"count_deps": "count(deps(domain, infra))",
+		},
+	}
+	err := config.Validate()
+	if err != nil {
+		t.Fatalf("Config.Validate() error: %v", err)
+	}
+}
+
+func TestConfig_Validate_UserFunctionCrossReference(t *testing.T) {
+	// Function A calls function B — no cycle, should validate
+	config := Config{
+		Version: "1.0.0",
+		Layers: []Layer{
+			{Name: "domain", Paths: []string{"domain/"}},
+			{Name: "infra", Paths: []string{"infra/"}},
+		},
+		Functions: map[string]string{
+			"no_cycle": "all(deps(a, b))",
+			"strict":   "no_cycle() && violations(c) == 0",
+		},
+	}
+	err := config.Validate()
+	if err != nil {
+		t.Fatalf("Config.Validate() error: %v", err)
+	}
+}
+
+func TestConfig_Validate_UserFunctionCircularReference(t *testing.T) {
+	config := Config{
+		Version: "1.0.0",
+		Layers: []Layer{
+			{Name: "domain", Paths: []string{"domain/"}},
+		},
+		Functions: map[string]string{
+			"a": "b()",
+			"b": "a()",
+		},
+	}
+	err := config.Validate()
+	if err == nil {
+		t.Fatal("expected error for circular reference, got nil")
+	}
+	if !strings.Contains(err.Error(), "circular reference") {
+		t.Errorf("error should contain 'circular reference', got: %v", err)
+	}
+}
+
+func TestConfig_Validate_UserFunctionIndirectCycle(t *testing.T) {
+	config := Config{
+		Version: "1.0.0",
+		Layers: []Layer{
+			{Name: "domain", Paths: []string{"domain/"}},
+		},
+		Functions: map[string]string{
+			"a": "b()",
+			"b": "c()",
+			"c": "a()",
+		},
+	}
+	err := config.Validate()
+	if err == nil {
+		t.Fatal("expected error for indirect cycle, got nil")
+	}
+	if !strings.Contains(err.Error(), "circular reference") {
+		t.Errorf("error should contain 'circular reference', got: %v", err)
+	}
+}
+
+func TestConfig_Validate_UserFunctionSelfReference(t *testing.T) {
+	config := Config{
+		Version: "1.0.0",
+		Layers: []Layer{
+			{Name: "domain", Paths: []string{"domain/"}},
+		},
+		Functions: map[string]string{
+			"f": "f()",
+		},
+	}
+	err := config.Validate()
+	if err == nil {
+		t.Fatal("expected error for self-reference, got nil")
+	}
+	if !strings.Contains(err.Error(), "circular reference") {
+		t.Errorf("error should contain 'circular reference', got: %v", err)
+	}
+}
+
+func TestConfig_Validate_UserFunctionBuiltinShadowing(t *testing.T) {
+	tests := []string{"deps", "count", "layers", "has_circular", "files", "ratio", "violations", "threshold", "all", "any"}
+	for _, name := range tests {
+		t.Run(name, func(t *testing.T) {
+			config := Config{
+				Version: "1.0.0",
+				Layers: []Layer{
+					{Name: "domain", Paths: []string{"domain/"}},
+				},
+				Functions: map[string]string{
+					name: "true",
+				},
+			}
+			err := config.Validate()
+			if err == nil {
+				t.Fatalf("expected error for shadowing builtin %q, got nil", name)
+			}
+			if !strings.Contains(err.Error(), "cannot shadow builtin") {
+				t.Errorf("error should contain 'cannot shadow builtin', got: %v", err)
+			}
+		})
+	}
+}
+
+func TestConfig_Validate_UserFunctionInvalidIdentifier(t *testing.T) {
+	config := Config{
+		Version: "1.0.0",
+		Layers: []Layer{
+			{Name: "domain", Paths: []string{"domain/"}},
+		},
+		Functions: map[string]string{
+			"123bad_name": "true",
+		},
+	}
+	err := config.Validate()
+	if err == nil {
+		t.Fatal("expected error for invalid identifier, got nil")
+	}
+	if !strings.Contains(err.Error(), "invalid identifier") {
+		t.Errorf("error should contain 'invalid identifier', got: %v", err)
+	}
+}
+
+func TestConfig_Validate_UserFunctionParseError(t *testing.T) {
+	config := Config{
+		Version: "1.0.0",
+		Layers: []Layer{
+			{Name: "domain", Paths: []string{"domain/"}},
+		},
+		Functions: map[string]string{
+			"f": "deps(",
+		},
+	}
+	err := config.Validate()
+	if err == nil {
+		t.Fatal("expected error for parse error in function body, got nil")
+	}
+}
+
+// ─── User function evaluation tests ─────────────────────────────────────────
+
+func TestEval_UserFunctionCallsBuiltin(t *testing.T) {
+	// Simulate: user function "no_forbidden" = "violations(forbidden_dep) == 0"
+	userBody, err := Parse("violations(forbidden_dep) == 0")
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+	userFuncs := map[string]Expr{
+		"no_forbidden": userBody,
+	}
+
+	ctx := EvalContext{
+		Violations: []Violation{
+			{RuleID: "forbidden_dep"},
+		},
+		UserFunctions: userFuncs,
+	}
+
+	// Evaluate no_forbidden() — should be false because violations > 0
+	expr := &FuncCallExpr{Name: "no_forbidden", Args: []Expr{}}
+	val, err := expr.Eval(ctx)
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	if val.IsTruthy() {
+		t.Error("expected false (violations == 1, not 0)")
+	}
+}
+
+func TestEval_UserFunctionAllBuiltins(t *testing.T) {
+	// User function calls all() with a deps() call
+	userBody, err := Parse("all(deps(domain, infra))")
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+	userFuncs := map[string]Expr{
+		"check_deps": userBody,
+	}
+
+	deps := []Dependency{
+		{SourceFile: "domain/a.go", ResolvedLayer: "infra"},
+		{SourceFile: "domain/b.go", ResolvedLayer: "infra"},
+	}
+	layers := []Layer{
+		{Name: "domain", Paths: []string{"domain/"}},
+		{Name: "infra", Paths: []string{"infra/"}},
+	}
+	ctx := EvalContext{
+		Deps:          deps,
+		Layers:        layers,
+		UserFunctions: userFuncs,
+	}
+
+	expr := &FuncCallExpr{Name: "check_deps", Args: []Expr{}}
+	val, err := expr.Eval(ctx)
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	if !val.IsTruthy() {
+		t.Error("expected true (deps exist from domain to infra)")
+	}
+}
+
+func TestEval_UserFunctionCrossCall(t *testing.T) {
+	// Function B calls function A: a="count(deps(domain, infra))", b="a() > 0"
+	fnA, err := Parse("count(deps(domain, infra))")
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+	fnB, err := Parse("a() > 0")
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+	userFuncs := map[string]Expr{
+		"a": fnA,
+		"b": fnB,
+	}
+
+	deps := []Dependency{
+		{SourceFile: "domain/a.go", ResolvedLayer: "infra"},
+	}
+	layers := []Layer{
+		{Name: "domain", Paths: []string{"domain/"}},
+		{Name: "infra", Paths: []string{"infra/"}},
+	}
+	ctx := EvalContext{
+		Deps:          deps,
+		Layers:        layers,
+		UserFunctions: userFuncs,
+	}
+
+	// Calling b() should evaluate to true (count > 0)
+	expr := &FuncCallExpr{Name: "b", Args: []Expr{}}
+	val, err := expr.Eval(ctx)
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	if !val.IsTruthy() {
+		t.Error("expected true (count(deps) = 1 > 0)")
+	}
+}
+
+func TestEval_UserFunctionChain(t *testing.T) {
+	// Three-level chain: a() -> b() -> c()
+	// a = "b()", b = "c()", c = "layers() > 0"
+	fnA, _ := Parse("b()")
+	fnB, _ := Parse("c()")
+	fnC, _ := Parse("layers() > 0")
+	userFuncs := map[string]Expr{
+		"a": fnA,
+		"b": fnB,
+		"c": fnC,
+	}
+	ctx := EvalContext{
+		Layers:        []Layer{{Name: "x"}},
+		UserFunctions: userFuncs,
+	}
+	expr := &FuncCallExpr{Name: "a", Args: []Expr{}}
+	val, err := expr.Eval(ctx)
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	if !val.IsTruthy() {
+		t.Error("expected true (layers() > 0)")
+	}
+}
+
+func TestEval_UserFunctionUnknownName(t *testing.T) {
+	// Calling a function that is not in UserFunctions and not a builtin
+	ctx := EvalContext{
+		UserFunctions: map[string]Expr{
+			"existing": &NumberLiteral{Value: 1},
+		},
+	}
+	expr := &FuncCallExpr{Name: "nonexistent", Args: []Expr{}}
+	_, err := expr.Eval(ctx)
+	if err == nil {
+		t.Fatal("expected error for unknown function, got nil")
+	}
+	if !strings.Contains(err.Error(), "unknown function") {
+		t.Errorf("error should mention 'unknown function', got: %v", err)
+	}
+}
+
+func TestEval_UserFunctionNilMap(t *testing.T) {
+	// When UserFunctions is nil, should fall through to builtins
+	deps := []Dependency{
+		{SourceFile: "domain/a.go", ResolvedLayer: "infra"},
+	}
+	layers := []Layer{
+		{Name: "domain", Paths: []string{"domain/"}},
+		{Name: "infra", Paths: []string{"infra/"}},
+	}
+	ctx := EvalContext{
+		Deps:          deps,
+		Layers:        layers,
+		UserFunctions: nil,
+	}
+	// Builtin should still work
+	expr := &FuncCallExpr{Name: "layers", Args: []Expr{}}
+	val, err := expr.Eval(ctx)
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	if val.Kind != ValueInt || val.Int != 2 {
+		t.Errorf("expected layers=2, got %v", val)
+	}
+}
+
+// ─── Integration: user function in rule-check pipeline ──────────────────────
+
+func TestEvaluateRules_UserFunction(t *testing.T) {
+	deps := []Dependency{
+		{SourceFile: "domain/a.go", ResolvedLayer: "infra"},
+		{SourceFile: "domain/b.go", ResolvedLayer: "infra"},
+		{SourceFile: "domain/c.go", ResolvedLayer: "infra"},
+		{SourceFile: "domain/d.go", ResolvedLayer: "infra"},
+	}
+	layers := []Layer{
+		{Name: "domain", Paths: []string{"domain/"}},
+		{Name: "infra", Paths: []string{"infra/"}},
+	}
+
+	// Define a user function and a rule that calls it
+	config := Config{
+		Version: "1.0.0",
+		Layers:  layers,
+		Functions: map[string]string{
+			"too_many_deps": "count(deps(domain, infra)) > 3",
+		},
+		Rules: []Rule{
+			{
+				ID:       "R-USERFN",
+				Check:    CheckExpr{Raw: "too_many_deps()"},
+				Severity: SeverityError,
+			},
+		},
+	}
+	if err := config.Validate(); err != nil {
+		t.Fatalf("Config.Validate() error: %v", err)
+	}
+
+	// Compile rules
+	for i := range config.Rules {
+		if err := config.Rules[i].Validate(); err != nil {
+			t.Fatalf("rule validation error: %v", err)
+		}
+	}
+
+	violations := EvaluateRules(deps, config.Rules, layers, config.UserFunctions())
+	if len(violations) != 1 {
+		t.Fatalf("expected 1 violation, got %d", len(violations))
+	}
+	if violations[0].RuleID != "R-USERFN" {
+		t.Errorf("expected rule ID R-USERFN, got %s", violations[0].RuleID)
+	}
+}
+
+func TestEvaluateRules_UserFunctionNoViolation(t *testing.T) {
+	deps := []Dependency{
+		{SourceFile: "domain/a.go", ResolvedLayer: "infra"},
+	}
+	layers := []Layer{
+		{Name: "domain", Paths: []string{"domain/"}},
+		{Name: "infra", Paths: []string{"infra/"}},
+	}
+
+	config := Config{
+		Version: "1.0.0",
+		Layers:  layers,
+		Functions: map[string]string{
+			"too_many_deps": "count(deps(domain, infra)) > 3",
+		},
+		Rules: []Rule{
+			{
+				ID:       "R-USERFN",
+				Check:    CheckExpr{Raw: "too_many_deps()"},
+				Severity: SeverityError,
+			},
+		},
+	}
+	if err := config.Validate(); err != nil {
+		t.Fatalf("Config.Validate() error: %v", err)
+	}
+	for i := range config.Rules {
+		if err := config.Rules[i].Validate(); err != nil {
+			t.Fatalf("rule validation error: %v", err)
+		}
+	}
+
+	violations := EvaluateRules(deps, config.Rules, layers, config.UserFunctions())
+	if len(violations) != 0 {
+		t.Fatalf("expected 0 violations, got %d", len(violations))
+	}
+}
+
+func TestEvaluateRules_UserFunctionAllBuiltin(t *testing.T) {
+	// Integration: user function uses all() builtin
+	deps := []Dependency{
+		{SourceFile: "domain/a.go", ResolvedLayer: "infra"},
+	}
+	layers := []Layer{
+		{Name: "domain", Paths: []string{"domain/"}},
+		{Name: "infra", Paths: []string{"infra/"}},
+	}
+
+	config := Config{
+		Version: "1.0.0",
+		Layers:  layers,
+		Functions: map[string]string{
+			"has_deps": "all(deps(domain, infra))",
+		},
+		Rules: []Rule{
+			{
+				ID:       "R-ALLFN",
+				Check:    CheckExpr{Raw: "!has_deps()"},
+				Severity: SeverityError,
+			},
+		},
+	}
+	if err := config.Validate(); err != nil {
+		t.Fatalf("config validate: %v", err)
+	}
+	for i := range config.Rules {
+		if err := config.Rules[i].Validate(); err != nil {
+			t.Fatalf("rule validate: %v", err)
+		}
+	}
+
+	// has_deps() returns true (deps exist), so !has_deps() is false → no violation
+	violations := EvaluateRules(deps, config.Rules, layers, config.UserFunctions())
+	if len(violations) != 0 {
+		t.Fatalf("expected 0 violations (deps exist, !has_deps=false), got %d", len(violations))
 	}
 }

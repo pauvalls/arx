@@ -47,6 +47,6 @@ func BenchmarkRuleEvaluation(b *testing.B) {
 	}
 
 	for i := 0; i < b.N; i++ {
-		EvaluateRules(deps, rules, layers)
+		EvaluateRules(deps, rules, layers, nil)
 	}
 }

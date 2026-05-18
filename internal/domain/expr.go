@@ -1,8 +1,10 @@
 package domain
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"unicode"
 )
 
@@ -168,10 +170,11 @@ type Expr interface {
 }
 
 type EvalContext struct {
-	Deps       []Dependency
-	Layers     []Layer
-	Violations []Violation
-	LayerFiles map[string][]string
+	Deps          []Dependency
+	Layers        []Layer
+	Violations    []Violation
+	LayerFiles    map[string][]string
+	UserFunctions map[string]Expr
 }
 
 type ValueKind int
@@ -301,6 +304,12 @@ type FuncCallExpr struct {
 }
 
 func (e *FuncCallExpr) Eval(ctx EvalContext) (Value, error) {
+	// Check user-defined functions first, then builtins.
+	if ctx.UserFunctions != nil {
+		if userFn, ok := ctx.UserFunctions[e.Name]; ok {
+			return userFn.Eval(ctx)
+		}
+	}
 	fn, ok := builtins[e.Name]
 	if !ok {
 		return Value{}, fmt.Errorf("unknown function %q", e.Name)
@@ -322,6 +331,92 @@ type StringLiteral struct {
 
 func (e *StringLiteral) Eval(_ EvalContext) (Value, error) {
 	return Value{Kind: ValueInt, Int: 0}, nil // strings are opaque; used as args
+}
+
+// ─── CheckExpr ───────────────────────────────────────────────────────────────
+
+// CheckExpr holds a check expression from YAML config, supporting
+// both single string and multi-line list forms.
+type CheckExpr struct {
+	Raw   string
+	Expr  Expr
+	items []string
+}
+
+// UnmarshalYAML accepts either a single string or a list of strings.
+// For a single string, Raw is set to the input and items is empty.
+// For a list, Raw is set to the " && "-joined form and items stores the originals.
+func (c *CheckExpr) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var s string
+	if err := unmarshal(&s); err == nil {
+		c.Raw = s
+		c.items = nil
+		return nil
+	}
+	var items []string
+	if err := unmarshal(&items); err != nil {
+		return fmt.Errorf("check expression must be a string or list of strings")
+	}
+	if len(items) == 0 {
+		return fmt.Errorf("check expression list must not be empty")
+	}
+	c.Raw = strings.Join(items, " && ")
+	c.items = items
+	return nil
+}
+
+// Validate compiles all expressions. For list form, it builds an AND tree
+// from all items. The first parse error fails the entire validation.
+func (c *CheckExpr) Validate() error {
+	if c.Raw == "" {
+		c.Expr = nil
+		return nil
+	}
+	if len(c.items) > 0 {
+		var exprs []Expr
+		for _, item := range c.items {
+			expr, err := Parse(item)
+			if err != nil {
+				return fmt.Errorf("invalid check expression item %q: %w", item, err)
+			}
+			exprs = append(exprs, expr)
+		}
+		c.Expr = buildAndTree(exprs)
+	} else {
+		expr, err := Parse(c.Raw)
+		if err != nil {
+			return fmt.Errorf("invalid check expression: %w", err)
+		}
+		c.Expr = expr
+	}
+	return nil
+}
+
+// MarshalJSON serializes CheckExpr as a plain string for hashing.
+func (c CheckExpr) MarshalJSON() ([]byte, error) {
+	return json.Marshal(c.Raw)
+}
+
+// MarshalYAML serializes CheckExpr as a plain string.
+func (c CheckExpr) MarshalYAML() (interface{}, error) {
+	return c.Raw, nil
+}
+
+// String returns the raw expression text.
+func (c CheckExpr) String() string {
+	return c.Raw
+}
+
+// buildAndTree chains expressions into a left-associative AND tree.
+func buildAndTree(exprs []Expr) Expr {
+	if len(exprs) == 0 {
+		return nil
+	}
+	result := exprs[0]
+	for i := 1; i < len(exprs); i++ {
+		result = &BinaryExpr{Left: result, Op: TokenAnd, Right: exprs[i]}
+	}
+	return result
 }
 
 func compareValues(left Value, op TokenType, right Value) (bool, error) {
@@ -366,6 +461,8 @@ var builtins = map[string]func(args []Expr, ctx EvalContext) (Value, error){
 	"ratio":        builtinRatio,
 	"violations":   builtinViolations,
 	"threshold":    builtinThreshold,
+	"all":          builtinAll,
+	"any":          builtinAny,
 }
 
 func builtinCount(args []Expr, ctx EvalContext) (Value, error) {
@@ -507,6 +604,34 @@ func builtinThreshold(args []Expr, ctx EvalContext) (Value, error) {
 	min := minVal.AsInt()
 	max := maxVal.AsInt()
 	return Value{Kind: ValueBool, Bool: val >= min && val <= max}, nil
+}
+
+func builtinAll(args []Expr, ctx EvalContext) (Value, error) {
+	if len(args) != 1 {
+		return Value{}, fmt.Errorf("all() expects exactly 1 argument, got %d", len(args))
+	}
+	v, err := args[0].Eval(ctx)
+	if err != nil {
+		return Value{}, err
+	}
+	if v.Kind != ValueDeps {
+		return Value{}, fmt.Errorf("all() expects a deps() call as argument")
+	}
+	return Value{Kind: ValueBool, Bool: len(v.Deps) > 0}, nil
+}
+
+func builtinAny(args []Expr, ctx EvalContext) (Value, error) {
+	if len(args) != 1 {
+		return Value{}, fmt.Errorf("any() expects exactly 1 argument, got %d", len(args))
+	}
+	v, err := args[0].Eval(ctx)
+	if err != nil {
+		return Value{}, err
+	}
+	if v.Kind != ValueDeps {
+		return Value{}, fmt.Errorf("any() expects a deps() call as argument")
+	}
+	return Value{Kind: ValueBool, Bool: len(v.Deps) > 0}, nil
 }
 
 // ─── Parser ──────────────────────────────────────────────────────────────────
@@ -722,6 +847,73 @@ func resolveStringArg(e Expr, ctx EvalContext) (string, error) {
 	return "", fmt.Errorf("expected string literal argument, got %T", e)
 }
 
+// ─── User Function Helpers ────────────────────────────────────────────────────
+
+// builtinNames contains all registered builtin function names for shadow checking.
+var builtinNames map[string]bool
+
+func init() {
+	builtinNames = make(map[string]bool, len(builtins))
+	for name := range builtins {
+		builtinNames[name] = true
+	}
+}
+
+// IsBuiltinName returns true if name is a builtin function identifier.
+func IsBuiltinName(name string) bool {
+	return builtinNames[name]
+}
+
+// IsValidIdentifier checks if a name is a valid user function identifier.
+func IsValidIdentifier(name string) bool {
+	if name == "" {
+		return false
+	}
+	for i, r := range name {
+		if i == 0 {
+			if !unicode.IsLetter(r) && r != '_' {
+				return false
+			}
+		} else {
+			if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_' {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// CollectFuncCalls returns all function call names found in an expression AST.
+// This is used by Config validation to build the user-function call graph.
+func CollectFuncCalls(expr Expr) []string {
+	var names []string
+	collectFuncCallsRecursive(expr, &names)
+	return names
+}
+
+func collectFuncCallsRecursive(expr Expr, names *[]string) {
+	if expr == nil {
+		return
+	}
+	switch e := expr.(type) {
+	case *FuncCallExpr:
+		*names = append(*names, e.Name)
+		for _, arg := range e.Args {
+			collectFuncCallsRecursive(arg, names)
+		}
+	case *BinaryExpr:
+		collectFuncCallsRecursive(e.Left, names)
+		collectFuncCallsRecursive(e.Right, names)
+	case *UnaryExpr:
+		collectFuncCallsRecursive(e.Right, names)
+	case *ComparisonExpr:
+		collectFuncCallsRecursive(e.Left, names)
+		collectFuncCallsRecursive(e.Right, names)
+	case *NumberLiteral, *StringLiteral:
+		// leaf nodes, no children
+	}
+}
+
 // String returns a human-readable representation of a Value.
 func (v Value) String() string {
 	switch v.Kind {
@@ -761,22 +953,17 @@ func ruleCheckMatches(rule *Rule, ctx EvalContext) (bool, error) {
 	return val.IsTruthy(), nil
 }
 
-// compileCheckExpression parses and caches the Check expression on the rule.
+// compileCheckExpression compiles and caches the Check expression on the rule.
 func (r *Rule) compileCheckExpression() error {
-	if r.Check == "" {
-		r.compiledExpr = nil
-		return nil
+	if err := r.Check.Validate(); err != nil {
+		return err
 	}
-	expr, err := Parse(r.Check)
-	if err != nil {
-		return fmt.Errorf("invalid check expression: %w", err)
-	}
-	r.compiledExpr = expr
+	r.compiledExpr = r.Check.Expr
 	return nil
 }
 
 // CheckExpressionIsStandalone returns true if the rule uses a Check expression
 // and should bypass standard from/to logic.
 func (r *Rule) CheckExpressionIsStandalone() bool {
-	return r.Check != ""
+	return r.Check.Raw != ""
 }

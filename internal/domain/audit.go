@@ -4,8 +4,9 @@ import "fmt"
 
 // Audit service evaluates architectural rules against detected dependencies
 
-// EvaluateRules checks all dependencies against all rules and returns violations
-func EvaluateRules(dependencies []Dependency, rules []Rule, layers []Layer) []Violation {
+// EvaluateRules checks all dependencies against all rules and returns violations.
+// userFuncs is an optional map of compiled user-defined function expressions.
+func EvaluateRules(dependencies []Dependency, rules []Rule, layers []Layer, userFuncs ...map[string]Expr) []Violation {
 	var violations []Violation
 	violationIndex := 0
 
@@ -86,12 +87,19 @@ func EvaluateRules(dependencies []Dependency, rules []Rule, layers []Layer) []Vi
 		}
 	}
 
+	// Inject user-defined functions into EvalContext (if provided via variadic)
+	var userFnMap map[string]Expr
+	if len(userFuncs) > 0 {
+		userFnMap = userFuncs[0]
+	}
+
 	// Evaluate expression-based rules
 	exprCtx := EvalContext{
-		Deps:       dependencies,
-		Layers:     layers,
-		Violations: violations,
-		LayerFiles: layerFiles,
+		Deps:          dependencies,
+		Layers:        layers,
+		Violations:    violations,
+		LayerFiles:    layerFiles,
+		UserFunctions: userFnMap,
 	}
 	for i := range rules {
 		rule := &rules[i]

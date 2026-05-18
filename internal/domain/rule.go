@@ -95,7 +95,7 @@ type Rule struct {
 	Exclude           []string        `json:"exclude,omitempty" yaml:"exclude,omitempty"`
 	Template          string                 `json:"template,omitempty" yaml:"template,omitempty"`
 	Params            map[string]interface{} `json:"params,omitempty" yaml:"params,omitempty"`
-	Check             string                 `json:"check,omitempty" yaml:"check,omitempty"`
+	Check             CheckExpr              `json:"check,omitempty" yaml:"check,omitempty"`
 	compiledPattern   *regexp.Regexp         `json:"-" yaml:"-"`
 	compiledExclude   []*regexp.Regexp       `json:"-" yaml:"-"`
 	compiledExpr      Expr                   `json:"-" yaml:"-"`
@@ -194,7 +194,7 @@ func (r *Rule) Validate() error {
 	}
 
 	// Check expression rules cannot be mixed with from/to/template/pattern
-	if r.Check != "" {
+	if r.Check.Raw != "" {
 		if r.From != "" {
 			return fmt.Errorf("rule %q: 'check' expression rules cannot have 'from' field", r.ID)
 		}
@@ -220,7 +220,7 @@ func (r *Rule) Validate() error {
 	}
 
 	// Check-only rules don't require from/to
-	if r.Check != "" && r.From == "" && len(r.To) == 0 && r.Pattern == "" && r.Template == "" {
+	if r.Check.Raw != "" && r.From == "" && len(r.To) == 0 && r.Pattern == "" && r.Template == "" {
 		// Validate type and severity only
 		switch r.Type {
 		case RuleTypeCannot, RuleTypeMust, RuleTypeCan, RuleTypeMustNotCircular, "":

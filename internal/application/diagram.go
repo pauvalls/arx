@@ -35,7 +35,7 @@ func (s *DiagramService) Generate(projectRoot string, layers []domain.Layer, con
 	}
 
 	// Evaluate rules to find violations
-	violations := s.evaluateRules(deps, config.Rules, layers)
+	violations := s.evaluateRules(deps, config.Rules, layers, config.UserFunctions())
 
 	return &DiagramResult{
 		Dependencies: deps,
@@ -77,8 +77,8 @@ func (s *DiagramService) extractDependencies(projectRoot string, layers []domain
 }
 
 // evaluateRules checks dependencies against rules and returns violations
-func (s *DiagramService) evaluateRules(deps []domain.Dependency, rules []domain.Rule, layers []domain.Layer) []domain.Violation {
-	return EvaluateArchitecture(deps, rules, layers)
+func (s *DiagramService) evaluateRules(deps []domain.Dependency, rules []domain.Rule, layers []domain.Layer, userFuncs ...map[string]domain.Expr) []domain.Violation {
+	return EvaluateArchitecture(deps, rules, layers, userFuncs...)
 }
 
 // sortDependencies sorts dependencies for consistent diagram output

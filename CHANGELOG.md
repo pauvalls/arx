@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.28.0] - 2026-05
+
+### Added
+- `CheckExpr` type supporting `string | []string` rule check expressions (multi-line AND-chained)
+- `all()`/`any()` built-in functions for dependency aggregation checks
+- `functions` config section for user-defined expression functions with DAG validation
+- Cycle detection for user-defined functions via Kahn's topological sort
+- Schema update: `check` field now accepts both string and array of strings; `functions` object property added
+
 ## [v0.24.0] - 2026-05
 
 ### Added
@@ -164,4 +173,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | v0.8.0  | 2026-03     | Audit and circular detection |
 | v0.9.0  | 2026-04     | Rule overrides |
 | v0.10.0 | 2026-05     | Diagram CLI & DX improvements |
+| v0.28.0 | 2026-05     | Custom Rule DSL (expressions, functions, multi-line checks) |
 | v0.24.0 | 2026-05     | Web server + dashboard |

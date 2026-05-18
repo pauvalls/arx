@@ -59,7 +59,7 @@ func (s *AuditService) Audit(ctx context.Context, projectRoot, configPath string
 	}
 
 	// Step 3: Evaluate rules and get violations
-	violations := s.evaluateRules(dependencies, config.Rules, config.Layers)
+	violations := s.evaluateRules(dependencies, config.Rules, config.Layers, config.UserFunctions())
 
 	// Step 4: Calculate coupling matrix
 	couplingMatrix := s.calculateCoupling(dependencies, config.Layers)
@@ -125,8 +125,8 @@ func (s *AuditService) runDetectors(ctx context.Context, projectRoot string, lay
 }
 
 // evaluateRules checks dependencies against architectural rules.
-func (s *AuditService) evaluateRules(dependencies []domain.Dependency, rules []domain.Rule, layers []domain.Layer) []domain.Violation {
-	return EvaluateArchitecture(dependencies, rules, layers)
+func (s *AuditService) evaluateRules(dependencies []domain.Dependency, rules []domain.Rule, layers []domain.Layer, userFuncs ...map[string]domain.Expr) []domain.Violation {
+	return EvaluateArchitecture(dependencies, rules, layers, userFuncs...)
 }
 
 // calculateCoupling builds a matrix of dependencies between layers.

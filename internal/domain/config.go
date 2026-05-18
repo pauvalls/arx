@@ -31,6 +31,9 @@ type Config struct {
 	SeverityConfig map[Severity]SeverityConfig `json:"severity_config,omitempty" yaml:"severity_config,omitempty"`
 	MaxViolations  int                         `json:"max_violations,omitempty" yaml:"max_violations,omitempty"`
 	SeverityMapping map[string]string           `json:"severity_mapping,omitempty" yaml:"severity_mapping,omitempty"`
+	Functions      map[string]string            `json:"functions,omitempty" yaml:"functions,omitempty"`
+
+	userFunctions map[string]Expr `json:"-" yaml:"-"`
 }
 
 // Validate validates the entire configuration
@@ -53,6 +56,11 @@ func (c *Config) Validate() error {
 		return err
 	}
 
+	// Compile and validate user-defined functions
+	if err := c.compileFunctions(); err != nil {
+		return err
+	}
+
 	// Validate all layers
 	layerNames := make(map[string]bool)
 	for i := range c.Layers {
@@ -71,7 +79,7 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("rule[%d]: %w", i, err)
 		}
 		// Expression rules must be standalone (no from/to/template/pattern mixing)
-		if c.Rules[i].Check != "" {
+		if c.Rules[i].Check.Raw != "" {
 			if c.Rules[i].From != "" {
 				return fmt.Errorf("rule[%d]: 'check' expression rules cannot have 'from' field", i)
 			}
@@ -123,6 +131,93 @@ func (c *Config) Hash() (string, error) {
 // Returns 0 if no threshold is set (unlimited, backward-compatible).
 func (c *Config) ViolationThreshold() int {
 	return c.MaxViolations
+}
+
+// UserFunctions returns the compiled user-defined function expressions,
+// or nil if no functions are defined or if compileFunctions has not been called.
+func (c *Config) UserFunctions() map[string]Expr {
+	return c.userFunctions
+}
+
+// compileFunctions parses, validates, and compiles all user-defined functions.
+// It checks identifier validity, builtin shadowing, and detects cycles in the
+// function call graph using Kahn's algorithm.
+func (c *Config) compileFunctions() error {
+	if len(c.Functions) == 0 {
+		c.userFunctions = nil
+		return nil
+	}
+
+	// Phase 1: parse and validate each function
+	parsed := make(map[string]Expr, len(c.Functions))
+	for name, body := range c.Functions {
+		if !IsValidIdentifier(name) {
+			return fmt.Errorf("function %q: invalid identifier", name)
+		}
+		if IsBuiltinName(name) {
+			return fmt.Errorf("function %q: cannot shadow builtin %q", name, name)
+		}
+		expr, err := Parse(body)
+		if err != nil {
+			return fmt.Errorf("function %q: %w", name, err)
+		}
+		parsed[name] = expr
+	}
+
+	// Phase 2: build call-graph adjacency list and check for cycles
+	inDegree := make(map[string]int, len(parsed))
+	graph := make(map[string][]string, len(parsed))
+
+	// Initialize in-degrees
+	for name := range parsed {
+		inDegree[name] = 0
+	}
+
+	// Build edges: for each function, find calls to other user functions
+	for name, expr := range parsed {
+		calls := CollectFuncCalls(expr)
+		for _, callee := range calls {
+			if _, isUser := parsed[callee]; isUser {
+				graph[name] = append(graph[name], callee)
+				inDegree[callee]++
+			}
+		}
+	}
+
+	// Kahn's algorithm for topological sort + cycle detection
+	var queue []string
+	for name, deg := range inDegree {
+		if deg == 0 {
+			queue = append(queue, name)
+		}
+	}
+
+	visited := 0
+	for len(queue) > 0 {
+		node := queue[0]
+		queue = queue[1:]
+		visited++
+		for _, neighbor := range graph[node] {
+			inDegree[neighbor]--
+			if inDegree[neighbor] == 0 {
+				queue = append(queue, neighbor)
+			}
+		}
+	}
+
+	if visited != len(parsed) {
+		// Find one node still in a cycle for the error message
+		for name, deg := range inDegree {
+			if deg > 0 {
+				return fmt.Errorf("function %q: circular reference detected", name)
+			}
+		}
+		return fmt.Errorf("circular reference detected in function definitions")
+	}
+
+	// Phase 3: store compiled expressions
+	c.userFunctions = parsed
+	return nil
 }
 
 // applySeverityMapping validates all mapping values and rewrites rule severities.

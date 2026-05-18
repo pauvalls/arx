@@ -175,8 +175,9 @@ func (s *CheckService) DetectCachedWithStatus(ctx context.Context, projectRoot s
 }
 
 // Evaluate checks dependencies against rules and returns violations.
-func (s *CheckService) Evaluate(dependencies []domain.Dependency, rules []domain.Rule, layers []domain.Layer) []domain.Violation {
-	return EvaluateArchitecture(dependencies, rules, layers)
+// userFuncs is an optional compiled user-function map (may be nil).
+func (s *CheckService) Evaluate(dependencies []domain.Dependency, rules []domain.Rule, layers []domain.Layer, userFuncs ...map[string]domain.Expr) []domain.Violation {
+	return EvaluateArchitecture(dependencies, rules, layers, userFuncs...)
 }
 
 // Report outputs violations in the specified format.
@@ -196,7 +197,7 @@ func (s *CheckService) Check(ctx context.Context, configPath, projectRoot string
 		return err
 	}
 
-	violations := s.Evaluate(dependencies, config.Rules, config.Layers)
+	violations := s.Evaluate(dependencies, config.Rules, config.Layers, config.UserFunctions())
 
 	if err := s.Report(violations, format); err != nil {
 		return err
