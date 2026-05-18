@@ -33,16 +33,17 @@ type Metrics struct {
 // and HTTP handlers. All public access must go through the mutex-protected
 // getters to ensure safe concurrent reads.
 type ServerState struct {
-	mu         sync.RWMutex
-	uptime     time.Time
-	lastCheck  time.Time
-	violations []domain.Violation
-	coupling   domain.CouplingMatrix
-	debt       domain.DebtScore
-	config     *domain.Config
-	version    VersionInfo
-	checkError error
-	metrics    Metrics
+	mu             sync.RWMutex
+	uptime         time.Time
+	lastCheck      time.Time
+	violations     []domain.Violation
+	coupling       domain.CouplingMatrix
+	debt           domain.DebtScore
+	config         *domain.Config
+	version        VersionInfo
+	checkError     error
+	metrics        Metrics
+	configReloaded bool
 }
 
 // NewServerState creates a new ServerState with the given version info.
@@ -54,6 +55,7 @@ func NewServerState(version VersionInfo) *ServerState {
 }
 
 // SetCheckResult atomically updates all check-related fields.
+// Resets the configReloaded flag since the new check used the current config.
 func (s *ServerState) SetCheckResult(violations []domain.Violation, coupling domain.CouplingMatrix, debt domain.DebtScore, cfg *domain.Config, metrics Metrics, checkErr error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -65,6 +67,22 @@ func (s *ServerState) SetCheckResult(violations []domain.Violation, coupling dom
 	s.metrics = metrics
 	s.checkError = checkErr
 	s.lastCheck = time.Now()
+	s.configReloaded = false
+}
+
+// SetConfigReloaded marks that the configuration has been reloaded.
+// The flag is reset on the next SetCheckResult call.
+func (s *ServerState) SetConfigReloaded() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.configReloaded = true
+}
+
+// ConfigReloaded returns whether the config has been reloaded since the last check.
+func (s *ServerState) ConfigReloaded() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.configReloaded
 }
 
 // SetError atomically records a check error without clearing previous results.

@@ -389,6 +389,7 @@ th[data-sortable].sort-desc::after {
       <span class="meta">Last check: {{if .LastCheck.IsZero}}never{{else}}{{.LastCheck.Format "2006-01-02 15:04:05"}}{{end}}</span>
       &middot;
       <span id="poll-status">polling</span>
+      <span id="config-status" style="display:none; margin-left:8px; font-size:0.75rem; color:var(--color-success);">&#9889; Config reloaded</span>
     </div>
   </header>
 
@@ -557,6 +558,8 @@ th[data-sortable].sort-desc::after {
 
   <footer>
     <span>Arx v{{.Version}} &middot; Uptime: {{.Uptime}}</span>
+    &middot; <a href="https://github.com/pauvalls/arx/blob/main/docs/pre-commit-hook.md" target="_blank" rel="noopener">Pre-commit hook</a>
+    &middot; <a href="https://github.com/pauvalls/arx/blob/main/README.md" target="_blank" rel="noopener">Docs</a>
   </footer>
 </div>
 
@@ -883,6 +886,13 @@ th[data-sortable].sort-desc::after {
         if (el('metric-files')) el('metric-files').textContent = metrics.files_scanned || '-';
         if (el('metric-deps')) el('metric-deps').textContent = metrics.total_deps || '-';
         if (el('metric-detectors')) el('metric-detectors').textContent = metrics.detectors_run || '-';
+
+        // Show config reloaded indicator
+        var configStatus = document.getElementById('config-status');
+        if (configStatus && status.config_reloaded) {
+          configStatus.style.display = 'inline';
+          setTimeout(function() { configStatus.style.display = 'none'; }, 5000);
+        }
 
         if (statusEl) {
           statusEl.textContent = 'updated ' + new Date().toLocaleTimeString();

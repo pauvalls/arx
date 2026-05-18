@@ -116,6 +116,7 @@ func (s *Server) Start() error {
 					// Log when arx.yaml changes (config hot-reload)
 					if isConfigPath(evt.Path) {
 						fmt.Fprintf(os.Stderr, "Config changed: %s — reloading\n", evt.Path)
+						s.state.SetConfigReloaded()
 					}
 					s.runCheck(ctx)
 				case err := <-w.Errors():
@@ -201,6 +202,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		ViolationsBySeverity: bySeverity,
 		DebtScore:            s.state.Debt().Total,
 		CheckError:           "",
+		ConfigReloaded:       s.state.ConfigReloaded(),
 	}
 	if checkErr != nil {
 		resp.CheckError = checkErr.Error()
@@ -218,6 +220,7 @@ type StatusResponse struct {
 	ViolationsBySeverity map[string]int   `json:"violations_by_severity"`
 	DebtScore           int               `json:"debt_score"`
 	CheckError          string            `json:"check_error,omitempty"`
+	ConfigReloaded      bool              `json:"config_reloaded"`
 }
 
 // handleViolations returns the current violations list.
@@ -333,6 +336,7 @@ func (s *Server) handleReload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.state.SetConfigReloaded()
 	fmt.Fprintln(os.Stderr, "Config reload requested via /api/reload")
 	s.runCheck(r.Context())
 

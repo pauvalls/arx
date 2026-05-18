@@ -8,6 +8,7 @@ import (
 
 	"github.com/pauvalls/arx/internal/domain"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
 
 // initCmd represents the init command
@@ -38,12 +39,14 @@ var (
 	initOutput string
 	initForce  bool
 	initPreset string
+	initDetect bool
 )
 
 func init() {
 	initCmd.Flags().StringVarP(&initOutput, "output", "o", "arx.yaml", "Output file path for the generated configuration")
 	initCmd.Flags().BoolVarP(&initForce, "force", "f", false, "Overwrite existing configuration file")
 	initCmd.Flags().StringVarP(&initPreset, "preset", "p", "", "Use preset template (clean, hexagonal, ddd, layered, onion)")
+	initCmd.Flags().BoolVarP(&initDetect, "detect", "d", false, "Scan project and show detected configuration (dry run, no file written)")
 	rootCmd.AddCommand(initCmd)
 }
 
@@ -149,8 +152,40 @@ func runInit(cmd *cobra.Command, args []string) error {
 		outputPath = filepath.Join(projectRoot, initOutput)
 	}
 
-	// Create service and run init
+	// Create service
 	service := newInitService()
+
+	// Detect mode: scan and show without writing
+	if initDetect {
+		info, err := service.Scan(projectRoot)
+		if err != nil {
+			return fmt.Errorf("failed to scan project: %w", err)
+		}
+
+		cfg, err := service.Generate(info)
+		if err != nil {
+			return fmt.Errorf("failed to generate config: %w", err)
+		}
+
+		fmt.Printf("Project: %s\n", projectRoot)
+		fmt.Printf("Languages: %s\n", strings.Join(info.Languages, ", "))
+		fmt.Printf("Layers detected: %d\n", len(cfg.Layers))
+		for _, layer := range cfg.Layers {
+			fmt.Printf("  %s: %s\n", layer.Name, strings.Join(layer.Paths, ", "))
+		}
+		fmt.Printf("Rules generated: %d\n", len(cfg.Rules))
+		fmt.Println()
+		fmt.Println("--- Generated Configuration ---")
+		fmt.Println()
+
+		yamlBytes, err := yaml.Marshal(cfg)
+		if err != nil {
+			return fmt.Errorf("failed to marshal config: %w", err)
+		}
+		fmt.Println(string(yamlBytes))
+
+		return nil
+	}
 
 	var config *domain.Config
 	var initErr error
