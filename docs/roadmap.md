@@ -67,57 +67,7 @@
 
 ---
 
-## 🔜 Near-term (v0.25.0 — v0.27.0)
-
-### Dashboard Filtering & Search
-**Priority:** High | **Effort:** M
-
-Add client-side filtering to the web dashboard:
-- Filter violations by severity, layer, file path
-- Search by rule ID, file name, or message text
-- Sortable columns in violations table
-- Real-time filter without page reload
-
-### arx check --diff Mode
-**Priority:** High | **Effort:** M
-
-Show violations introduced since last run (not just git diff):
-- `arx check --diff` shows violations added/removed since previous check
-- Stores previous result in `.arx-cache/last-check.json`
-- Faster feedback loop than `arx diff` (no git needed)
-
-### Performance Metrics Dashboard
-**Priority:** Medium | **Effort:** S
-
-Add performance metrics to the web dashboard:
-- Check duration (ms)
-- Total files scanned
-- Total dependencies extracted
-- Detector-level breakdown (time per language)
-
----
-
-## 🔜 Medium-term (v0.28.0 — v0.30.0)
-
-### VSCode Extension
-**Priority:** Medium | **Effort:** M
-
-VSCode extension showing violations inline in the editor:
-- Highlights violating imports with squiggly lines
-- Shows fix suggestions on hover
-- Runs arx check on save
-- Requires separate TypeScript repository
-
-### arx suggest (Auto-fix)
-**Priority:** Medium | **Effort:** M
-
-Auto-fix recommendations for common violations:
-- `arx suggest` analyzes violations and suggests code changes
-- Go support first (AST-based), then TypeScript
-- Shows suggested fixes as code diffs
-- `--apply` flag to auto-apply (opt-in)
-
-### Custom Rule DSL (Extended)
+## 🔜 v0.28.0 — Custom Rule DSL (Extended)
 **Priority:** Medium | **Effort:** L
 
 Extended expression engine with:
