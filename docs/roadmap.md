@@ -67,18 +67,26 @@
 
 ---
 
-## ✅ v0.28.0 — Custom Rule DSL (Extended)
-**Priority:** Medium | **Effort:** L
+## ✅ v0.29.0 — Rule Hot-Reload
+**Priority:** Medium | **Effort:** S
 
-- [x] `CheckExpr` type — `string | []string` rule check expressions with AND-tree composition
-- [x] `all()`/`any()` built-in functions for dependency aggregation
-- [x] `functions` config section — user-defined expression functions with DAG validation
-- [x] Cycle detection via Kahn's topological sort (direct, indirect, self-ref)
-- [x] Schema: `check` field accepts `string | string[]`; `functions` as `map[string]string`
+- [x] `POST /api/reload` — endpoint to force config re-read and full re-check
+- [x] `GET /api/config` — endpoint returning layers, rules summary, and function names
+- [x] File watcher logs when `arx.yaml` changes — config hot-reload with no restart
 
 ---
 
-## 🔜 Long-term (v0.31.0+)
+## 🔜 v0.30.0 — filter()/map() (completar el DSL)
+**Priority:** Medium | **Effort:** M
+
+Completar el expression engine con funciones de colección:
+- `filter(deps(a,b), predicate_string)` — filtrar dependencias por campo
+- `map(deps(a,b), field_name)` — extraer campo de cada dependencia
+- Predicados string-based (sin lambdas) para mantener simple el parser
+
+---
+
+## 🔜 v0.31.0+ (Long-term)
 
 ### Cross-Language Dependency Resolution
 **Priority:** Low | **Effort:** XL
