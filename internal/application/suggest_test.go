@@ -15,14 +15,20 @@ func TestNewFixEngine_CreatesEngineWithTemplates(t *testing.T) {
 	if engine.templates == nil {
 		t.Fatal("expected non-nil templates map")
 	}
-	if len(engine.templates) != 2 {
-		t.Errorf("expected 2 templates, got %d", len(engine.templates))
+	if len(engine.templates) < 2 {
+		t.Errorf("expected at least 2 templates, got %d", len(engine.templates))
 	}
 	if _, ok := engine.templates["domain-imports-infrastructure"]; !ok {
 		t.Error("expected domain-imports-infrastructure template")
 	}
 	if _, ok := engine.templates["application-imports-infrastructure"]; !ok {
 		t.Error("expected application-imports-infrastructure template")
+	}
+	if _, ok := engine.templates["domain-no-infra"]; !ok {
+		t.Error("expected domain-no-infra template")
+	}
+	if _, ok := engine.templates["app-no-infra"]; !ok {
+		t.Error("expected app-no-infra template")
 	}
 }
 
@@ -113,8 +119,8 @@ func TestSuggestFix_UnknownViolation_ReturnsGenericAdvice(t *testing.T) {
 	if fix.ViolationID != "X-99" {
 		t.Errorf("expected ViolationID X-99, got %s", fix.ViolationID)
 	}
-	if fix.Diff != "" {
-		t.Error("expected empty Diff for generic advice")
+	if fix.Diff == "" {
+		t.Error("expected non-empty Diff for generic advice (template-based)")
 	}
 	if fix.Description == "" {
 		t.Error("expected non-empty Description for generic advice")

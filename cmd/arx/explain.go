@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/pauvalls/arx/internal/application"
@@ -127,6 +129,9 @@ func explainViolation(v output.CachedViolation) error {
 	fmt.Printf("Rule:       %s\n", v.RuleID)
 	fmt.Printf("Import:     %s\n", v.Import)
 	fmt.Println()
+
+	// Code context (read actual file)
+	showCodeContext(v.File, v.Line)
 
 	// Why it matters
 	fmt.Println("┌──────────────────────────────────────────────────────────────────┐")
@@ -408,6 +413,59 @@ func findRelatedViolations(v output.CachedViolation) []output.CachedViolation {
 	}
 
 	return related
+}
+
+// showCodeContext reads the file and displays lines around the violation.
+// It tries common project roots if the file path is relative.
+func showCodeContext(filePath string, line int) {
+	if filePath == "" || line <= 0 {
+		return
+	}
+
+	// Try to find the file (it might be relative to current dir or project root)
+	absPath := filePath
+	if !filepath.IsAbs(absPath) {
+		// Try relative to current directory
+		if cwd, err := os.Getwd(); err == nil {
+			candidate := filepath.Join(cwd, filePath)
+			if _, statErr := os.Stat(candidate); statErr == nil {
+				absPath = candidate
+			}
+		}
+	}
+	content, err := os.ReadFile(absPath)
+	if err != nil {
+		return // Can't read file, skip context
+	}
+
+	lines := strings.Split(string(content), "\n")
+	if line > len(lines) {
+		return
+	}
+
+	// Show 3 lines before and 3 after the violation
+	start := line - 4
+	if start < 0 {
+		start = 0
+	}
+	end := line + 3
+	if end > len(lines) {
+		end = len(lines)
+	}
+
+	fmt.Println("┌──────────────────────────────────────────────────────────────────┐")
+	fmt.Println("│ CODE CONTEXT                                                     │")
+	fmt.Println("└──────────────────────────────────────────────────────────────────┘")
+	fmt.Println()
+
+	for i := start; i < end; i++ {
+		marker := " "
+		if i+1 == line {
+			marker = "→" // marks the violation line
+		}
+		fmt.Printf("  %4d %s %s\n", i+1, marker, lines[i])
+	}
+	fmt.Println()
 }
 
 // wrapText wraps text to the specified width
