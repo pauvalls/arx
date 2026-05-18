@@ -146,6 +146,15 @@
 - [x] FixEngine: code-aware fix generation (reads file, finds import, generates suggestion)
 - [x] Template aliases for common rule IDs (domain-no-infra, app-no-infra, etc.)
 
+## ✅ v0.37.0 — Quality pass: dogfooding, Clean Architecture, CI gates
+**Priority:** High | **Effort:** M
+
+- [x] Clean Architecture refactor: BaselineStorage, PresetLoader interfaces in ports
+- [x] DoctorService: detectors injected via constructor (no infra imports in app layer)
+- [x] CI quality gates: vet + race + coverage checks (core >50%)
+- [x] Makefile: vet, test-race, cover, quality targets
+- [x] 37 releases, 26 packages, all passing with race detector
+
 ---
 
 ### Cross-Language Dependency Resolution
