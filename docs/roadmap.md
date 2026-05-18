@@ -85,7 +85,18 @@
 
 ---
 
-## 🔜 v0.31.0+ (Long-term)
+## ✅ v0.31.0 — Quality of Life (fmt, detect, dashboard)
+**Priority:** Medium | **Effort:** S
+
+- [x] `arx fmt` — Formats arx.yaml with consistent indentation and key order
+- [x] `arx init --detect` — Dry-run scan: shows detected layers without writing config
+- [x] Dashboard: config reloaded indicator (⚡ flash when arx.yaml changes)
+- [x] Dashboard: pre-commit hook and docs links in footer
+- [x] Release workflow with goreleaser auto-brew on tag
+
+---
+
+## 🔜 v0.32.0+ (Long-term)
 
 ### Cross-Language Dependency Resolution
 **Priority:** Low | **Effort:** XL
