@@ -17,6 +17,7 @@ See `_shared/skill-resolver.md` for the full resolution protocol.
 | Go tests, go test coverage, Bubbletea teatest, golden files | go-testing | /home/pau/.config/opencode/skills/go-testing/SKILL.md |
 | new skills, agent instructions, documenting AI usage patterns | skill-creator | /home/pau/.config/opencode/skills/skill-creator/SKILL.md |
 | implementation, commit splitting, chained PRs, or keeping tests and docs with code | work-unit-commits | /home/pau/.config/opencode/skills/work-unit-commits/SKILL.md |
+| setting up arx, generating arx.yaml, configuring architecture audit for any project | arx-setup | /home/pau/.config/opencode/skills/arx-setup/SKILL.md |
 
 ## Compact Rules
 
@@ -82,6 +83,17 @@ See `_shared/skill-resolver.md` for the full resolution protocol.
 - Keep tests and docs with the code they verify
 - Use conventional commits for clear history
 - Split large changes into logical units
+
+### arx-setup
+- Always run `arx init --detect` first to see auto-detected configuration
+- Scan directory structure for architectural patterns (domain/application/infrastructure, etc.)
+- Detect languages via config files (go.mod, tsconfig.json, Cargo.toml, etc.)
+- Generate arx.yaml with layers matching actual directory structure
+- Create rules based on detected architecture (Cannot from domain to infrastructure by default)
+- Add cross-language mappings when proto/OpenAPI specs are detected
+- Validate generated config with `arx config validate`
+- Run `arx check` after setup to verify
+- Create baseline with `arx baseline` for existing codebases
 
 ## Project Conventions
 
