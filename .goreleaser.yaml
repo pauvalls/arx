@@ -63,6 +63,9 @@ brews:
     test: |
       system "#{bin}/arx --version"
 
+changelog:
+  use: github-native
+
 release:
   github:
     owner: pauvalls
