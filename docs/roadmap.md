@@ -96,7 +96,18 @@
 
 ---
 
-## 🔜 v0.32.0+ (Long-term)
+## ✅ v0.32.0 — Cross-Language Dependency Resolution (MVP)
+**Priority:** High | **Effort:** L
+
+- [x] `Language` field on Dependency — all 10 detectors set it
+- [x] `cross_language.mappings` config section for proto→generated file rules
+- [x] `CrossLanguageDetector` — glob matching, stem matching, header verification
+- [x] Wired into `Check()` pipeline as post-processing phase
+- [x] Synthetic `Dependency{Language: "cross"}` linking proto definitions to generated code
+
+---
+
+## 🔜 v0.33.0+ (Next)
 
 ### Cross-Language Dependency Resolution
 **Priority:** Low | **Effort:** XL
