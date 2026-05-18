@@ -155,6 +155,14 @@
 - [x] Makefile: vet, test-race, cover, quality targets
 - [x] 37 releases, 26 packages, all passing with race detector
 
+## ✅ v0.38.0 — init --detect with real import analysis
+**Priority:** Medium | **Effort:** M
+
+- [x] Lightweight Go import scanner (regex-based, no AST, ~100ms for 200+ files)
+- [x] Per-layer dependency breakdown in `arx init --detect` output
+- [x] Maps imports to detected layers for real architecture understanding
+- [x] Detected layers, rules, and generated YAML in unified output
+
 ---
 
 ### Cross-Language Dependency Resolution
