@@ -67,7 +67,7 @@ func ensureGitignoreEntries(projectRoot string) error {
 		return nil // Not a git repo, skip
 	}
 
-	entries := []string{".arx-cache/", ".arx-history/"}
+	entries := []string{".arx-cache/", ".arx-history/", ".arx-baseline-history/"}
 	gitignorePath := filepath.Join(projectRoot, ".gitignore")
 
 	// Read existing content

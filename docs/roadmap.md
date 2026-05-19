@@ -237,7 +237,7 @@
 - [x] WorkspaceService orchestration layer
 - [x] Strict TDD: 30+ tests across domain, application, output, CLI
 
-### v0.45 — Performance Pass
+### ✅ v0.45 — Performance Pass
 **Effort:** M
 
 - Profile-guided optimization of the detection pipeline
@@ -246,14 +246,14 @@
 - Optimize the cross-language detector (file caching)
 - Add `arx check --profile` for performance breakdown
 
-### v0.46 — Baseline Auto-Refresh + History
+### ✅ v0.46 — Baseline Auto-Refresh + History
 **Effort:** M
 
-- Auto-refresh baseline when violations are consistently resolved
-- Baseline history tracking (`.arx-baseline-history/`)
-- Trend visualization: "violations over time"
-- `arx baseline --diff` shows what changed since last baseline
-- Integration with `arx check --diff`
+- [x] Auto-refresh baseline when violations are consistently resolved
+- [x] Baseline history tracking (`.arx-baseline-history/`)
+- [x] Trend visualization: "violations over time"
+- [x] `arx baseline --diff` shows what changed since last baseline
+- [x] Integration with `arx check --diff`
 
 ### v0.47 — Config Includes + Schema Generation
 **Effort:** M

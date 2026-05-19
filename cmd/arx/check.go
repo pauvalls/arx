@@ -205,12 +205,14 @@ func runCheck(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Always persist violations for future --diff comparisons
-	saveLastCheck(result.violations, configHash, projectRoot)
-
-	// Show diff if --diff flag is set and format is terminal
+	// Show diff against last baseline snapshot (if --diff flag is set)
 	if checkDiff && format == ports.OutputFormatTerminal {
-		showCheckDiff(result.violations, projectRoot)
+		showBaselineDiff(result.violations, projectRoot)
+	}
+
+	// Auto-refresh: if no violations, not CI, not watch, and baseline exists
+	if len(result.violations) == 0 && !checkCI && !checkWatch {
+		tryAutoRefresh(projectRoot)
 	}
 
 	// In single-shot mode, exit based on violations
@@ -557,93 +559,100 @@ func capitalize(s string) string {
 	return strings.ToUpper(s[:1]) + s[1:]
 }
 
-// lastCheckPayload is the JSON format persisted for --diff comparisons.
-type lastCheckPayload struct {
-	Version    int               `json:"version"`
-	Timestamp  time.Time         `json:"timestamp"`
-	ConfigHash string            `json:"config_hash"`
-	Violations []domain.Violation `json:"violations"`
+// showBaselineDiff compares current violations against the latest baseline snapshot.
+func showBaselineDiff(current []domain.Violation, projectRoot string) {
+	extSvc := newExtendedBaselineService()
+
+	snapshot, err := extSvc.LatestSnapshot(projectRoot)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to load baseline snapshot: %v\n", err)
+		return
+	}
+
+	if snapshot == nil {
+		fmt.Fprintln(os.Stderr, "No baseline snapshots. Run 'arx baseline' to create one.")
+		return
+	}
+
+	added, resolved, err := extSvc.DiffFromSnapshot(*snapshot, current)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: diff failed: %v\n", err)
+		return
+	}
+
+	// Color-coded diff summary
+	var parts []string
+	if len(added) > 0 {
+		parts = append(parts, fmt.Sprintf("\033[31m+%d violations\033[0m", len(added)))
+	}
+	if len(resolved) > 0 {
+		parts = append(parts, fmt.Sprintf("\033[32m-%d resolved\033[0m", len(resolved)))
+	}
+
+	if len(parts) == 0 {
+		fmt.Fprintln(os.Stderr, "No changes since last snapshot.")
+		return
+	}
+
+	fmt.Fprintf(os.Stderr, "Baseline diff: %s\n", strings.Join(parts, ", "))
 }
 
-// saveLastCheck persists violations to .arx-cache/last-check.json for future --diff comparisons.
-func saveLastCheck(violations []domain.Violation, configHash, projectRoot string) {
+// tryAutoRefresh checks if auto-refresh should be triggered after a clean check.
+// It loads the baseline track, calls AutoRefresh, and if the threshold is met,
+// creates a baseline snapshot and regenerates the baseline.
+// Only runs if a baseline exists.
+func tryAutoRefresh(projectRoot string) {
+	baselinePath := filepath.Join(projectRoot, application.DefaultBaselineFile)
+	if _, err := os.Stat(baselinePath); os.IsNotExist(err) {
+		return // No baseline, skip auto-refresh
+	}
+
+	extSvc := newExtendedBaselineService()
+
 	cacheDir := filepath.Join(projectRoot, ".arx-cache")
 	if err := os.MkdirAll(cacheDir, 0755); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to create cache directory: %v\n", err)
 		return
 	}
 
-	payload := lastCheckPayload{
-		Version:    1,
-		Timestamp:  time.Now(),
-		ConfigHash: configHash,
-		Violations: violations,
+	trackPath := filepath.Join(cacheDir, "baseline-track.json")
+	track, err := extSvc.LoadTrack(trackPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to load baseline track: %v\n", err)
+		return
+	}
+	if track == nil {
+		track = &domain.BaselineTrack{}
 	}
 
-	data, err := json.MarshalIndent(payload, "", "  ")
+	track.LastCheck = time.Now()
+	updated, triggered, err := extSvc.AutoRefresh(*track, baselineRefreshThreshold)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to marshal last-check data: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Warning: auto-refresh failed: %v\n", err)
 		return
 	}
 
-	cachePath := filepath.Join(cacheDir, "last-check.json")
-	if err := os.WriteFile(cachePath, data, 0644); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to write last-check cache: %v\n", err)
-	}
-}
-
-// loadLastCheck reads .arx-cache/last-check.json and returns the previous violations.
-// Returns nil, nil if the file does not exist.
-func loadLastCheck(projectRoot string) ([]domain.Violation, error) {
-	cachePath := filepath.Join(projectRoot, ".arx-cache", "last-check.json")
-
-	data, err := os.ReadFile(cachePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
+	if triggered {
+		// Create a snapshot from the current empty-baseline state
+		snapshot, snapErr := extSvc.Snapshot(projectRoot)
+		if snapErr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to create baseline snapshot: %v\n", snapErr)
+		} else if snapshot != nil {
+			// Regenerate baseline (now captures all current as suppressed)
+			currentBaseline, loadErr := extSvc.Load(baselinePath)
+			if loadErr == nil && currentBaseline != nil {
+				newBaseline := domain.GenerateBaseline(nil, currentBaseline.ConfigHash)
+				if saveErr := extSvc.Save(newBaseline, baselinePath); saveErr != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to save refreshed baseline: %v\n", saveErr)
+				}
+			}
 		}
-		return nil, fmt.Errorf("failed to read last-check cache: %w", err)
+
+		fmt.Fprintf(os.Stderr, "✓ Baseline auto-refreshed (%d consecutive clean checks)\n", baselineRefreshThreshold)
 	}
 
-	var payload lastCheckPayload
-	if err := json.Unmarshal(data, &payload); err != nil {
-		return nil, fmt.Errorf("failed to parse last-check cache: %w", err)
+	// Save track regardless
+	if saveErr := extSvc.SaveTrack(trackPath, updated); saveErr != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to save baseline track: %v\n", saveErr)
 	}
-
-	return payload.Violations, nil
-}
-
-// showCheckDiff compares current violations against the previous run and prints a summary.
-func showCheckDiff(current []domain.Violation, projectRoot string) {
-	previous, err := loadLastCheck(projectRoot)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
-		return
-	}
-
-	if previous == nil {
-		fmt.Fprintln(os.Stderr, "No previous check run to compare (first run).")
-		return
-	}
-
-	diff := domain.DiffViolations(previous, current)
-
-	// Color-coded diff summary
-	var parts []string
-	if len(diff.Added) > 0 {
-		parts = append(parts, fmt.Sprintf("\033[31m+%d violations\033[0m", len(diff.Added)))
-	}
-	if len(diff.Resolved) > 0 {
-		parts = append(parts, fmt.Sprintf("\033[32m-%d resolved\033[0m", len(diff.Resolved)))
-	}
-	if len(diff.Unchanged) > 0 {
-		parts = append(parts, fmt.Sprintf("\033[2m%d unchanged\033[0m", len(diff.Unchanged)))
-	}
-
-	if len(parts) == 0 {
-		fmt.Fprintln(os.Stderr, "No changes since last check.")
-		return
-	}
-
-	fmt.Fprintf(os.Stderr, "Diff: %s\n", strings.Join(parts, ", "))
 }
