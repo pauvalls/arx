@@ -27,6 +27,7 @@ type Server struct {
 	cachePath     string
 	service       *application.CheckService
 	state         *ServerState
+	registry      *SSERegistry
 	mu            sync.Mutex
 	httpServer    *http.Server
 	watcherCancel context.CancelFunc
@@ -41,6 +42,7 @@ func New(port int, bind string, projectRoot string, cachePath string, service *a
 		cachePath:   cachePath,
 		service:     service,
 		state:       state,
+		registry:    NewSSERegistry(),
 	}
 }
 
@@ -59,6 +61,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/metrics", s.handleMetrics)
 	mux.HandleFunc("/api/config", s.handleConfig)
 	mux.HandleFunc("/api/reload", s.handleReload)
+	mux.HandleFunc("/api/events", s.handleSSE)
 
 	// Dashboard root
 	mux.HandleFunc("/", s.handleDashboard)
@@ -117,6 +120,9 @@ func (s *Server) Start() error {
 					if isConfigPath(evt.Path) {
 						fmt.Fprintf(os.Stderr, "Config changed: %s — reloading\n", evt.Path)
 						s.state.SetConfigReloaded()
+						if s.registry != nil {
+							s.broadcastConfigReload()
+						}
 					}
 					s.runCheck(ctx)
 				case err := <-w.Errors():
@@ -338,6 +344,9 @@ func (s *Server) handleReload(w http.ResponseWriter, r *http.Request) {
 
 	s.state.SetConfigReloaded()
 	fmt.Fprintln(os.Stderr, "Config reload requested via /api/reload")
+	if s.registry != nil {
+		s.broadcastConfigReload()
+	}
 	s.runCheck(r.Context())
 
 	writeJSON(w, http.StatusOK, map[string]string{
@@ -390,6 +399,9 @@ func (s *Server) runCheck(ctx context.Context) {
 		if err := s.state.SaveToFile(s.cachePath); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to save state cache: %v\n", err)
 		}
+	}
+	if s.registry != nil {
+		s.broadcastCheckComplete()
 	}
 }
 

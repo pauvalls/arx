@@ -46,6 +46,7 @@ header {
   margin-bottom: 24px;
   padding-bottom: 16px;
   border-bottom: 2px solid var(--color-border);
+  position: relative;
 }
 
 header h1 { font-size: 1.75rem; }
@@ -53,6 +54,43 @@ header h1 { font-size: 1.75rem; }
 header .meta {
   font-size: 0.85rem;
   color: var(--color-text-muted);
+}
+
+/* Connection status indicator */
+#connection-status {
+  position: absolute;
+  top: 8px;
+  right: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  transition: background 0.3s ease;
+}
+
+#connection-status.connection-connected {
+  background: var(--color-success);
+  box-shadow: 0 0 4px var(--color-success);
+}
+
+#connection-status.connection-connecting {
+  background: var(--color-warning);
+  box-shadow: 0 0 4px var(--color-warning);
+}
+
+#connection-status.connection-disconnected {
+  background: var(--color-error);
+  box-shadow: 0 0 4px var(--color-error);
+}
+
+/* SSE fallback warning */
+.sse-warning {
+  font-size: 0.8rem;
+  color: var(--color-warning);
+  background: var(--color-warning-bg);
+  padding: 4px 10px;
+  border-radius: var(--radius);
+  margin-bottom: 12px;
 }
 
 /* Summary Cards */
@@ -420,8 +458,9 @@ th[data-sortable].sort-desc::after {
     <div>
       <span class="meta">Last check: {{if .LastCheck.IsZero}}never{{else}}{{.LastCheck.Format "2006-01-02 15:04:05"}}{{end}}</span>
       &middot;
-      <span id="poll-status">polling</span>
+      <span id="poll-status">connected</span>
       <span id="config-status" style="display:none; margin-left:8px; font-size:0.75rem; color:var(--color-success);">&#9889; Config reloaded</span>
+      <span id="connection-status" class="connection-connected" title="Connected"></span>
     </div>
   </header>
 
@@ -607,8 +646,155 @@ th[data-sortable].sort-desc::after {
 
   var pollInterval = 30000;
   var statusEl = document.getElementById('poll-status');
+  var connectionDot = document.getElementById('connection-status');
+  var lastHeard = Date.now();
+  var connectionCheckTimer = null;
+  var evtSource = null;
+  var useEventSource = window.EventSource !== undefined;
 
-  // --- Filter State (task 1.5) ---
+  function updateConnectionStatus(status) {
+    if (!connectionDot) return;
+    var cls = 'connection-';
+    if (status === 'connected') cls += 'connected';
+    else if (status === 'connecting') cls += 'connecting';
+    else cls += 'disconnected';
+    connectionDot.className = cls;
+  }
+
+  function showDisconnected() {
+    updateConnectionStatus('disconnected');
+    if (statusEl) statusEl.textContent = 'disconnected';
+    startPollingFallback();
+  }
+
+  function showConfigReloaded() {
+    var el = document.getElementById('config-status');
+    if (el) {
+      el.style.display = 'inline';
+      setTimeout(function() { el.style.display = 'none'; }, 5000);
+    }
+  }
+
+  function updateLastUpdate() {
+    if (statusEl) {
+      statusEl.textContent = 'updated ' + new Date().toLocaleTimeString();
+    }
+  }
+
+  function hideLoader() {
+    // no-op: used for initial page load state
+  }
+
+  // --- EventSource Setup ---
+  function startEventSource() {
+    evtSource = new EventSource('/api/events');
+    updateConnectionStatus('connecting');
+
+    evtSource.addEventListener('heartbeat', function(e) {
+      lastHeard = Date.now();
+      updateConnectionStatus('connected');
+    });
+
+    evtSource.addEventListener('check_complete', function(e) {
+      try {
+        var data = JSON.parse(e.data);
+        updateConnectionStatus('connected');
+        updateAllSections(data);
+        hideLoader();
+        updateLastUpdate();
+      } catch(err) {
+        // ignore parse errors
+      }
+    });
+
+    evtSource.addEventListener('config_reload', function() {
+      showConfigReloaded();
+    });
+
+    evtSource.onerror = function() {
+      updateConnectionStatus('disconnected');
+    };
+
+    evtSource.onopen = function() {
+      updateConnectionStatus('connected');
+      lastHeard = Date.now();
+    };
+  }
+
+  // Heartbeat timeout check (60s without heartbeat = disconnected)
+  connectionCheckTimer = setInterval(function() {
+    if (useEventSource && Date.now() - lastHeard > 60000) {
+      updateConnectionStatus('disconnected');
+    }
+  }, 10000);
+
+  // --- Polling fallback ---
+  var pollingActive = false;
+  var pollingTimer = null;
+
+  function startPollingFallback() {
+    if (pollingActive) return;
+    pollingActive = true;
+    fetchData();
+    pollingTimer = setInterval(fetchData, pollInterval);
+  }
+
+  function stopPolling() {
+    pollingActive = false;
+    if (pollingTimer) {
+      clearInterval(pollingTimer);
+      pollingTimer = null;
+    }
+  }
+
+  // --- Update all sections from EventSource data ---
+  function updateAllSections(data) {
+    var violations = data.violations || [];
+    var coupling = data.coupling || [];
+    var debtMetrics = data.debt_metrics || {};
+    var metrics = data.metrics || {};
+    var severityCounts = data.severity_counts || {};
+
+    var errorCount = severityCounts.error || 0;
+    var warningCount = severityCounts.warning || 0;
+    var infoCount = severityCounts.info || 0;
+
+    var debtBySev = debtMetrics.by_severity || {};
+    var debtErrors = debtBySev['error'] || 0;
+    var debtWarnings = debtBySev['warning'] || 0;
+    var debtInfo = debtBySev['info'] || 0;
+
+    updateCounts({
+      error_count: errorCount,
+      warning_count: warningCount,
+      info_count: infoCount,
+      debt_total: debtMetrics.total || 0,
+      debt_errors: debtErrors,
+      debt_warnings: debtWarnings,
+      debt_info: debtInfo
+    });
+
+    // Store full dataset and re-apply filters
+    allViolations = violations;
+    originalOrder = violations.slice();
+    populateLayerDropdown(violations);
+    reRender();
+    renderCoupling(coupling);
+    renderGraph({
+      coupling: coupling,
+      violations: violations,
+      config: data.config || null
+    });
+
+    // Update metric cards
+    var el = function(id) { return document.getElementById(id); };
+    if (el('metric-duration')) el('metric-duration').textContent = metrics.check_duration_ms || '-';
+    if (el('metric-files')) el('metric-files').textContent = metrics.files_scanned || '-';
+    if (el('metric-deps')) el('metric-deps').textContent = metrics.total_deps || '-';
+    if (el('metric-detectors')) el('metric-detectors').textContent = metrics.detectors_run || '-';
+  }
+
+  // --- Filter State ---
   var allViolations = []; // full dataset from API
   var originalOrder = []; // preserve original order for "none" sort
   var activeFilters = {
@@ -1046,14 +1232,26 @@ th[data-sortable].sort-desc::after {
     if (clearBtnAlt) clearBtnAlt.addEventListener('click', clearFilters);
   }
 
-  // Initial poll after 30s, then every 30s
-  setInterval(fetchData, pollInterval);
-
   // Wire filters on DOM ready
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', wireFilters);
   } else {
     wireFilters();
+  }
+
+  // Start EventSource or fallback to polling
+  if (useEventSource) {
+    startEventSource();
+  } else {
+    // SSE not supported, show warning and fall back to polling
+    var warningEl = document.createElement('div');
+    warningEl.className = 'sse-warning';
+    warningEl.textContent = '\u26A0\uFE0F Real-time updates not supported by your browser. Auto-refreshing every 30s.';
+    var headerEl = document.querySelector('header');
+    if (headerEl && headerEl.parentNode) {
+      headerEl.parentNode.insertBefore(warningEl, headerEl.nextSibling);
+    }
+    startPollingFallback();
   }
 
   // --- Dependency Graph (v0.42.0) ---

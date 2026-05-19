@@ -275,14 +275,17 @@
 - [x] Fix preview with `--dry-run`
 - [x] Integration with `arx explain` for each fix
 
-### v0.49 — Dashboard Real-Time (WebSocket)
+### ✅ v0.49 — Dashboard Real-Time (SSE)
 **Effort:** M
 
-- Replace polling with WebSocket for real-time updates
-- Push notifications when violations change
-- Live config reload indicator (already supported server-side)
-- Connection status indicator
-- Auto-reconnect on disconnect
+- [x] Replace 5 polling fetch() calls with single EventSource (SSE) connection
+- [x] SSE client registry with thread-safe non-blocking broadcast
+- [x] Real-time push: `check_complete` events after every audit check
+- [x] Live config reload notification via `config_reload` event
+- [x] Connection status indicator (green/yellow/red dot in header)
+- [x] Heartbeat every 30s with 60s timeout detection
+- [x] Graceful fallback to polling when EventSource unavailable
+- [x] Auto-reconnect (native EventSource behavior)
 
 ### v0.50 — Ultimate Quality Pass
 **Effort:** L

@@ -781,6 +781,190 @@ func TestDashboard_GraphHasClickInteraction(t *testing.T) {
 	}
 }
 
+// ============================================================================
+// T-04: Dashboard EventSource Integration
+// ============================================================================
+
+func TestDashboard_ContainsSSEEndpoint(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test"})
+	srv := &Server{state: state}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.handleDashboard(rec, req)
+
+	body := rec.Body.String()
+
+	if !strings.Contains(body, "/api/events") {
+		t.Error("expected dashboard JS to reference '/api/events'")
+	}
+}
+
+func TestDashboard_ContainsEventSourceConstructor(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test"})
+	srv := &Server{state: state}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.handleDashboard(rec, req)
+
+	body := rec.Body.String()
+
+	if !strings.Contains(body, "EventSource") {
+		t.Error("expected dashboard JS to use EventSource")
+	}
+}
+
+func TestDashboard_EventSourceHasCheckCompleteHandler(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test"})
+	srv := &Server{state: state}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.handleDashboard(rec, req)
+
+	body := rec.Body.String()
+
+	if !strings.Contains(body, "check_complete") {
+		t.Error("expected EventSource handler for 'check_complete' event")
+	}
+}
+
+func TestDashboard_EventSourceHasConfigReloadHandler(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test"})
+	srv := &Server{state: state}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.handleDashboard(rec, req)
+
+	body := rec.Body.String()
+
+	if !strings.Contains(body, "config_reload") {
+		t.Error("expected EventSource handler for 'config_reload' event")
+	}
+}
+
+// ============================================================================
+// T-05: Connection Status Indicator
+// ============================================================================
+
+func TestDashboard_ContainsConnectionStatusElement(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test"})
+	srv := &Server{state: state}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.handleDashboard(rec, req)
+
+	body := rec.Body.String()
+
+	if !strings.Contains(body, `id="connection-status"`) {
+		t.Error("expected connection-status element in dashboard header")
+	}
+}
+
+func TestDashboard_ContainsConnectionCSSClasses(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test"})
+	srv := &Server{state: state}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.handleDashboard(rec, req)
+
+	body := rec.Body.String()
+
+	if !strings.Contains(body, "connection-") {
+		t.Error("expected connection-* CSS classes for status indicator")
+	}
+}
+
+func TestDashboard_ConnectionStatusInHeader(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test"})
+	srv := &Server{state: state}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.handleDashboard(rec, req)
+
+	body := rec.Body.String()
+
+	// The status indicator should appear inside the header
+	headerStart := strings.Index(body, "<header>")
+	headerEnd := strings.Index(body, "</header>")
+	if headerStart < 0 || headerEnd < 0 {
+		t.Fatal("expected <header> element")
+	}
+
+	headerContent := body[headerStart:headerEnd]
+	if !strings.Contains(headerContent, "connection-status") {
+		t.Error("expected connection-status element inside <header>")
+	}
+}
+
+// ============================================================================
+// T-06: SSE Fallback
+// ============================================================================
+
+func TestDashboard_ContainsSSEFallbackCode(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test"})
+	srv := &Server{state: state}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.handleDashboard(rec, req)
+
+	body := rec.Body.String()
+
+	// The fallback should reference both polling and fallback
+	if !strings.Contains(body, "fallback") && !strings.Contains(body, "EventSource") {
+		t.Error("expected fallback mechanism in dashboard JS")
+	}
+}
+
+func TestDashboard_ContainsFallbackWarningMessage(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test"})
+	srv := &Server{state: state}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.handleDashboard(rec, req)
+
+	body := rec.Body.String()
+
+	if !strings.Contains(body, "Real-time updates") {
+		t.Error("expected fallback warning message in dashboard")
+	}
+}
+
+func TestDashboard_PollingCodeStillPresent(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test"})
+	srv := &Server{state: state}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.handleDashboard(rec, req)
+
+	body := rec.Body.String()
+
+	// Polling fetch calls should still be in the HTML as fallback
+	if !strings.Contains(body, "/api/violations") {
+		t.Error("expected /api/violations fetch fallback")
+	}
+	if !strings.Contains(body, "/api/coupling") {
+		t.Error("expected /api/coupling fetch fallback")
+	}
+	if !strings.Contains(body, "/api/debt") {
+		t.Error("expected /api/debt fetch fallback")
+	}
+	if !strings.Contains(body, "/api/status") {
+		t.Error("expected /api/status fetch fallback")
+	}
+	if !strings.Contains(body, "/api/metrics") {
+		t.Error("expected /api/metrics fetch fallback")
+	}
+}
+
 func TestDashboard_GraphUsesLayerStats(t *testing.T) {
 	state := NewServerState(VersionInfo{Version: "test"})
 	srv := &Server{state: state}
