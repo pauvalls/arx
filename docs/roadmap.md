@@ -173,9 +173,9 @@
 
 ---
 
-## 🔜 v0.40.0 — v0.50.0 Roadmap
+## ✅ v40 — v50 Roadmap (Completed)
 
-### ✅ v0.40 — Language Detector Hardening
+### ✅ v40 — Language Detector Hardening
 **Effort:** M
 
 - [x] Go detector: 79% coverage (was N/A), 6 tests + fuzz (first tests ever!)
@@ -184,15 +184,15 @@
 - [x] All 12 detectors pass with race detector
 - [x] Integration tests hardened (uses -count=1 to avoid cache issues)
 
-### v0.41 — Config Strict Mode + Validation
+### ✅ v41 — Config Strict Mode + Validation
 **Effort:** S
 
-- `arx config validate --strict` fails on unknown keys
-- Better error messages with violation IDs and line numbers
-- Schema `--dry-run` shows what would change
-- Config upgrade command: `arx config upgrade` migrates old formats
+- [x] `arx config validate --strict` fails on unknown keys
+- [x] Better error messages with violation IDs and line numbers
+- [x] Schema `--dry-run` shows what would change
+- [x] Config upgrade command: `arx config upgrade` migrates old formats
 
-### ✅ v0.42 — Dashboard Dependency Graph
+### ✅ v42 — Dashboard Dependency Graph
 **Effort:** M
 
 - [x] Interactive SVG dependency graph with circular layout
@@ -203,7 +203,7 @@
 - [x] Arrow highlighting on hover
 - [x] 9 new tests, TDD flow, zero Go backend changes
 
-### ✅ v0.43 — Rule Testing Framework
+### ✅ v43 — Rule Testing Framework
 **Effort:** L
 
 - [x] `arx test` command — test rules against fixtures
@@ -222,7 +222,7 @@
 - [x] Rule-based violation filtering per test case
 - [x] Strict TDD: 40+ tests across all layers (unit + integration)
 
-### ✅ v0.44 — Multi-Project / Workspace Mode
+### ✅ v44 — Multi-Project / Workspace Mode
 **Effort:** L
 
 - [x] `arx workspace` — run check across multiple sub-projects
@@ -237,7 +237,7 @@
 - [x] WorkspaceService orchestration layer
 - [x] Strict TDD: 30+ tests across domain, application, output, CLI
 
-### ✅ v0.45 — Performance Pass
+### ✅ v45 — Performance Pass
 **Effort:** M
 
 - Profile-guided optimization of the detection pipeline
@@ -246,7 +246,7 @@
 - Optimize the cross-language detector (file caching)
 - Add `arx check --profile` for performance breakdown
 
-### ✅ v0.46 — Baseline Auto-Refresh + History
+### ✅ v46 — Baseline Auto-Refresh + History
 **Effort:** M
 
 - [x] Auto-refresh baseline when violations are consistently resolved
@@ -255,7 +255,7 @@
 - [x] `arx baseline --diff` shows what changed since last baseline
 - [x] Integration with `arx check --diff`
 
-### ✅ v0.47 — Config Includes + Schema Generation
+### ✅ v47 — Config Includes + Schema Generation
 **Effort:** M
 
 - [x] `!include` directive for splitting configs (recursive, cycle-detected)
@@ -266,7 +266,7 @@
 - [x] Pipeline integration (env vars → includes → env vars → parse)
 - [x] Schema drift acceptance test in domain layer
 
-### v0.48 — Suggest Batch Mode + Conflict Detection ✅
+### ✅ v48 — Suggest Batch + Conflict Detection
 **Effort:** M
 
 - [x] `arx suggest --all` applies ALL fixes with smart conflict detection
@@ -275,7 +275,7 @@
 - [x] Fix preview with `--dry-run`
 - [x] Integration with `arx explain` for each fix
 
-### ✅ v0.49 — Dashboard Real-Time (SSE)
+### ✅ v49 — Dashboard Real-Time (SSE)
 **Effort:** M
 
 - [x] Replace 5 polling fetch() calls with single EventSource (SSE) connection
@@ -287,7 +287,7 @@
 - [x] Graceful fallback to polling when EventSource unavailable
 - [x] Auto-reconnect (native EventSource behavior)
 
-### ✅ v0.50 — Ultimate Quality Pass
+### ✅ v50 — Ultimate Quality Pass
 **Effort:** L
 
 - [x] 100% test coverage in all core packages (`internal/domain`, `internal/application`)
@@ -487,7 +487,7 @@
 ### 🔲 v57 — Performance v2: Parallelism & Profiling
 **Priority:** Medium | **Effort:** M | **Target:** v57.0
 
-**Problem:** v0.45 fixed the concurrency model (no more errgroup cancellation) but didn't optimize parallel execution granularity. Large monorepos still bottleneck on sequential detector phases.
+**Problem:** v45 fixed the concurrency model (no more errgroup cancellation) but didn't optimize parallel execution granularity. Large monorepos still bottleneck on sequential detector phases.
 
 **Solution:** Fine-grained parallel execution with adaptive worker pools, shared caching, and actionable profiling.
 

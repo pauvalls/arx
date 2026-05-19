@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fuzz seed corpora for all 13 fuzz functions (expression, 10 languages, config)
 - Flaky test detection: `go test -count=5 -race` CI gate for core packages
 - Benchstat hard fail: >5% regression on DetectionPipeline_10k blocks CI
-- `docs/roadmap.md` updated for v0.40-v0.50 including v50.0 completion
+- `docs/roadmap.md` updated for v40-v50 including v50.0 completion
 
 ### Changed
 - Domain coverage: 88.5% → 89.9% (config.go Validate: 71% → 90%, template.go checkParamType: 76% → 91%, toInt: 50% → 100%)
