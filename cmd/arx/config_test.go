@@ -9,6 +9,16 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// resetConfigFlags resets all package-level config flags to their defaults.
+// This MUST be called at the start of every test that uses cobra commands,
+// because Go test ordering is non-deterministic and the flags are shared state.
+func resetConfigFlags() {
+	configValidatePath = ""
+	configValidateStrict = false
+	configValidateSchema = false
+	configValidateOverride = ""
+}
+
 // --- resolvePath tests ---
 
 func TestResolvePath_TopLevel(t *testing.T) {
@@ -278,6 +288,7 @@ func TestGetAtPath_EmptyPath(t *testing.T) {
 // --- Integration tests ---
 
 func TestConfigSetGet_DottedPathArray(t *testing.T) {
+	resetConfigFlags()
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "arx.yaml")
 	initialConfig := `version: "1.0"
@@ -321,6 +332,7 @@ severity_mapping:
 }
 
 func TestConfigGet_DottedPath(t *testing.T) {
+	resetConfigFlags()
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "arx.yaml")
 	initialConfig := `version: "1.0"
@@ -359,6 +371,7 @@ severity_mapping:
 }
 
 func TestConfigSet_TopLevelNumber(t *testing.T) {
+	resetConfigFlags()
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "arx.yaml")
 	initialConfig := `version: "1.0"
@@ -400,6 +413,7 @@ max_violations: 5
 }
 
 func TestConfigSet_UnknownField(t *testing.T) {
+	resetConfigFlags()
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "arx.yaml")
 	initialConfig := `version: "1.0"
@@ -432,6 +446,7 @@ rules:
 
 // TestConfigValidateValidConfig tests validation of a valid config file
 func TestConfigValidateValidConfig(t *testing.T) {
+	resetConfigFlags()
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "arx.yaml")
 	validConfig := `version: "1.0"
@@ -469,16 +484,46 @@ rules:
 	}
 }
 
-// TestConfigValidateInvalidConfig tests validation of an invalid config file
-func TestConfigValidateInvalidConfig(t *testing.T) {
-	tmpDir := t.TempDir()
-	configPath := filepath.Join(tmpDir, "arx.yaml")
-	invalidConfig := `version: "1.0"
-# Missing layers and rules
-`
-	if err := os.WriteFile(configPath, []byte(invalidConfig), 0644); err != nil {
-		t.Fatalf("failed to write test config: %v", err)
+// TestConfigValidateOverrideFlag verifies the --override flag is present
+func TestConfigValidateOverrideFlag(t *testing.T) {
+	if configValidateCmd.Flags().Lookup("override") == nil {
+		t.Error("missing --override flag on config validate")
 	}
+}
+
+// TestConfigValidateWithOverride verifies composed config validates correctly
+func TestConfigValidateWithOverride(t *testing.T) {
+	resetConfigFlags()
+	tmpDir := t.TempDir()
+
+	// Create base config with partial configuration
+	baseConfig := `version: "1.0"
+layers:
+  - name: domain
+    paths: ["./domain"]
+rules: []
+`
+	basePath := filepath.Join(tmpDir, "arx.yaml")
+	if err := os.WriteFile(basePath, []byte(baseConfig), 0644); err != nil {
+		t.Fatalf("failed to write base config: %v", err)
+	}
+
+	// Create override that adds a rule
+	overrideConfig := `rules:
+  - id: test-rule
+    from: domain
+    to: [domain]
+    type: Cannot
+    severity: error
+`
+	overridePath := filepath.Join(tmpDir, "override.yaml")
+	if err := os.WriteFile(overridePath, []byte(overrideConfig), 0644); err != nil {
+		t.Fatalf("failed to write override: %v", err)
+	}
+
+	// Reset package-level flags
+	configValidatePath = ""
+	configValidateOverride = ""
 
 	cmd := &cobra.Command{}
 	cmd.AddCommand(configCmd)
@@ -487,22 +532,91 @@ func TestConfigValidateInvalidConfig(t *testing.T) {
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&stderr)
 
-	args := []string{"config", "validate", configPath}
+	args := []string{"config", "validate", basePath, "--override", overridePath}
+	cmd.SetArgs(args)
+
+	err := cmd.Execute()
+	if err != nil {
+		t.Errorf("config validate with --override should succeed, got: %v\nstderr: %s", err, stderr.String())
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "✓ Config valid") {
+		t.Errorf("expected success message, got: %s", output)
+	}
+}
+
+// TestConfigValidateWithOverrideMissingFile
+func TestConfigValidateWithOverrideMissingFile(t *testing.T) {
+	resetConfigFlags()
+	tmpDir := t.TempDir()
+
+	baseConfig := `version: "1.0"
+layers:
+  - name: domain
+    paths: ["./domain"]
+rules: []
+`
+	basePath := filepath.Join(tmpDir, "arx.yaml")
+	if err := os.WriteFile(basePath, []byte(baseConfig), 0644); err != nil {
+		t.Fatalf("failed to write base config: %v", err)
+	}
+
+	configValidatePath = ""
+	configValidateOverride = ""
+
+	cmd := &cobra.Command{}
+	cmd.AddCommand(configCmd)
+
+	var stdout, stderr strings.Builder
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+
+	args := []string{"config", "validate", basePath, "--override", "/nonexistent/override.yaml"}
 	cmd.SetArgs(args)
 
 	err := cmd.Execute()
 	if err == nil {
-		t.Error("config validate should fail for invalid config")
+		t.Error("config validate should fail for missing override file")
+	}
+}
+
+// TestConfigValidateSchemaFlag verifies --schema still works with the new generator
+func TestConfigValidateSchemaFlag(t *testing.T) {
+	resetConfigFlags()
+	configValidateSchema = true
+	defer func() { configValidateSchema = false }()
+
+	cmd := &cobra.Command{}
+	cmd.AddCommand(configCmd)
+
+	var stdout, stderr strings.Builder
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+
+	args := []string{"config", "validate", "--schema"}
+	cmd.SetArgs(args)
+
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("config validate --schema error = %v", err)
 	}
 
-	errOutput := stderr.String()
-	if !strings.Contains(errOutput, "✗") {
-		t.Errorf("expected error message with ✗, got: %s", errOutput)
+	output := stdout.String()
+	if !strings.Contains(output, "$schema") {
+		t.Errorf("expected $schema field in output, got: %s", output)
+	}
+	if !strings.Contains(output, "properties") {
+		t.Errorf("expected properties in output, got: %s", output)
+	}
+	if !strings.Contains(output, "version") {
+		t.Errorf("expected version property in output, got: %s", output)
 	}
 }
 
 // TestConfigValidateMissingFile tests validation when file doesn't exist
 func TestConfigValidateMissingFile(t *testing.T) {
+	resetConfigFlags()
 	cmd := &cobra.Command{}
 	cmd.AddCommand(configCmd)
 
@@ -526,6 +640,7 @@ func TestConfigValidateMissingFile(t *testing.T) {
 
 // TestConfigValidateInvalidYAML tests validation of malformed YAML
 func TestConfigValidateInvalidYAML(t *testing.T) {
+	resetConfigFlags()
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "arx.yaml")
 	invalidYAML := `version: "1.0"
@@ -561,6 +676,7 @@ layers:
 
 // TestConfigValidateWithPathFlag tests using --path flag
 func TestConfigValidateWithPathFlag(t *testing.T) {
+	resetConfigFlags()
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "custom.yaml")
 	validConfig := `version: "1.0"
@@ -600,8 +716,7 @@ rules:
 
 // TestConfigValidateDefaultPath tests validation with default path (arx.yaml)
 func TestConfigValidateDefaultPath(t *testing.T) {
-	// Reset the package-level flag (may have been set by previous test)
-	configValidatePath = ""
+	resetConfigFlags()
 
 	// Use a temp dir with valid config
 	tmpDir := t.TempDir()

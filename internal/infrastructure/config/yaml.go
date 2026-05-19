@@ -40,6 +40,25 @@ func (r *YAMLReader) Read(configPath string) (*domain.Config, error) {
 		return nil, fmt.Errorf("reading config file: %w", err)
 	}
 
+	// Pipeline: interpolate env vars (first pass — for include paths)
+	data, err = InterpolateEnvVars(data)
+	if err != nil {
+		return nil, fmt.Errorf("interpolating env vars: %w", err)
+	}
+
+	// Pipeline: resolve !include tags relative to config directory
+	configDir := filepath.Dir(configPath)
+	data, err = ResolveIncludes(configDir, data)
+	if err != nil {
+		return nil, fmt.Errorf("resolving includes: %w", err)
+	}
+
+	// Pipeline: interpolate env vars (second pass — for config values)
+	data, err = InterpolateEnvVars(data)
+	if err != nil {
+		return nil, fmt.Errorf("interpolating env vars: %w", err)
+	}
+
 	// Parse YAML
 	var config domain.Config
 	if err := yaml.Unmarshal(data, &config); err != nil {

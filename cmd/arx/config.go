@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/pauvalls/arx/internal/domain"
 	"github.com/pauvalls/arx/internal/infrastructure/config"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -40,15 +41,17 @@ Examples:
 }
 
 var (
-	configValidatePath   string
-	configValidateStrict bool
-	configValidateSchema bool
+	configValidatePath     string
+	configValidateStrict   bool
+	configValidateSchema   bool
+	configValidateOverride string
 )
 
 func init() {
 	configValidateCmd.Flags().StringVarP(&configValidatePath, "path", "p", "", "Path to config file (default: arx.yaml)")
 	configValidateCmd.Flags().BoolVarP(&configValidateStrict, "strict", "s", false, "Fail on unknown config keys")
 	configValidateCmd.Flags().BoolVar(&configValidateSchema, "schema", false, "Show JSON Schema reference for config")
+	configValidateCmd.Flags().StringVar(&configValidateOverride, "override", "", "Path to override YAML config (deep-merged into base)")
 	configCmd.AddCommand(configValidateCmd)
 	configCmd.AddCommand(configGetCmd)
 	configCmd.AddCommand(configSetCmd)
@@ -83,70 +86,14 @@ func runConfigValidate(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// --schema flag just prints the JSON Schema reference
+	// --schema flag generates and prints the JSON Schema from domain.Config
 	if configValidateSchema {
-		fmt.Println(`{
-  "$schema": "https://json-schema.org/draft-07/schema#",
-  "title": "Arx Configuration",
-  "type": "object",
-  "properties": {
-    "version": { "type": "string", "description": "Config version" },
-    "layers": { "type": "array", "items": { "$ref": "#/definitions/Layer" } },
-    "rules": { "type": "array", "items": { "$ref": "#/definitions/Rule" } },
-    "functions": { "type": "object", "additionalProperties": { "type": "string" } },
-    "cross_language": { "$ref": "#/definitions/CrossLanguage" },
-    "exclude": { "type": "array", "items": { "type": "string" } },
-    "max_violations": { "type": "integer", "minimum": 0 },
-    "severity_mapping": { "type": "object" },
-    "severity_config": { "type": "object" },
-    "language_overrides": { "type": "object" }
-  },
-  "definitions": {
-    "Layer": {
-      "type": "object",
-      "properties": {
-        "name": { "type": "string" },
-        "paths": { "type": "array", "items": { "type": "string" } },
-        "description": { "type": "string" },
-        "tags": { "type": "array", "items": { "type": "string" } }
-      },
-      "required": ["name", "paths"]
-    },
-    "Rule": {
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "severity": { "type": "string", "enum": ["error", "warning", "info"] },
-        "from": { "type": "string" },
-        "to": { "type": "array", "items": { "type": "string" } },
-        "type": { "type": "string" },
-        "check": { "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }] },
-        "exclude": { "type": "array", "items": { "type": "string" } },
-        "overrides": { "type": "array" },
-        "template": { "type": "string" },
-        "params": { "type": "object" }
-      },
-      "required": ["id"]
-    },
-    "CrossLanguage": {
-      "type": "object",
-      "properties": {
-        "mappings": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "source_pattern": { "type": "string" },
-              "generated_pattern": { "type": "string" },
-              "language": { "type": "string" },
-              "match_strategy": { "type": "string", "enum": ["stem", "glob"] }
-            }
-          }
-        }
-      }
-    }
-  }
-}`)
+		gen := &config.SchemaGeneratorImpl{}
+		schema, err := gen.Generate("arx-config", domain.Config{})
+		if err != nil {
+			return fmt.Errorf("generating schema: %w", err)
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), string(schema))
 		return nil
 	}
 
@@ -185,11 +132,62 @@ func runConfigValidate(cmd *cobra.Command, args []string) error {
 	// Create config reader
 	reader := config.NewYAMLReader()
 
-	// Read config
+	// Read base config through the pipeline
 	cfg, err := reader.Read(configPath)
 	if err != nil {
 		fmt.Fprintf(cmd.ErrOrStderr(), "✗ Error reading config: %v\n", err)
 		return fmt.Errorf("failed to read config: %w", err)
+	}
+
+	// Apply override if specified
+	if configValidateOverride != "" {
+		// Resolve override path
+		overridePath := configValidateOverride
+		if !filepath.IsAbs(overridePath) {
+			// Resolve relative to the base config's directory
+			overridePath = filepath.Join(filepath.Dir(configPath), overridePath)
+		}
+
+		// Read override file raw bytes (not parsed — merge raw YAML to avoid zero-value pollution)
+		overrideData, err := os.ReadFile(overridePath)
+		if err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "✗ Error reading override config: %v\n", err)
+			return fmt.Errorf("failed to read override config: %w", err)
+		}
+
+		// Marshal parsed base config to YAML for merging
+		baseYAML, err := yaml.Marshal(cfg)
+		if err != nil {
+			return fmt.Errorf("marshaling base config: %w", err)
+		}
+
+		// Deep merge (only keys present in override replace base)
+		mergedYAML, err := config.DeepMerge(baseYAML, overrideData)
+		if err != nil {
+			return fmt.Errorf("failed to merge configs: %w", err)
+		}
+
+		// Re-apply pipeline to merged config (for any new env vars/includes from override)
+		configDir := filepath.Dir(configPath)
+		mergedYAML, err = config.InterpolateEnvVars(mergedYAML)
+		if err != nil {
+			return fmt.Errorf("interpolating env vars in merged config: %w", err)
+		}
+		mergedYAML, err = config.ResolveIncludes(configDir, mergedYAML)
+		if err != nil {
+			return fmt.Errorf("resolving includes in merged config: %w", err)
+		}
+		mergedYAML, err = config.InterpolateEnvVars(mergedYAML)
+		if err != nil {
+			return fmt.Errorf("interpolating env vars in merged config: %w", err)
+		}
+
+		// Re-parse the merged config
+		var mergedCfg domain.Config
+		if err := yaml.Unmarshal(mergedYAML, &mergedCfg); err != nil {
+			return fmt.Errorf("parsing merged config: %w", err)
+		}
+		cfg = &mergedCfg
 	}
 
 	// Validate config

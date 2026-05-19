@@ -255,14 +255,16 @@
 - [x] `arx baseline --diff` shows what changed since last baseline
 - [x] Integration with `arx check --diff`
 
-### v0.47 — Config Includes + Schema Generation
+### ✅ v0.47 — Config Includes + Schema Generation
 **Effort:** M
 
-- `!include` directive for splitting configs
-- `arx schema generate` — generates JSON Schema from existing arx.yaml
-- Config composition: base config + overrides
-- Environment variable interpolation in config
-- YAML anchor support (`&defaults`, `<<: *defaults`)
+- [x] `!include` directive for splitting configs (recursive, cycle-detected)
+- [x] `arx schema generate` — generates JSON Schema from domain.Config struct
+- [x] Config composition: base config + overrides via `--override` flag
+- [x] Environment variable interpolation (`$VAR`, `${VAR}`, `${VAR:-default}`)
+- [x] SchemaGenerator port + reflection-based engine with enum/required support
+- [x] Pipeline integration (env vars → includes → env vars → parse)
+- [x] Schema drift acceptance test in domain layer
 
 ### v0.48 — Suggest Batch Mode + Conflict Detection
 **Effort:** M
