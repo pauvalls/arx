@@ -447,16 +447,22 @@ func TestRunDetectors_ConcurrentExecution(t *testing.T) {
 	}
 }
 
-func TestRunDetectors_ErrorCancelsOthers(t *testing.T) {
+func TestRunDetectors_ErrorDoesNotCancelOthers(t *testing.T) {
 	ctx := context.Background()
 
-	finish := make(chan struct{})
+	finished := make(chan struct{})
 	started := make(chan struct{})
 
 	slowDetector := &mockBlockingDetector{
-		mockDetector: mockDetector{name: "slow"},
+		mockDetector: mockDetector{
+			name:         "slow",
+			detectResult: true,
+			extractDeps: []domain.Dependency{
+				{SourceFile: "slow.go", SourceLine: 1, ImportPath: "fmt"},
+			},
+		},
 		startSignal:  started,
-		finishSignal: finish,
+		finishSignal: finished,
 	}
 	failingDetector := &mockDetector{
 		name:         "failing",
@@ -485,20 +491,166 @@ func TestRunDetectors_ErrorCancelsOthers(t *testing.T) {
 		t.Fatal("slow detector did not start")
 	}
 
-	// The failing detector should cause overall error
+	// Now signal the failing detector has already errored by letting the
+	// slow detector finish — the slow detector should still produce deps
+	close(finished)
+
 	select {
 	case result := <-resultCh:
 		if result.err == nil {
 			t.Fatal("RunDetectors() with failing detector should return error")
 		}
-		if len(result.deps) != 0 {
-			t.Errorf("RunDetectors() returned %d deps, want 0", len(result.deps))
+		// The slow detector should have completed and produced deps
+		if len(result.deps) != 1 {
+			t.Errorf("RunDetectors() returned %d deps, want 1 (slow detector should still complete)", len(result.deps))
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("RunDetectors() did not return error in time")
+		t.Fatal("RunDetectors() did not complete")
+	}
+}
+
+func TestRunDetectorsWithStatus_OneFailsOthersComplete(t *testing.T) {
+	ctx := context.Background()
+
+	goodDetector := &mockDetector{
+		name:         "good",
+		detectResult: true,
+		extractDeps: []domain.Dependency{
+			{SourceFile: "good.go", SourceLine: 1, ImportPath: "fmt"},
+		},
+	}
+	failingDetector := &mockDetector{
+		name:         "failing",
+		detectResult: true,
+		extractErr:   errors.New("extraction failed"),
+	}
+	anotherGood := &mockDetector{
+		name:         "another",
+		detectResult: true,
+		extractDeps: []domain.Dependency{
+			{SourceFile: "another.go", SourceLine: 1, ImportPath: "os"},
+		},
 	}
 
-	close(finish)
+	result, err := RunDetectorsWithStatus(ctx, "/test", []domain.Layer{}, []ports.Detector{goodDetector, failingDetector, anotherGood})
+	if err == nil {
+		t.Fatal("RunDetectorsWithStatus() should return error for failing detector")
+	}
+
+	// All 3 detectors should have statuses
+	if len(result.Statuses) != 3 {
+		t.Fatalf("RunDetectorsWithStatus() returned %d statuses, want 3", len(result.Statuses))
+	}
+
+	// Good detectors should have deps included
+	if len(result.Dependencies) != 2 {
+		t.Errorf("RunDetectorsWithStatus() returned %d deps, want 2 (both good detectors)", len(result.Dependencies))
+	}
+
+	// Failing detector should have error in status
+	if result.Statuses[1].Error == "" {
+		t.Error("Status[1] should contain error for failing detector")
+	}
+}
+
+func TestRunDetectorsWithProfile_TimingsCollected(t *testing.T) {
+	ctx := context.Background()
+
+	detector1 := &mockDetector{
+		name:         "slow",
+		detectResult: true,
+		extractDeps: []domain.Dependency{
+			{SourceFile: "a.go", SourceLine: 1, ImportPath: "fmt"},
+		},
+	}
+	detector2 := &mockDetector{
+		name:         "fast",
+		detectResult: true,
+		extractDeps: []domain.Dependency{
+			{SourceFile: "b.go", SourceLine: 1, ImportPath: "os"},
+		},
+	}
+
+	deps, report, err := RunDetectorsWithProfile(ctx, "/test", []domain.Layer{}, []ports.Detector{detector1, detector2})
+	if err != nil {
+		t.Fatalf("RunDetectorsWithProfile() error = %v", err)
+	}
+
+	if len(deps) != 2 {
+		t.Errorf("deps = %d, want 2", len(deps))
+	}
+	if len(report.Phases) != 2 {
+		t.Fatalf("report.Phases = %d, want 2", len(report.Phases))
+	}
+	if report.Phases[0].Duration < 0 || report.Phases[1].Duration < 0 {
+		t.Error("timings should not be negative")
+	}
+}
+
+func TestRunDetectorsWithProfile_TotalDurationGTEIndividual(t *testing.T) {
+	ctx := context.Background()
+
+	detector := &mockDetector{
+		name:         "single",
+		detectResult: true,
+		extractDeps: []domain.Dependency{
+			{SourceFile: "a.go", SourceLine: 1, ImportPath: "fmt"},
+		},
+	}
+
+	_, report, err := RunDetectorsWithProfile(ctx, "/test", []domain.Layer{}, []ports.Detector{detector})
+	if err != nil {
+		t.Fatalf("RunDetectorsWithProfile() error = %v", err)
+	}
+
+	// Total should be >= any individual phase
+	for _, pt := range report.Phases {
+		if report.Total < pt.Duration {
+			t.Errorf("Total (%v) < phase %s duration (%v)", report.Total, pt.Name, pt.Duration)
+		}
+	}
+}
+
+func TestRunDetectorsWithProfile_ErrorDetectorStillTimed(t *testing.T) {
+	ctx := context.Background()
+
+	failingDetector := &mockDetector{
+		name:         "failing",
+		detectResult: false,
+		detectErr:    errors.New("detection failed"),
+	}
+	goodDetector := &mockDetector{
+		name:         "good",
+		detectResult: true,
+		extractDeps: []domain.Dependency{
+			{SourceFile: "good.go", SourceLine: 1, ImportPath: "fmt"},
+		},
+	}
+
+	deps, report, err := RunDetectorsWithProfile(ctx, "/test", []domain.Layer{}, []ports.Detector{failingDetector, goodDetector})
+	if err == nil {
+		t.Fatal("RunDetectorsWithProfile() should return error for failing detector")
+	}
+
+	if len(deps) != 1 {
+		t.Errorf("deps = %d, want 1 (good detector should still produce deps)", len(deps))
+	}
+	if len(report.Phases) != 2 {
+		t.Fatalf("report.Phases = %d, want 2 (both detectors should have timing)", len(report.Phases))
+	}
+}
+
+func TestRunDetectorsWithProfile_NoDetectors(t *testing.T) {
+	ctx := context.Background()
+
+	_, report, err := RunDetectorsWithProfile(ctx, "/test", []domain.Layer{}, []ports.Detector{})
+	if err != nil {
+		t.Fatalf("RunDetectorsWithProfile() with no detectors error = %v", err)
+	}
+
+	if len(report.Phases) != 0 {
+		t.Errorf("report.Phases = %d, want 0", len(report.Phases))
+	}
 }
 
 func TestEvaluateArchitecture_WithViolations(t *testing.T) {

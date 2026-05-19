@@ -2,12 +2,13 @@ package application
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/pauvalls/arx/internal/domain"
 	"github.com/pauvalls/arx/internal/ports"
-	"golang.org/x/sync/errgroup"
 )
 
 // LoadConfig reads and validates a configuration file using the provided ConfigReader.
@@ -44,15 +45,18 @@ type DetectorResult struct {
 
 // RunDetectorsWithStatus executes all detectors concurrently and returns per-detector results.
 // Unlike RunDetectors, this returns status for every detector regardless of applicability.
+// Each detector runs in its own goroutine with a derived context. A single detector failure
+// does NOT cancel other detectors — all errors are collected and returned together.
 func RunDetectorsWithStatus(ctx context.Context, projectRoot string, layers []domain.Layer, detectors []ports.Detector) (*DetectorResult, error) {
 	if len(detectors) == 0 {
 		return nil, fmt.Errorf("no detectors provided")
 	}
 
-	g, ctx := errgroup.WithContext(ctx)
+	var wg sync.WaitGroup
 	var mu sync.Mutex
 	var allDependencies []domain.Dependency
 	statuses := make([]DetectorStatus, len(detectors))
+	errs := make([]error, len(detectors))
 
 	for i, detector := range detectors {
 		if detector == nil {
@@ -60,18 +64,27 @@ func RunDetectorsWithStatus(ctx context.Context, projectRoot string, layers []do
 		}
 
 		idx := i
-		d := detector // capture loop variable
-		g.Go(func() error {
+		d := detector
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+			// Each detector gets its own cancellable context so one failure
+			// doesn't cancel others.
+			dCtx, cancel := context.WithCancel(ctx)
+			defer cancel()
+
 			status := DetectorStatus{Name: d.Name()}
 
 			// Check if this detector is applicable
-			applicable, err := d.Detect(ctx, projectRoot)
-			if err != nil {
-				status.Error = err.Error()
+			applicable, detectErr := d.Detect(dCtx, projectRoot)
+			if detectErr != nil {
+				status.Error = detectErr.Error()
 				mu.Lock()
 				statuses[idx] = status
+				errs[idx] = fmt.Errorf("detector %q detection failed: %w", d.Name(), detectErr)
 				mu.Unlock()
-				return fmt.Errorf("detector %q detection failed: %w", d.Name(), err)
+				return
 			}
 
 			status.Applicable = applicable
@@ -80,17 +93,18 @@ func RunDetectorsWithStatus(ctx context.Context, projectRoot string, layers []do
 				mu.Lock()
 				statuses[idx] = status
 				mu.Unlock()
-				return nil
+				return
 			}
 
 			// Extract dependencies
-			deps, err := d.ExtractImports(ctx, projectRoot, layers)
-			if err != nil {
-				status.Error = err.Error()
+			deps, extractErr := d.ExtractImports(dCtx, projectRoot, layers)
+			if extractErr != nil {
+				status.Error = extractErr.Error()
 				mu.Lock()
 				statuses[idx] = status
+				errs[idx] = fmt.Errorf("detector %q extraction failed: %w", d.Name(), extractErr)
 				mu.Unlock()
-				return fmt.Errorf("detector %q extraction failed: %w", d.Name(), err)
+				return
 			}
 
 			status.DepCount = len(deps)
@@ -99,13 +113,14 @@ func RunDetectorsWithStatus(ctx context.Context, projectRoot string, layers []do
 			allDependencies = append(allDependencies, deps...)
 			statuses[idx] = status
 			mu.Unlock()
-
-			return nil
-		})
+		}()
 	}
 
-	if err := g.Wait(); err != nil {
-		return &DetectorResult{Dependencies: allDependencies, Statuses: statuses}, err
+	wg.Wait()
+
+	combinedErr := errors.Join(errs...)
+	if combinedErr != nil {
+		return &DetectorResult{Dependencies: allDependencies, Statuses: statuses}, combinedErr
 	}
 
 	return &DetectorResult{Dependencies: allDependencies, Statuses: statuses}, nil
@@ -123,6 +138,79 @@ func RunDetectors(ctx context.Context, projectRoot string, layers []domain.Layer
 		return nil, err
 	}
 	return result.Dependencies, nil
+}
+
+// RunDetectorsWithProfile executes all detectors concurrently with profiling.
+// It returns the aggregated dependencies, a performance report with per-detector timing,
+// and any errors collected from detectors. A single detector failure does NOT cancel others.
+func RunDetectorsWithProfile(ctx context.Context, projectRoot string, layers []domain.Layer, detectors []ports.Detector) ([]domain.Dependency, *domain.PerformanceReport, error) {
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var allDeps []domain.Dependency
+	var allErrs error
+	start := time.Now()
+	collector := domain.NewPerfCollector()
+
+	for _, detector := range detectors {
+		if detector == nil {
+			continue
+		}
+
+		d := detector
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+
+			dCtx, cancel := context.WithCancel(ctx)
+			defer cancel()
+
+			// Time the entire detector operation (Detect + ExtractImports)
+			timer := domain.NewPerfTimer()
+
+			// Check if this detector is applicable
+			applicable, detectErr := d.Detect(dCtx, projectRoot)
+			if detectErr != nil {
+				elapsed := timer.Elapsed()
+				collector.AddPhase(d.Name(), elapsed)
+				mu.Lock()
+				allErrs = errors.Join(allErrs, fmt.Errorf("detector %q detection failed: %w", d.Name(), detectErr))
+				mu.Unlock()
+				return
+			}
+
+			if !applicable {
+				elapsed := timer.Elapsed()
+				collector.AddPhase(d.Name(), elapsed)
+				return
+			}
+
+			// Extract dependencies
+			deps, extractErr := d.ExtractImports(dCtx, projectRoot, layers)
+			if extractErr != nil {
+				elapsed := timer.Elapsed()
+				collector.AddPhase(d.Name(), elapsed)
+				mu.Lock()
+				allErrs = errors.Join(allErrs, fmt.Errorf("detector %q extraction failed: %w", d.Name(), extractErr))
+				mu.Unlock()
+				return
+			}
+
+			elapsed := timer.Elapsed()
+			collector.AddPhase(d.Name(), elapsed)
+
+			mu.Lock()
+			allDeps = append(allDeps, deps...)
+			mu.Unlock()
+		}()
+	}
+
+	wg.Wait()
+
+	report := collector.Report()
+	report.Total = time.Since(start)
+
+	return allDeps, &report, allErrs
 }
 
 // EvaluateArchitecture checks dependencies against architectural rules and returns violations.

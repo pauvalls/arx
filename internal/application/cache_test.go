@@ -52,6 +52,20 @@ func (m *mockCache) ConfigHash() (string, error) {
 	return m.configHash, nil
 }
 
+func (m *mockCache) GetFile(key ports.FileCacheKey) ([]domain.Dependency, bool) {
+	m.getCalls++
+	ck := key.DetectorName + ":file:" + key.RelativePath + ":" + key.ContentHash
+	deps, ok := m.entries[ck]
+	return deps, ok
+}
+
+func (m *mockCache) PutFile(key ports.FileCacheKey, deps []domain.Dependency) error {
+	m.putCalls++
+	ck := key.DetectorName + ":file:" + key.RelativePath + ":" + key.ContentHash
+	m.entries[ck] = deps
+	return nil
+}
+
 func (m *mockCache) Clear() error {
 	m.entries = make(map[string][]domain.Dependency)
 	return nil

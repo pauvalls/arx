@@ -2,6 +2,8 @@ package go_detector
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"go/parser"
 	"go/token"
@@ -16,11 +18,18 @@ import (
 // Detector implements the ports.Detector interface for Go source files
 type Detector struct {
 	modulePrefix string
+	cache        ports.Cache
 }
 
 // New creates a new Go detector
 func New() *Detector {
 	return &Detector{}
+}
+
+// NewWithCache creates a new Go detector with per-file caching support.
+// The cache is used to skip re-parsing unchanged files.
+func NewWithCache(cache ports.Cache) *Detector {
+	return &Detector{cache: cache}
 }
 
 // Name returns the detector name
@@ -109,8 +118,8 @@ func (d *Detector) ExtractImports(ctx context.Context, projectRoot string, layer
 			return filepath.SkipDir
 		}
 
-		// Parse the Go file
-		deps, err := d.extractFileImports(path, projectRoot, layers)
+		// Parse the Go file (with optional caching)
+		deps, err := d.extractFileImports(path, relPath, projectRoot, layers)
 		if err != nil {
 			// Log but continue - don't fail on single file parse errors
 			return nil
@@ -127,10 +136,33 @@ func (d *Detector) ExtractImports(ctx context.Context, projectRoot string, layer
 	return dependencies, nil
 }
 
-// extractFileImports parses a single Go file and extracts its imports
-func (d *Detector) extractFileImports(filePath, projectRoot string, layers []domain.Layer) ([]domain.Dependency, error) {
-	fset := token.NewFileSet()
+// extractFileImports parses a single Go file and extracts its imports.
+// If a cache is configured, it checks the cache first and skips parsing on hit.
+func (d *Detector) extractFileImports(filePath, relPath, projectRoot string, layers []domain.Layer) ([]domain.Dependency, error) {
+	// Read file content for hashing and optional caching
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("reading %s: %w", filePath, err)
+	}
 
+	// Compute content hash for cache key
+	hash := sha256.Sum256(content)
+	contentHash := hex.EncodeToString(hash[:])
+
+	// Check cache first (if configured)
+	if d.cache != nil {
+		key := ports.FileCacheKey{
+			DetectorName: "go",
+			RelativePath: relPath,
+			ContentHash:  contentHash,
+		}
+		if cached, ok := d.cache.GetFile(key); ok {
+			return cached, nil
+		}
+	}
+
+	// Cache miss or no cache: parse the file
+	fset := token.NewFileSet()
 	node, err := parser.ParseFile(fset, filePath, nil, parser.ImportsOnly)
 	if err != nil {
 		return nil, fmt.Errorf("parsing %s: %w", filePath, err)
@@ -149,12 +181,6 @@ func (d *Detector) extractFileImports(filePath, projectRoot string, layers []dom
 		// Resolve the import path to a layer
 		resolvedLayer := d.resolveLayer(importPath, projectRoot, layers)
 
-		// Get relative file path
-		relPath, err := filepath.Rel(projectRoot, filePath)
-		if err != nil {
-			relPath = filePath
-		}
-
 		dependencies = append(dependencies, domain.Dependency{
 			SourceFile:    relPath,
 			SourceLine:    line,
@@ -162,6 +188,16 @@ func (d *Detector) extractFileImports(filePath, projectRoot string, layers []dom
 			ResolvedLayer: resolvedLayer,
 			Language:      "go",
 		})
+	}
+
+	// Store in cache if configured
+	if d.cache != nil {
+		key := ports.FileCacheKey{
+			DetectorName: "go",
+			RelativePath: relPath,
+			ContentHash:  contentHash,
+		}
+		_ = d.cache.PutFile(key, dependencies) // best-effort
 	}
 
 	return dependencies, nil

@@ -16,6 +16,7 @@ type JSONReporter struct {
 	tool                    string
 	baselineSuppressedCount int
 	maxViolations           int
+	performance             *domain.PerformanceReport
 }
 
 // NewJSONReporter creates a new JSON reporter
@@ -44,6 +45,12 @@ func NewJSONReporterWithThreshold(maxViolations int) *JSONReporter {
 	}
 }
 
+// SetPerformance sets an optional performance report on the JSON reporter.
+// When set, it will be included in the JSON output.
+func (r *JSONReporter) SetPerformance(pr *domain.PerformanceReport) {
+	r.performance = pr
+}
+
 // JSONOutput represents the structured JSON output format
 type JSONOutput struct {
 	Version                 string                `json:"version"`
@@ -55,7 +62,8 @@ type JSONOutput struct {
 	CouplingMatrix          domain.CouplingMatrix `json:"coupling_matrix,omitempty"`
 	DebtScore               domain.DebtScore      `json:"debt_score,omitempty"`
 	TrendReport             domain.TrendReport    `json:"trend_report,omitempty"`
-	Detectors               []DetectorInfo        `json:"detectors,omitempty"`
+	Detectors               []DetectorInfo             `json:"detectors,omitempty"`
+	Performance             *domain.PerformanceReport  `json:"performance,omitempty"`
 }
 
 // DetectorInfo mirrors application.DetectorStatus for JSON serialization
@@ -244,7 +252,7 @@ func (r *JSONReporter) buildJSONOutput(violations []domain.Violation) JSONOutput
 		})
 	}
 
-	return JSONOutput{
+	out := JSONOutput{
 		Version: r.version,
 		Tool:    r.tool,
 		Violations: jsonViolations,
@@ -258,6 +266,10 @@ func (r *JSONReporter) buildJSONOutput(violations []domain.Violation) JSONOutput
 		BaselineSuppressedCount: r.baselineSuppressedCount,
 		MaxViolations:           r.maxViolations,
 	}
+	if r.performance != nil {
+		out.Performance = r.performance
+	}
+	return out
 }
 
 // containsWarning checks if the rule ID suggests a warning severity

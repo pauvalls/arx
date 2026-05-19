@@ -162,6 +162,11 @@ func (s *CheckService) DetectWithStatus(ctx context.Context, projectRoot string,
 	return RunDetectorsWithStatus(ctx, projectRoot, layers, s.detectors)
 }
 
+// DetectWithProfile runs all applicable detectors with profiling and returns performance data.
+func (s *CheckService) DetectWithProfile(ctx context.Context, projectRoot string, layers []domain.Layer) ([]domain.Dependency, *domain.PerformanceReport, error) {
+	return RunDetectorsWithProfile(ctx, projectRoot, layers, s.detectors)
+}
+
 // DetectCached runs all applicable detectors with caching support.
 // If cache is nil, falls back to Detect (backward compatible).
 func (s *CheckService) DetectCached(ctx context.Context, projectRoot string, layers []domain.Layer) ([]domain.Dependency, error) {

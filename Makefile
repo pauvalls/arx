@@ -48,6 +48,23 @@ lint:
 clean:
 	rm -f $(BINARY)
 
+# Run benchmarks
+bench:
+	$(GO) test -bench=/Detection -benchmem -count=5 ./internal/application/ | tee bench-output.txt
+
+# Compare benchmarks with baseline using benchstat
+bench-compare:
+	$(GO) test -bench=/Detection -benchmem -count=5 ./internal/application/ | tee /tmp/bench.new
+	@if command -v benchstat >/dev/null 2>&1; then \
+		benchstat .bench-baseline /tmp/bench.new; \
+	else \
+		echo "⚠️  benchstat not installed. Install with: go install golang.org/x/perf/cmd/benchstat@latest"; \
+	fi
+
+# Generate benchmark baseline
+bench-baseline:
+	$(GO) test -bench=/Detection -benchmem -count=10 ./internal/application/ | tee .bench-baseline
+
 # Show help
 help:
 	@echo "Arx - Architectural Linter"
@@ -56,5 +73,8 @@ help:
 	@echo "  make build    - Compile the binary to ./arx"
 	@echo "  make test     - Run all tests with verbose output"
 	@echo "  make lint     - Run golangci-lint (skips if not installed)"
+	@echo "  make bench    - Run benchmarks and save output"
+	@echo "  make bench-compare - Compare benchmarks against baseline"
+	@echo "  make bench-baseline - Generate benchmark baseline"
 	@echo "  make clean    - Remove compiled binary"
 	@echo "  make help     - Show this help message"

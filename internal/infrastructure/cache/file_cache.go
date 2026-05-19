@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/pauvalls/arx/internal/domain"
+	"github.com/pauvalls/arx/internal/ports"
 )
 
 // cacheEntry represents a single cached dependency result.
@@ -97,6 +99,54 @@ func (c *FileCache) ConfigHash() (string, error) {
 // Clear removes all cached entries by deleting the cache directory.
 func (c *FileCache) Clear() error {
 	return os.RemoveAll(c.root)
+}
+
+// GetFile returns cached dependencies for a single file identified by key.
+// Returns the dependencies and true on hit, nil and false on miss.
+func (c *FileCache) GetFile(key ports.FileCacheKey) ([]domain.Dependency, bool) {
+	// Read current config hash
+	currentConfigHash, err := c.ConfigHash()
+	if err != nil {
+		return nil, false
+	}
+
+	entry, ok := c.readEntry(key.ContentHash, key.DetectorName)
+	if !ok {
+		return nil, false
+	}
+
+	// Config hash mismatch = stale cache
+	if entry.ConfigHash != currentConfigHash {
+		return nil, false
+	}
+
+	return entry.Dependencies, true
+}
+
+// PutFile stores dependencies for a single file identified by key.
+func (c *FileCache) PutFile(key ports.FileCacheKey, deps []domain.Dependency) error {
+	configHash, err := c.ConfigHash()
+	if err != nil {
+		configHash = ""
+	}
+
+	entry := cacheEntry{
+		FileHash:     key.ContentHash,
+		ConfigHash:   configHash,
+		DetectorName: key.DetectorName,
+		Dependencies: deps,
+		Timestamp:    time.Now(),
+	}
+
+	return c.writeEntry(entry)
+}
+
+// encodePath encodes a relative path for use as a filesystem directory name.
+// Replaces directory separators with underscores for safe filesystem paths.
+func encodePath(path string) string {
+	s := filepath.ToSlash(path)
+	s = strings.ReplaceAll(s, "/", "_")
+	return s
 }
 
 func (c *FileCache) detectorDir(detectorName string) string {

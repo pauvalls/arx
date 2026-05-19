@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/pauvalls/arx/internal/domain"
+	"github.com/pauvalls/arx/internal/ports"
 )
 
 func TestName(t *testing.T) {
@@ -97,7 +98,8 @@ func main() {}
 		}
 
 		d := New()
-		deps, err := d.extractFileImports(filePath, tmpDir, nil)
+		relPath := "main.go"
+	deps, err := d.extractFileImports(filePath, relPath, tmpDir, nil)
 		if err != nil {
 			t.Fatalf("extractFileImports() error = %v", err)
 		}
@@ -123,7 +125,7 @@ func main() {}
 		}
 
 		d := New()
-		deps, err := d.extractFileImports(filePath, tmpDir, nil)
+		deps, err := d.extractFileImports(filePath, "main.go", tmpDir, nil)
 		if err != nil {
 			t.Fatalf("extractFileImports() error = %v", err)
 		}
@@ -142,7 +144,7 @@ func main() {}
 			t.Fatal(err)
 		}
 		d := New()
-		deps, err := d.extractFileImports(filePath, tmpDir, nil)
+		deps, err := d.extractFileImports(filePath, "empty.go", tmpDir, nil)
 		if err != nil {
 			t.Fatalf("extractFileImports() error = %v", err)
 		}
@@ -158,7 +160,7 @@ func main() {}
 			t.Fatal(err)
 		}
 		d := New()
-		_, err := d.extractFileImports(filePath, tmpDir, nil)
+		_, err := d.extractFileImports(filePath, "bad.go", tmpDir, nil)
 		if err == nil {
 			t.Error("expected error for malformed Go file")
 		}
@@ -296,6 +298,163 @@ import "test/app/internal/infrastructure/db"
 	})
 }
 
+// mockCache implements ports.Cache for testing the Go detector's caching behavior.
+type mockCache struct {
+	entries map[string][]domain.Dependency
+}
+
+func newMockCache() *mockCache {
+	return &mockCache{entries: make(map[string][]domain.Dependency)}
+}
+
+func (m *mockCache) Get(fileHash string, detectorName string) ([]domain.Dependency, bool) {
+	key := detectorName + ":" + fileHash
+	deps, ok := m.entries[key]
+	return deps, ok
+}
+
+func (m *mockCache) Put(fileHash string, detectorName string, deps []domain.Dependency) error {
+	key := detectorName + ":" + fileHash
+	m.entries[key] = deps
+	return nil
+}
+
+func (m *mockCache) GetFile(key ports.FileCacheKey) ([]domain.Dependency, bool) {
+	ck := key.DetectorName + ":file:" + key.RelativePath + ":" + key.ContentHash
+	deps, ok := m.entries[ck]
+	return deps, ok
+}
+
+func (m *mockCache) PutFile(key ports.FileCacheKey, deps []domain.Dependency) error {
+	ck := key.DetectorName + ":file:" + key.RelativePath + ":" + key.ContentHash
+	m.entries[ck] = deps
+	return nil
+}
+
+func (m *mockCache) SetConfigHash(hash string) error { return nil }
+
+func (m *mockCache) ConfigHash() (string, error) { return "", nil }
+
+func (m *mockCache) Clear() error {
+	m.entries = make(map[string][]domain.Dependency)
+	return nil
+}
+
+func TestDetector_ExtractFileImports_FileCacheHit(t *testing.T) {
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "main.go")
+	content := []byte(`package main
+
+import "fmt"
+
+func main() {}
+`)
+	if err := os.WriteFile(filePath, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cache := newMockCache()
+	d := NewWithCache(cache)
+	relPath := "main.go"
+
+	// First call: cache miss, should parse and cache
+	deps1, err := d.extractFileImports(filePath, relPath, tmpDir, nil)
+	if err != nil {
+		t.Fatalf("first extractFileImports() error = %v", err)
+	}
+	if len(deps1) != 1 {
+		t.Fatalf("first call got %d deps, want 1", len(deps1))
+	}
+
+	// Second call: cache hit, should return cached deps without parsing
+	deps2, err := d.extractFileImports(filePath, relPath, tmpDir, nil)
+	if err != nil {
+		t.Fatalf("second extractFileImports() error = %v", err)
+	}
+	if len(deps2) != 1 {
+		t.Fatalf("second call got %d deps, want 1", len(deps2))
+	}
+	if deps2[0].ImportPath != "fmt" {
+		t.Errorf("ImportPath = %q, want %q", deps2[0].ImportPath, "fmt")
+	}
+}
+
+func TestDetector_ExtractFileImports_CacheMissOnContentChange(t *testing.T) {
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "main.go")
+	relPath := "main.go"
+
+	// Write initial content
+	content1 := []byte(`package main
+
+import "fmt"
+
+func main() {}
+`)
+	if err := os.WriteFile(filePath, content1, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cache := newMockCache()
+	d := NewWithCache(cache)
+
+	// First call: cache miss, parse and cache
+	deps1, err := d.extractFileImports(filePath, relPath, tmpDir, nil)
+	if err != nil {
+		t.Fatalf("first call error = %v", err)
+	}
+	if len(deps1) != 1 {
+		t.Fatalf("first call got %d deps, want 1", len(deps1))
+	}
+
+	// Change content
+	content2 := []byte(`package main
+
+import (
+	"fmt"
+	"os"
+)
+
+func main() {}
+`)
+	if err := os.WriteFile(filePath, content2, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Second call: content changed → new sha256 → cache miss → re-parse
+	deps2, err := d.extractFileImports(filePath, relPath, tmpDir, nil)
+	if err != nil {
+		t.Fatalf("second call error = %v", err)
+	}
+	if len(deps2) != 2 {
+		t.Fatalf("second call got %d deps, want 2", len(deps2))
+	}
+}
+
+func TestDetector_ExtractFileImports_CacheSkippedOnNilCache(t *testing.T) {
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "main.go")
+	content := []byte(`package main
+
+import "fmt"
+
+func main() {}
+`)
+	if err := os.WriteFile(filePath, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// No cache set — should fall back to original behavior
+	d := New()
+	deps, err := d.extractFileImports(filePath, "main.go", tmpDir, nil)
+	if err != nil {
+		t.Fatalf("extractFileImports() error = %v", err)
+	}
+	if len(deps) != 1 {
+		t.Fatalf("got %d deps, want 1", len(deps))
+	}
+}
+
 func FuzzGoDetector(f *testing.F) {
 	seeds := []string{
 		"package main\nimport \"fmt\"\nfunc main() {}",
@@ -315,7 +474,7 @@ func FuzzGoDetector(f *testing.F) {
 		}
 		d := New()
 		// Should never panic, even with malformed Go code
-		deps, err := d.extractFileImports(filePath, tmpDir, nil)
+		deps, err := d.extractFileImports(filePath, "test.go", tmpDir, nil)
 		if err != nil {
 			return // Parse errors expected
 		}

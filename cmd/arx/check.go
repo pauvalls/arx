@@ -74,6 +74,7 @@ var (
 	checkInterval   time.Duration
 	checkSeverity   string
 	checkDiff       bool
+	checkProfile    bool
 )
 
 func init() {
@@ -87,19 +88,21 @@ func init() {
 	checkCmd.Flags().DurationVar(&checkInterval, "interval", 500*time.Millisecond, "Debounce interval for watch mode")
 	checkCmd.Flags().StringVar(&checkSeverity, "severity", "", "Filter by severity: error|warning|info")
 	checkCmd.Flags().BoolVar(&checkDiff, "diff", false, "Show violations added/removed since last check")
+	checkCmd.Flags().BoolVar(&checkProfile, "profile", false, "Show per-detector performance profile")
 	rootCmd.AddCommand(checkCmd)
 }
 
 // checkResult holds the output of a single check run.
 type checkResult struct {
-	violations      []domain.Violation
-	suppressedCount int
-	config          *domain.Config
-	configHash      string
-	projectRoot     string
-	format          ports.OutputFormat
-	duration        time.Duration
+	violations       []domain.Violation
+	suppressedCount  int
+	config           *domain.Config
+	configHash       string
+	projectRoot      string
+	format           ports.OutputFormat
+	duration         time.Duration
 	detectorStatuses []application.DetectorStatus
+	profile          *domain.PerformanceReport
 }
 
 // runCheck is the entry point for the check command.
@@ -241,8 +244,17 @@ func runCheckWithService(service *application.CheckService, config *domain.Confi
 
 	var dependencies []domain.Dependency
 	var detectorStatuses []application.DetectorStatus
+	var profile *domain.PerformanceReport
 
-	if verbose {
+	if checkProfile {
+		// Profiled mode: uses RunDetectorsWithProfile directly (no cache)
+		deps, perfReport, err := service.DetectWithProfile(ctx, projectRoot, config.Layers)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: detection failed: %v\n", err)
+		}
+		dependencies = deps
+		profile = perfReport
+	} else if verbose {
 		result, err := service.DetectCachedWithStatus(ctx, projectRoot, config.Layers)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: detection failed: %v\n", err)
@@ -296,15 +308,38 @@ func runCheckWithService(service *application.CheckService, config *domain.Confi
 	}
 
 	return checkResult{
-		violations:      violations,
-		suppressedCount: suppressedCount,
-		config:          config,
-		configHash:      configHash,
-		projectRoot:     projectRoot,
-		format:          format,
-		duration:        time.Since(start),
+		violations:       violations,
+		suppressedCount:  suppressedCount,
+		config:           config,
+		configHash:       configHash,
+		projectRoot:      projectRoot,
+		format:           format,
+		duration:         time.Since(start),
 		detectorStatuses: detectorStatuses,
+		profile:          profile,
 	}
+}
+
+// printProfileTable renders the performance profile table to stderr.
+func printProfileTable(profile *domain.PerformanceReport) {
+	if profile == nil || len(profile.Phases) == 0 {
+		return
+	}
+
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Performance Profile:")
+	fmt.Fprintln(os.Stderr, "Detector              Duration")
+	fmt.Fprintln(os.Stderr, "──────────────────────────────────────")
+
+	for _, pt := range profile.Phases {
+		ms := float64(pt.Duration) / float64(time.Millisecond)
+		fmt.Fprintf(os.Stderr, "%-20s %8.1fms\n", pt.Name, ms)
+	}
+
+	fmt.Fprintln(os.Stderr, "──────────────────────────────────────")
+	totalMs := float64(profile.Total) / float64(time.Millisecond)
+	fmt.Fprintf(os.Stderr, "%-20s %8.1fms\n", "Total", totalMs)
+	fmt.Fprintln(os.Stderr)
 }
 
 // printCheckResult outputs the violations to the terminal or as JSON.
@@ -334,6 +369,11 @@ func printCheckResult(result checkResult, format ports.OutputFormat, isWatchUpda
 		return
 	}
 
+	// Print profile if available
+	if result.profile != nil {
+		printProfileTable(result.profile)
+	}
+
 	// Print detector status in verbose mode
 	printDetectorStatuses(result.detectorStatuses)
 
@@ -348,6 +388,9 @@ func printCheckResult(result checkResult, format ports.OutputFormat, isWatchUpda
 			reporter = output.NewJSONReporterWithThreshold(result.config.MaxViolations)
 		} else {
 			reporter = output.NewJSONReporter()
+		}
+		if result.profile != nil {
+			reporter.SetPerformance(result.profile)
 		}
 		if err := reporter.ReportWithContext(violations, result.detectorStatuses); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: report generation failed: %v\n", err)
