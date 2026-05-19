@@ -71,6 +71,32 @@ func TestSuggestCommand_HasShortOutputFlag(t *testing.T) {
 	}
 }
 
+func TestSuggestCommand_HasAllFlag(t *testing.T) {
+	flag := suggestCmd.Flags().Lookup("all")
+	if flag == nil {
+		t.Fatal("--all flag not found on suggest command")
+	}
+	if flag.DefValue != "false" {
+		t.Errorf("--all default should be false, got %q", flag.DefValue)
+	}
+	if flag.Value.Type() != "bool" {
+		t.Errorf("--all should be bool type, got %q", flag.Value.Type())
+	}
+}
+
+func TestSuggestCommand_HasDryRunFlag(t *testing.T) {
+	flag := suggestCmd.Flags().Lookup("dry-run")
+	if flag == nil {
+		t.Fatal("--dry-run flag not found on suggest command")
+	}
+	if flag.DefValue != "false" {
+		t.Errorf("--dry-run default should be false, got %q", flag.DefValue)
+	}
+	if flag.Value.Type() != "bool" {
+		t.Errorf("--dry-run should be bool type, got %q", flag.Value.Type())
+	}
+}
+
 func TestCachedToDomain_ConvertsFields(t *testing.T) {
 	cached := []output.CachedViolation{
 		{
@@ -189,6 +215,12 @@ func TestSuggestCommand_RunWithoutCache_ReturnsError(t *testing.T) {
 	suggestApply = false
 	suggestForce = false
 	suggestOutput = ""
+	suggestAll = false
+	suggestDryRun = false
+
+	oldOut := suggestStdout
+	suggestStdout = io.Discard
+	defer func() { suggestStdout = oldOut }()
 
 	err = runSuggest(suggestCmd, nil)
 	if err == nil {
@@ -223,6 +255,12 @@ func TestSuggestCommand_UnknownViolationID_ReturnsError(t *testing.T) {
 	suggestApply = false
 	suggestForce = false
 	suggestOutput = ""
+	suggestAll = false
+	suggestDryRun = false
+
+	oldOut := suggestStdout
+	suggestStdout = io.Discard
+	defer func() { suggestStdout = oldOut }()
 
 	err = runSuggest(suggestCmd, []string{"D-99"})
 	if err == nil {
@@ -262,11 +300,13 @@ func TestSuggestCommand_OutputFlag_WritesToFile(t *testing.T) {
 	suggestOutput = outputFile
 	suggestApply = false
 	suggestForce = false
+	suggestAll = false
+	suggestDryRun = false
 	defer func() { suggestOutput = "" }()
 
-	var buf bytes.Buffer
-	suggestCmd.SetOut(&buf)
-	suggestCmd.SetErr(io.Discard)
+	oldOut := suggestStdout
+	suggestStdout = io.Discard
+	defer func() { suggestStdout = oldOut }()
 
 	err = runSuggest(suggestCmd, nil)
 	if err != nil {
@@ -321,7 +361,13 @@ func TestSuggestCommand_OutputWithSpecificViolation(t *testing.T) {
 	suggestOutput = outputFile
 	suggestApply = false
 	suggestForce = false
+	suggestAll = false
+	suggestDryRun = false
 	defer func() { suggestOutput = "" }()
+
+	oldOut := suggestStdout
+	suggestStdout = io.Discard
+	defer func() { suggestStdout = oldOut }()
 
 	err = runSuggest(suggestCmd, []string{"D-02"})
 	if err != nil {
@@ -338,6 +384,427 @@ func TestSuggestCommand_OutputWithSpecificViolation(t *testing.T) {
 	}
 	if strings.Contains(content, "D-01") {
 		t.Errorf("expected output to NOT contain 'D-01' (specific violation requested), got: %s", content)
+	}
+}
+
+func TestSuggestCommand_DryRun_DoesNotModifyFiles(t *testing.T) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tmpDir := t.TempDir()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(cwd)
+
+	cacheDir := ".arx-cache"
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	cacheContent := `{"violations":[{"id":"D-01","rule_id":"domain-imports-infrastructure","severity":"error","file":"test.go","line":1,"source_layer":"domain","target_layer":"infrastructure","import":"pkg/infra","message":"test"}],"timestamp":"` + timeNow().Format(time.RFC3339) + `","project_root":"."}`
+	if err := os.WriteFile(filepath.Join(cacheDir, "violations.json"), []byte(cacheContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	originalContent := "package test\n"
+	if err := os.WriteFile("test.go", []byte(originalContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	suggestDryRun = true
+	suggestApply = false
+	suggestForce = false
+	suggestOutput = ""
+	suggestAll = false
+	defer func() { suggestDryRun = false }()
+
+	var buf bytes.Buffer
+	oldOut := suggestStdout
+	suggestStdout = &buf
+	defer func() { suggestStdout = oldOut }()
+
+	err = runSuggest(suggestCmd, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile("test.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != originalContent {
+		t.Errorf("file was modified by dry-run: got %q, want %q", string(data), originalContent)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "D-01") {
+		t.Errorf("dry-run output should contain violation ID, got: %s", output)
+	}
+	if !strings.Contains(output, "DRY RUN") {
+		t.Errorf("dry-run output should indicate dry run mode, got: %s", output)
+	}
+}
+
+func TestSuggestCommand_AllFlag_ShowsAllFixes(t *testing.T) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tmpDir := t.TempDir()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(cwd)
+
+	cacheDir := ".arx-cache"
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	cacheContent := `{"violations":[
+		{"id":"D-01","rule_id":"domain-imports-infrastructure","severity":"error","file":"a.go","line":1,"source_layer":"domain","target_layer":"infrastructure","import":"pkg/infra","message":"test"},
+		{"id":"D-02","rule_id":"application-imports-infrastructure","severity":"error","file":"b.go","line":2,"source_layer":"application","target_layer":"infrastructure","import":"pkg/db","message":"test2"}
+	],"timestamp":"` + timeNow().Format(time.RFC3339) + `","project_root":"."}`
+	if err := os.WriteFile(filepath.Join(cacheDir, "violations.json"), []byte(cacheContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile("a.go", []byte("package a\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("b.go", []byte("package b\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	suggestAll = true
+	suggestApply = false
+	suggestForce = false
+	suggestOutput = ""
+	suggestDryRun = false
+	defer func() { suggestAll = false }()
+
+	var buf bytes.Buffer
+	oldOut := suggestStdout
+	suggestStdout = &buf
+	oldIn := suggestStdin
+	suggestStdin = bytes.NewBufferString("n\nn\n")
+	defer func() {
+		suggestStdout = oldOut
+		suggestStdin = oldIn
+	}()
+
+	err = runSuggest(suggestCmd, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "D-01") {
+		t.Errorf("output should contain D-01, got: %s", output)
+	}
+	if !strings.Contains(output, "D-02") {
+		t.Errorf("output should contain D-02, got: %s", output)
+	}
+}
+
+func TestSuggestCommand_StagedReviewPrompt_Y(t *testing.T) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tmpDir := t.TempDir()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(cwd)
+
+	cacheDir := ".arx-cache"
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	cacheContent := `{"violations":[{"id":"D-01","rule_id":"domain-imports-infrastructure","severity":"error","file":"test.go","line":1,"source_layer":"domain","target_layer":"infrastructure","import":"pkg/infra","message":"test"}],"timestamp":"` + timeNow().Format(time.RFC3339) + `","project_root":"."}`
+	if err := os.WriteFile(filepath.Join(cacheDir, "violations.json"), []byte(cacheContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	originalContent := "package test\n"
+	if err := os.WriteFile("test.go", []byte(originalContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	suggestAll = true
+	suggestApply = false
+	suggestForce = false
+	suggestOutput = ""
+	suggestDryRun = false
+	defer func() { suggestAll = false }()
+
+	var buf bytes.Buffer
+	oldOut := suggestStdout
+	suggestStdout = &buf
+	oldIn := suggestStdin
+	suggestStdin = bytes.NewBufferString("y\n")
+	defer func() {
+		suggestStdout = oldOut
+		suggestStdin = oldIn
+	}()
+
+	err = runSuggest(suggestCmd, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile("test.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) == originalContent {
+		t.Error("file was NOT modified after 'y' response")
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "Applied") {
+		t.Errorf("output should mention applied, got: %s", output)
+	}
+}
+
+func TestSuggestCommand_StagedReviewPrompt_N(t *testing.T) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tmpDir := t.TempDir()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(cwd)
+
+	cacheDir := ".arx-cache"
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	cacheContent := `{"violations":[{"id":"D-01","rule_id":"domain-imports-infrastructure","severity":"error","file":"test.go","line":1,"source_layer":"domain","target_layer":"infrastructure","import":"pkg/infra","message":"test"}],"timestamp":"` + timeNow().Format(time.RFC3339) + `","project_root":"."}`
+	if err := os.WriteFile(filepath.Join(cacheDir, "violations.json"), []byte(cacheContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	originalContent := "package test\n"
+	if err := os.WriteFile("test.go", []byte(originalContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	suggestAll = true
+	suggestApply = false
+	suggestForce = false
+	suggestOutput = ""
+	suggestDryRun = false
+	defer func() { suggestAll = false }()
+
+	var buf bytes.Buffer
+	oldOut := suggestStdout
+	suggestStdout = &buf
+	oldIn := suggestStdin
+	suggestStdin = bytes.NewBufferString("n\n")
+	defer func() {
+		suggestStdout = oldOut
+		suggestStdin = oldIn
+	}()
+
+	err = runSuggest(suggestCmd, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile("test.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != originalContent {
+		t.Error("file was modified after 'n' response")
+	}
+}
+
+func TestSuggestCommand_StagedReviewPrompt_S_Then_Y(t *testing.T) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tmpDir := t.TempDir()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(cwd)
+
+	cacheDir := ".arx-cache"
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	cacheContent := `{"violations":[{"id":"D-01","rule_id":"domain-imports-infrastructure","severity":"error","file":"test.go","line":1,"source_layer":"domain","target_layer":"infrastructure","import":"pkg/infra","message":"test"}],"timestamp":"` + timeNow().Format(time.RFC3339) + `","project_root":"."}`
+	if err := os.WriteFile(filepath.Join(cacheDir, "violations.json"), []byte(cacheContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	originalContent := "package test\n"
+	if err := os.WriteFile("test.go", []byte(originalContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	suggestAll = true
+	suggestApply = false
+	suggestForce = false
+	suggestOutput = ""
+	suggestDryRun = false
+	defer func() { suggestAll = false }()
+
+	var buf bytes.Buffer
+	oldOut := suggestStdout
+	suggestStdout = &buf
+	oldIn := suggestStdin
+	suggestStdin = bytes.NewBufferString("s\ny\n")
+	defer func() {
+		suggestStdout = oldOut
+		suggestStdin = oldIn
+	}()
+
+	err = runSuggest(suggestCmd, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile("test.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) == originalContent {
+		t.Error("file was NOT modified after 's' then 'y' response")
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "Diff") {
+		t.Errorf("output should contain diff, got: %s", output)
+	}
+}
+
+func TestSuggestCommand_StagedReviewPrompt_Q(t *testing.T) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tmpDir := t.TempDir()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(cwd)
+
+	cacheDir := ".arx-cache"
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	cacheContent := `{"violations":[{"id":"D-01","rule_id":"domain-imports-infrastructure","severity":"error","file":"test.go","line":1,"source_layer":"domain","target_layer":"infrastructure","import":"pkg/infra","message":"test"}],"timestamp":"` + timeNow().Format(time.RFC3339) + `","project_root":"."}`
+	if err := os.WriteFile(filepath.Join(cacheDir, "violations.json"), []byte(cacheContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	originalContent := "package test\n"
+	if err := os.WriteFile("test.go", []byte(originalContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	suggestAll = true
+	suggestApply = false
+	suggestForce = false
+	suggestOutput = ""
+	suggestDryRun = false
+	defer func() { suggestAll = false }()
+
+	var buf bytes.Buffer
+	oldOut := suggestStdout
+	suggestStdout = &buf
+	oldIn := suggestStdin
+	suggestStdin = bytes.NewBufferString("q\n")
+	defer func() {
+		suggestStdout = oldOut
+		suggestStdin = oldIn
+	}()
+
+	err = runSuggest(suggestCmd, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile("test.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != originalContent {
+		t.Error("file was modified after 'q' response")
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "Quitting") {
+		t.Errorf("output should mention quitting, got: %s", output)
+	}
+}
+
+func TestSuggestCommand_RollbackMessagePrinted(t *testing.T) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tmpDir := t.TempDir()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(cwd)
+
+	cacheDir := ".arx-cache"
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	cacheContent := `{"violations":[{"id":"D-01","rule_id":"domain-imports-infrastructure","severity":"error","file":"test.go","line":1,"source_layer":"domain","target_layer":"infrastructure","import":"pkg/infra","message":"test"}],"timestamp":"` + timeNow().Format(time.RFC3339) + `","project_root":"."}`
+	if err := os.WriteFile(filepath.Join(cacheDir, "violations.json"), []byte(cacheContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile("test.go", []byte("package test\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	suggestApply = true
+	suggestForce = true
+	suggestOutput = ""
+	suggestAll = false
+	suggestDryRun = false
+	defer func() {
+		suggestApply = false
+		suggestForce = false
+	}()
+
+	var buf bytes.Buffer
+	oldOut := suggestStdout
+	suggestStdout = &buf
+	oldIn := suggestStdin
+	suggestStdin = bytes.NewBufferString("")
+	defer func() {
+		suggestStdout = oldOut
+		suggestStdin = oldIn
+	}()
+
+	err = runSuggest(suggestCmd, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "rollback") {
+		t.Errorf("output should mention rollback instructions, got: %s", output)
 	}
 }
 

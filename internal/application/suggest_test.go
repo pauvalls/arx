@@ -1,6 +1,8 @@
 package application
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/pauvalls/arx/internal/domain"
@@ -182,5 +184,87 @@ func TestSuggestAll_EmptyViolations_ReturnsEmptyFixes(t *testing.T) {
 
 	if len(fixes) != 0 {
 		t.Errorf("expected 0 fixes for empty violations, got %d", len(fixes))
+	}
+}
+
+func TestFixEngine_Apply_UsesViolationIDBackup(t *testing.T) {
+	tmpDir := t.TempDir()
+	oldWD, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(oldWD)
+
+	engine := NewFixEngine()
+
+	// Create a test file and apply a fix with violation ID
+	testFile := "test.go"
+	if err := os.WriteFile(testFile, []byte("package test\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	fix := &Fix{
+		ViolationID: "D-01",
+		File:        testFile,
+		Suggested:   "package test\n\n// fixed\n",
+		Original:    "package test\n",
+	}
+
+	backupDir := ".arx-backup"
+	result, err := engine.ApplyWithID(*fix, backupDir)
+	if err != nil {
+		t.Fatalf("ApplyWithID failed: %v", err)
+	}
+
+	// Backup should be at .arx-backup/D-01/test.go.bak
+	expected := ".arx-backup/D-01/test.go.bak"
+	if _, err := os.Stat(expected); os.IsNotExist(err) {
+		t.Errorf("backup not found at %s", expected)
+	}
+	_ = result
+}
+
+func TestFixEngine_Apply_BackwardCompatOldFormat(t *testing.T) {
+	tmpDir := t.TempDir()
+	oldWD, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(oldWD)
+
+	engine := NewFixEngine()
+
+	// Create an old-format backup: .arx-backup/20250101T120000/test.go.bak
+	oldBackupDir := ".arx-backup/20250101T120000"
+	if err := os.MkdirAll(oldBackupDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(oldBackupDir, "test.go.bak"), []byte("original\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// The Rollback should find the old backup when no new-format one exists
+	testFile := "test.go"
+	if err := os.WriteFile(testFile, []byte("modified\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	err = engine.Rollback(testFile, ".arx-backup")
+	if err != nil {
+		t.Fatalf("Rollback failed: %v", err)
+	}
+
+	data, err := os.ReadFile(testFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "original\n" {
+		t.Errorf("restored content = %q, want %q", string(data), "original\n")
 	}
 }

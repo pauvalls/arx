@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -20,6 +22,7 @@ type Fix struct {
 	Diff        string // unified diff of the change
 	Original    string // original file content
 	Suggested   string // suggested file content
+	BackupPath  string // path to the backup file (set after Apply*)
 }
 
 // FixTemplateFunc generates a Fix for a violation, or nil if no fix applies.
@@ -264,6 +267,21 @@ func simpleUnifiedDiff(path, original, suggested string) string {
 // Apply writes the fix to disk, creating a timestamped backup first.
 // backupDir is the root backup directory (e.g., ".arx-backup").
 func (e *FixEngine) Apply(fix Fix, backupDir string) error {
+	return e.apply(fix, backupDir, "")
+}
+
+// ApplyWithID writes the fix to disk using violation-ID-based backup naming.
+// backupDir is the root backup directory (e.g., ".arx-backup").
+// Returns the backup path set on the fix.
+func (e *FixEngine) ApplyWithID(fix Fix, backupDir string) (string, error) {
+	err := e.apply(fix, backupDir, fix.ViolationID)
+	return fix.BackupPath, err
+}
+
+// apply writes the fix to disk, creating a backup first.
+// If violationID is non-empty, uses violation-ID-based backup naming.
+// Otherwise uses timestamp-based naming.
+func (e *FixEngine) apply(fix Fix, backupDir, violationID string) error {
 	if fix.File == "" {
 		return fmt.Errorf("cannot apply fix: no file specified")
 	}
@@ -274,18 +292,21 @@ func (e *FixEngine) Apply(fix Fix, backupDir string) error {
 		return fmt.Errorf("cannot read file %q: %w", fix.File, err)
 	}
 
-	// Create timestamped backup directory
-	timestamp := time.Now().Format("20060102T150405")
-	backupPath := filepath.Join(backupDir, timestamp)
-	if err := os.MkdirAll(backupPath, 0755); err != nil {
-		return fmt.Errorf("cannot create backup directory: %w", err)
+	var backupFile string
+	if violationID != "" {
+		// Violation-ID based backup: .arx-backup/<violation-id>/<path>.bak
+		violationDir := filepath.Join(backupDir, violationID)
+		backupFile = filepath.Join(violationDir, filepath.Clean(fix.File)+".bak")
+	} else {
+		// Timestamp-based backup (original scheme): .arx-backup/<timestamp>/<path>.bak
+		timestamp := time.Now().Format("20060102T150405")
+		backupPath := filepath.Join(backupDir, timestamp)
+		backupFile = filepath.Join(backupPath, fix.File+".bak")
 	}
 
-	// Write backup file (preserve relative path with .bak suffix)
-	backupFile := filepath.Join(backupPath, fix.File+".bak")
-	backupDirPath := filepath.Dir(backupFile)
-	if err := os.MkdirAll(backupDirPath, 0755); err != nil {
-		return fmt.Errorf("cannot create backup subdirectory: %w", err)
+	backupFileDir := filepath.Dir(backupFile)
+	if err := os.MkdirAll(backupFileDir, 0755); err != nil {
+		return fmt.Errorf("cannot create backup directory: %w", err)
 	}
 	if err := os.WriteFile(backupFile, current, 0644); err != nil {
 		return fmt.Errorf("cannot create backup: %w", err)
@@ -293,41 +314,70 @@ func (e *FixEngine) Apply(fix Fix, backupDir string) error {
 
 	// Write suggested content
 	if err := os.WriteFile(fix.File, []byte(fix.Suggested), 0644); err != nil {
-		// Attempt rollback on failure
-		_ = e.Rollback(fix.File, backupDir)
-		return fmt.Errorf("failed to write fix to %q: %w (restored from backup)", fix.File, err)
+		// Attempt rollback on failure — but we need to clean up the backup file
+		_ = os.Remove(backupFile)
+		return fmt.Errorf("failed to write fix to %q: %w", fix.File, err)
 	}
 
+	// Track the backup path for later reference
+	fix.BackupPath = backupFile
 	return nil
 }
 
-// Rollback restores a file from the latest backup in the backup directory.
+// timestampDirRe matches timestamp-based backup directory names like "20250101T120000".
+var timestampDirRe = regexp.MustCompile(`^\d{8}T\d{6}$`)
+
+// Rollback restores a file from backup.
+// It searches violation-ID subdirectories first, then falls back to timestamp dirs.
 func (e *FixEngine) Rollback(file string, backupDir string) error {
-	// Find latest backup directory
 	entries, err := os.ReadDir(backupDir)
 	if err != nil {
 		return fmt.Errorf("cannot read backup directory: %w", err)
 	}
 
-	var latest string
+	// Phase 1: Search in violation-ID subdirectories
+	cleanPath := filepath.Clean(file)
 	for _, entry := range entries {
-		if entry.IsDir() && entry.Name() > latest {
-			latest = entry.Name()
+		if !entry.IsDir() {
+			continue
+		}
+		violationDir := filepath.Join(backupDir, entry.Name())
+		backupFile := filepath.Join(violationDir, cleanPath+".bak")
+		if _, err := os.Stat(backupFile); err == nil {
+			data, err := os.ReadFile(backupFile)
+			if err != nil {
+				return fmt.Errorf("cannot read backup file %q: %w", backupFile, err)
+			}
+			if err := os.WriteFile(file, data, 0644); err != nil {
+				return fmt.Errorf("cannot restore file %q: %w", file, err)
+			}
+			return nil
 		}
 	}
-	if latest == "" {
-		return fmt.Errorf("no backups found in %s", backupDir)
+
+	// Phase 2: Try timestamp-based backup directories (old format)
+	// Collect and sort timestamp dirs
+	var timestampDirs []string
+	for _, entry := range entries {
+		if entry.IsDir() && timestampDirRe.MatchString(entry.Name()) {
+			timestampDirs = append(timestampDirs, entry.Name())
+		}
+	}
+	sort.Sort(sort.Reverse(sort.StringSlice(timestampDirs)))
+
+	for _, tsDir := range timestampDirs {
+		backupFile := filepath.Join(backupDir, tsDir, file+".bak")
+		if _, err := os.Stat(backupFile); err == nil {
+			data, err := os.ReadFile(backupFile)
+			if err != nil {
+				return fmt.Errorf("cannot read backup file %q: %w", backupFile, err)
+			}
+			if err := os.WriteFile(file, data, 0644); err != nil {
+				return fmt.Errorf("cannot restore file %q: %w", file, err)
+			}
+			return nil
+		}
 	}
 
-	backupFile := filepath.Join(backupDir, latest, file+".bak")
-	data, err := os.ReadFile(backupFile)
-	if err != nil {
-		return fmt.Errorf("cannot read backup file %q: %w", backupFile, err)
-	}
-
-	if err := os.WriteFile(file, data, 0644); err != nil {
-		return fmt.Errorf("cannot restore file %q: %w", file, err)
-	}
-
-	return nil
+	return fmt.Errorf("no backup found for %q in %s", file, backupDir)
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -38,20 +39,39 @@ Examples:
 }
 
 var (
-	explainList bool
-	explainLast bool
+	explainList    bool
+	explainLast    bool
+	explainSuggest string
+
+	// explainStdout allows test override for output.
+	explainStdout io.Writer
 )
+
+func explainOutputWriter() io.Writer {
+	if explainStdout != nil {
+		return explainStdout
+	}
+	return os.Stdout
+}
 
 func init() {
 	explainCmd.Flags().BoolVar(&explainList, "list", false, "List all cached violations")
 	explainCmd.Flags().BoolVar(&explainLast, "last", false, "Show most recent violation")
+	explainCmd.Flags().StringVar(&explainSuggest, "suggest", "", "Show fix suggestion for a specific rule")
 	rootCmd.AddCommand(explainCmd)
 }
 
 func runExplain(cmd *cobra.Command, args []string) error {
+	out := explainOutputWriter()
+
+	// Handle --suggest flag: show fix suggestion for a rule
+	if explainSuggest != "" {
+		return showSuggestForRule(out, explainSuggest)
+	}
+
 	// Handle --list flag
 	if explainList {
-		return listViolations()
+		return listViolations(out)
 	}
 
 	// Load violations from cache
@@ -63,11 +83,11 @@ func runExplain(cmd *cobra.Command, args []string) error {
 	// Handle --last flag or no arguments
 	if explainLast || len(args) == 0 {
 		if len(cache.Violations) == 0 {
-			fmt.Println("✓ No violations in cache - your architecture is clean!")
+			fmt.Fprintln(out, "✓ No violations in cache - your architecture is clean!")
 			return nil
 		}
 		// Show the first (most recent) violation
-		return explainViolation(cache.Violations[0])
+		return explainViolation(out, cache.Violations[0])
 	}
 
 	// Lookup specific violation by ID
@@ -77,24 +97,76 @@ func runExplain(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("violation %q not found\nRun 'arx check' to see all violations", violationID)
 	}
 
-	return explainViolation(*violation)
+	return explainViolation(out, *violation)
 }
 
-func listViolations() error {
+// showSuggestForRule shows the fix suggestion for a rule ID.
+func showSuggestForRule(out io.Writer, ruleID string) error {
+	cache, err := output.LoadViolations()
+	if err != nil {
+		return fmt.Errorf("no cached violations found\nRun 'arx check' to generate violations cache")
+	}
+
+	// Find the first violation matching the rule ID (or the rule itself if no violations match)
+	var target *output.CachedViolation
+	for _, v := range cache.Violations {
+		if v.RuleID == ruleID {
+			target = &v
+			break
+		}
+	}
+
+	if target == nil && len(cache.Violations) > 0 {
+		target = &cache.Violations[0]
+	}
+
+	if target == nil {
+		fmt.Fprintln(out, "No violations found.")
+		return nil
+	}
+
+	fixEngine := application.NewFixEngine()
+	fix := fixEngine.SuggestFix(domain.Violation{
+		ID:          target.ID,
+		RuleID:      target.RuleID,
+		File:        target.File,
+		Line:        target.Line,
+		SourceLayer: target.SourceLayer,
+		TargetLayer: target.TargetLayer,
+		Import:      target.Import,
+		Severity:    domain.Severity(target.Severity),
+	})
+
+	if fix == nil || fix.Diff == "" {
+		fmt.Fprintf(out, "No fix suggestion available for rule %q.\n", ruleID)
+		return nil
+	}
+
+	fmt.Fprintf(out, "Fix suggestion for rule %s:\n", ruleID)
+	fmt.Fprintf(out, "  File: %s\n", fix.File)
+	fmt.Fprintf(out, "  Description: %s\n", fix.Description)
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, fix.Diff)
+	fmt.Fprintln(out)
+	fmt.Fprintf(out, "Run 'arx suggest %s' to apply.\n", target.ID)
+	return nil
+}
+
+func listViolations(out io.Writer) error {
 	cache, err := output.LoadViolations()
 	if err != nil {
 		return err
 	}
 
 	if len(cache.Violations) == 0 {
-		fmt.Println("✓ No violations in cache - your architecture is clean!")
+		fmt.Fprintln(out, "✓ No violations in cache - your architecture is clean!")
 		return nil
 	}
 
-	fmt.Println()
-	fmt.Printf("Cached Violations (%d total)\n", len(cache.Violations))
-	fmt.Println(strings.Repeat("─", 70))
-	fmt.Println()
+	fmt.Fprintln(out)
+	fmt.Fprintf(out, "Cached Violations (%d total)\n", len(cache.Violations))
+	fmt.Fprintln(out, strings.Repeat("─", 70))
+	fmt.Fprintln(out)
 
 	for _, v := range cache.Violations {
 		severityIcon := "❌"
@@ -102,73 +174,73 @@ func listViolations() error {
 			severityIcon = "⚠️"
 		}
 
-		fmt.Printf("%s %s\n", severityIcon, v.ID)
-		fmt.Printf("   File: %s:%d\n", v.File, v.Line)
-		fmt.Printf("   Rule: %s\n", v.RuleID)
-		fmt.Printf("   Severity: %s\n", cases.Title(language.Und).String(strings.ToLower(v.Severity)))
-		fmt.Println()
+		fmt.Fprintf(out, "%s %s\n", severityIcon, v.ID)
+		fmt.Fprintf(out, "   File: %s:%d\n", v.File, v.Line)
+		fmt.Fprintf(out, "   Rule: %s\n", v.RuleID)
+		fmt.Fprintf(out, "   Severity: %s\n", cases.Title(language.Und).String(strings.ToLower(v.Severity)))
+		fmt.Fprintln(out)
 	}
 
-	fmt.Printf("Run 'arx explain <id>' for detailed guidance on a specific violation.\n")
-	fmt.Println()
+	fmt.Fprintf(out, "Run 'arx explain <id>' for detailed guidance on a specific violation.\n")
+	fmt.Fprintln(out)
 
 	return nil
 }
 
-func explainViolation(v output.CachedViolation) error {
-	fmt.Println()
-	fmt.Println("╔══════════════════════════════════════════════════════════════════╗")
-	fmt.Println("║              ARCHITECTURE VIOLATION EXPLAINED                    ║")
-	fmt.Println("╚══════════════════════════════════════════════════════════════════╝")
-	fmt.Println()
+func explainViolation(out io.Writer, v output.CachedViolation) error {
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "╔══════════════════════════════════════════════════════════════════╗")
+	fmt.Fprintln(out, "║              ARCHITECTURE VIOLATION EXPLAINED                    ║")
+	fmt.Fprintln(out, "╚══════════════════════════════════════════════════════════════════╝")
+	fmt.Fprintln(out)
 
 	// Violation summary
-	fmt.Printf("Violation: %s\n", v.ID)
-	fmt.Printf("Severity:   %s\n", formatSeverity(v.Severity))
-	fmt.Printf("File:       %s:%d\n", v.File, v.Line)
-	fmt.Printf("Rule:       %s\n", v.RuleID)
-	fmt.Printf("Import:     %s\n", v.Import)
-	fmt.Println()
+	fmt.Fprintf(out, "Violation: %s\n", v.ID)
+	fmt.Fprintf(out, "Severity:   %s\n", formatSeverity(v.Severity))
+	fmt.Fprintf(out, "File:       %s:%d\n", v.File, v.Line)
+	fmt.Fprintf(out, "Rule:       %s\n", v.RuleID)
+	fmt.Fprintf(out, "Import:     %s\n", v.Import)
+	fmt.Fprintln(out)
 
 	// Code context (read actual file)
-	showCodeContext(v.File, v.Line)
+	showCodeContext(out, v.File, v.Line)
 
 	// Why it matters
-	fmt.Println("┌──────────────────────────────────────────────────────────────────┐")
-	fmt.Println("│ WHY THIS MATTERS                                                 │")
-	fmt.Println("└──────────────────────────────────────────────────────────────────┘")
-	fmt.Println()
-	fmt.Println(wrapText(v.Message, 70))
-	fmt.Println()
+	fmt.Fprintln(out, "┌──────────────────────────────────────────────────────────────────┐")
+	fmt.Fprintln(out, "│ WHY THIS MATTERS                                                 │")
+	fmt.Fprintln(out, "└──────────────────────────────────────────────────────────────────┘")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, wrapText(v.Message, 70))
+	fmt.Fprintln(out)
 
 	// Architectural context
-	fmt.Println("┌──────────────────────────────────────────────────────────────────┐")
-	fmt.Println("│ ARCHITECTURAL CONTEXT                                            │")
-	fmt.Println("└──────────────────────────────────────────────────────────────────┘")
-	fmt.Println()
-	fmt.Println(explainArchitecturalContext(v.SourceLayer, v.TargetLayer))
-	fmt.Println()
+	fmt.Fprintln(out, "┌──────────────────────────────────────────────────────────────────┐")
+	fmt.Fprintln(out, "│ ARCHITECTURAL CONTEXT                                            │")
+	fmt.Fprintln(out, "└──────────────────────────────────────────────────────────────────┘")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, explainArchitecturalContext(v.SourceLayer, v.TargetLayer))
+	fmt.Fprintln(out)
 
 	// How to fix with code examples
-	fmt.Println("┌──────────────────────────────────────────────────────────────────┐")
-	fmt.Println("│ HOW TO FIX                                                       │")
-	fmt.Println("└──────────────────────────────────────────────────────────────────┘")
-	fmt.Println()
+	fmt.Fprintln(out, "┌──────────────────────────────────────────────────────────────────┐")
+	fmt.Fprintln(out, "│ HOW TO FIX                                                       │")
+	fmt.Fprintln(out, "└──────────────────────────────────────────────────────────────────┘")
+	fmt.Fprintln(out)
 	fixGuidance := getDetailedFixGuidance(v.RuleID, v.SourceLayer, v.TargetLayer)
 	for i, step := range fixGuidance {
-		fmt.Printf("%d. %s\n", i+1, step)
+		fmt.Fprintf(out, "%d. %s\n", i+1, step)
 	}
-	fmt.Println()
+	fmt.Fprintln(out)
 
 	// Code example
 	codeExample := getCodeExample(v.RuleID, v.SourceLayer, v.TargetLayer, v.Import)
 	if codeExample != "" {
-		fmt.Println("┌──────────────────────────────────────────────────────────────────┐")
-		fmt.Println("│ CODE EXAMPLE                                                     │")
-		fmt.Println("└──────────────────────────────────────────────────────────────────┘")
-		fmt.Println()
-		fmt.Println(codeExample)
-		fmt.Println()
+		fmt.Fprintln(out, "┌──────────────────────────────────────────────────────────────────┐")
+		fmt.Fprintln(out, "│ CODE EXAMPLE                                                     │")
+		fmt.Fprintln(out, "└──────────────────────────────────────────────────────────────────┘")
+		fmt.Fprintln(out)
+		fmt.Fprintln(out, codeExample)
+		fmt.Fprintln(out)
 	}
 
 	// Fix suggestion from suggest engine
@@ -184,45 +256,45 @@ func explainViolation(v output.CachedViolation) error {
 		Severity:    domain.Severity(v.Severity),
 	})
 	if fix != nil && fix.Diff != "" {
-		fmt.Println("┌──────────────────────────────────────────────────────────────────┐")
-		fmt.Println("│ AUTO-FIX SUGGESTION                                              │")
-		fmt.Println("└──────────────────────────────────────────────────────────────────┘")
-		fmt.Println()
-		fmt.Printf("  Run 'arx suggest %s' to auto-apply this fix.\n", v.ID)
-		fmt.Println()
-		fmt.Println(fix.Diff)
-		fmt.Println()
+		fmt.Fprintln(out, "┌──────────────────────────────────────────────────────────────────┐")
+		fmt.Fprintln(out, "│ AUTO-FIX SUGGESTION                                              │")
+		fmt.Fprintln(out, "└──────────────────────────────────────────────────────────────────┘")
+		fmt.Fprintln(out)
+		fmt.Fprintf(out, "  Run 'arx suggest %s' to auto-apply this fix.\n", v.ID)
+		fmt.Fprintln(out)
+		fmt.Fprintln(out, fix.Diff)
+		fmt.Fprintln(out)
 	}
 
 	// Related violations
-	fmt.Println("┌──────────────────────────────────────────────────────────────────┐")
-	fmt.Println("│ RELATED VIOLATIONS                                               │")
-	fmt.Println("└──────────────────────────────────────────────────────────────────┘")
-	fmt.Println()
+	fmt.Fprintln(out, "┌──────────────────────────────────────────────────────────────────┐")
+	fmt.Fprintln(out, "│ RELATED VIOLATIONS                                               │")
+	fmt.Fprintln(out, "└──────────────────────────────────────────────────────────────────┘")
+	fmt.Fprintln(out)
 	relatedViolations := findRelatedViolations(v)
 	if len(relatedViolations) > 0 {
 		for _, rv := range relatedViolations {
 			if rv.ID != v.ID {
-				fmt.Printf("  • %s: %s:%d (%s)\n", rv.ID, rv.File, rv.Line, rv.RuleID)
+				fmt.Fprintf(out, "  • %s: %s:%d (%s)\n", rv.ID, rv.File, rv.Line, rv.RuleID)
 			}
 		}
 	} else {
-		fmt.Println("  No related violations found.")
+		fmt.Fprintln(out, "  No related violations found.")
 	}
-	fmt.Println()
+	fmt.Fprintln(out)
 
 	// Next steps
-	fmt.Println("┌──────────────────────────────────────────────────────────────────┐")
-	fmt.Println("│ NEXT STEPS                                                       │")
-	fmt.Println("└──────────────────────────────────────────────────────────────────┘")
-	fmt.Println()
-	fmt.Println("  1. Review the code example above")
-	fmt.Println("  2. Apply the refactoring steps to your code")
-	fmt.Println("  3. Run 'arx check' again to verify the violation is resolved")
-	fmt.Println("  4. Commit the fix with a descriptive message")
-	fmt.Println()
-	fmt.Println("Run 'arx check' to see all violations in your project.")
-	fmt.Println()
+	fmt.Fprintln(out, "┌──────────────────────────────────────────────────────────────────┐")
+	fmt.Fprintln(out, "│ NEXT STEPS                                                       │")
+	fmt.Fprintln(out, "└──────────────────────────────────────────────────────────────────┘")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "  1. Review the code example above")
+	fmt.Fprintln(out, "  2. Apply the refactoring steps to your code")
+	fmt.Fprintln(out, "  3. Run 'arx check' again to verify the violation is resolved")
+	fmt.Fprintln(out, "  4. Commit the fix with a descriptive message")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Run 'arx check' to see all violations in your project.")
+	fmt.Fprintln(out)
 
 	return nil
 }
@@ -417,7 +489,7 @@ func findRelatedViolations(v output.CachedViolation) []output.CachedViolation {
 
 // showCodeContext reads the file and displays lines around the violation.
 // It tries common project roots if the file path is relative.
-func showCodeContext(filePath string, line int) {
+func showCodeContext(out io.Writer, filePath string, line int) {
 	if filePath == "" || line <= 0 {
 		return
 	}
@@ -453,19 +525,19 @@ func showCodeContext(filePath string, line int) {
 		end = len(lines)
 	}
 
-	fmt.Println("┌──────────────────────────────────────────────────────────────────┐")
-	fmt.Println("│ CODE CONTEXT                                                     │")
-	fmt.Println("└──────────────────────────────────────────────────────────────────┘")
-	fmt.Println()
+	fmt.Fprintln(out, "┌──────────────────────────────────────────────────────────────────┐")
+	fmt.Fprintln(out, "│ CODE CONTEXT                                                     │")
+	fmt.Fprintln(out, "└──────────────────────────────────────────────────────────────────┘")
+	fmt.Fprintln(out)
 
 	for i := start; i < end; i++ {
 		marker := " "
 		if i+1 == line {
 			marker = "→" // marks the violation line
 		}
-		fmt.Printf("  %4d %s %s\n", i+1, marker, lines[i])
+		fmt.Fprintf(out, "  %4d %s %s\n", i+1, marker, lines[i])
 	}
-	fmt.Println()
+	fmt.Fprintln(out)
 }
 
 // wrapText wraps text to the specified width

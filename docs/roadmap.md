@@ -266,14 +266,14 @@
 - [x] Pipeline integration (env vars → includes → env vars → parse)
 - [x] Schema drift acceptance test in domain layer
 
-### v0.48 — Suggest Batch Mode + Conflict Detection
+### v0.48 — Suggest Batch Mode + Conflict Detection ✅
 **Effort:** M
 
-- `arx suggest --all` applies ALL fixes with smart conflict detection
-- Staged changes (like git add -p): review fixes before applying
-- Rollback per-file (not just full rollback)
-- Fix preview with `--dry-run`
-- Integration with `arx explain` for each fix
+- [x] `arx suggest --all` applies ALL fixes with smart conflict detection
+- [x] Staged changes (like git add -p): review fixes before applying (y/N/s/e/q)
+- [x] Rollback per-file (not just full rollback) — `arx rollback <file>`
+- [x] Fix preview with `--dry-run`
+- [x] Integration with `arx explain` for each fix
 
 ### v0.49 — Dashboard Real-Time (WebSocket)
 **Effort:** M
