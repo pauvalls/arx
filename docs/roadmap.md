@@ -192,14 +192,16 @@
 - Schema `--dry-run` shows what would change
 - Config upgrade command: `arx config upgrade` migrates old formats
 
-### v0.42 — Dashboard Dependency Graph
+### ✅ v0.42 — Dashboard Dependency Graph
 **Effort:** M
 
-- Interactive SVG dependency graph in the dashboard
-- Visual layer bubbles with dependency arrows
-- Click to filter violations by layer
-- Color-coded by severity (red = violations, green = clean)
-- Powered by the import scanner data
+- [x] Interactive SVG dependency graph with circular layout
+- [x] Directional bezier arrows from coupling matrix data
+- [x] Color-coded nodes: green (clean), yellow (warnings), red (errors)
+- [x] Hover tooltip with incoming/outgoing/violations counts
+- [x] Click node to filter violations table by layer
+- [x] Arrow highlighting on hover
+- [x] 9 new tests, TDD flow, zero Go backend changes
 
 ### v0.43 — Rule Testing Framework
 **Effort:** L
