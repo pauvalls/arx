@@ -173,9 +173,9 @@
 
 ---
 
-## ✅ v40 — v50 Roadmap (Completed)
+## ✅ v0.40 — v0.50 Roadmap (Completed)
 
-### ✅ v40 — Language Detector Hardening
+### ✅ v0.40 — Language Detector Hardening
 **Effort:** M
 
 - [x] Go detector: 79% coverage (was N/A), 6 tests + fuzz (first tests ever!)
@@ -184,7 +184,7 @@
 - [x] All 12 detectors pass with race detector
 - [x] Integration tests hardened (uses -count=1 to avoid cache issues)
 
-### ✅ v41 — Config Strict Mode + Validation
+### ✅ v0.41 — Config Strict Mode + Validation
 **Effort:** S
 
 - [x] `arx config validate --strict` fails on unknown keys
@@ -192,7 +192,7 @@
 - [x] Schema `--dry-run` shows what would change
 - [x] Config upgrade command: `arx config upgrade` migrates old formats
 
-### ✅ v42 — Dashboard Dependency Graph
+### ✅ v0.42 — Dashboard Dependency Graph
 **Effort:** M
 
 - [x] Interactive SVG dependency graph with circular layout
@@ -203,7 +203,7 @@
 - [x] Arrow highlighting on hover
 - [x] 9 new tests, TDD flow, zero Go backend changes
 
-### ✅ v43 — Rule Testing Framework
+### ✅ v0.43 — Rule Testing Framework
 **Effort:** L
 
 - [x] `arx test` command — test rules against fixtures
@@ -222,7 +222,7 @@
 - [x] Rule-based violation filtering per test case
 - [x] Strict TDD: 40+ tests across all layers (unit + integration)
 
-### ✅ v44 — Multi-Project / Workspace Mode
+### ✅ v0.44 — Multi-Project / Workspace Mode
 **Effort:** L
 
 - [x] `arx workspace` — run check across multiple sub-projects
@@ -237,7 +237,7 @@
 - [x] WorkspaceService orchestration layer
 - [x] Strict TDD: 30+ tests across domain, application, output, CLI
 
-### ✅ v45 — Performance Pass
+### ✅ v0.45 — Performance Pass
 **Effort:** M
 
 - Profile-guided optimization of the detection pipeline
@@ -246,7 +246,7 @@
 - Optimize the cross-language detector (file caching)
 - Add `arx check --profile` for performance breakdown
 
-### ✅ v46 — Baseline Auto-Refresh + History
+### ✅ v0.46 — Baseline Auto-Refresh + History
 **Effort:** M
 
 - [x] Auto-refresh baseline when violations are consistently resolved
@@ -255,7 +255,7 @@
 - [x] `arx baseline --diff` shows what changed since last baseline
 - [x] Integration with `arx check --diff`
 
-### ✅ v47 — Config Includes + Schema Generation
+### ✅ v0.47 — Config Includes + Schema Generation
 **Effort:** M
 
 - [x] `!include` directive for splitting configs (recursive, cycle-detected)
@@ -266,7 +266,7 @@
 - [x] Pipeline integration (env vars → includes → env vars → parse)
 - [x] Schema drift acceptance test in domain layer
 
-### ✅ v48 — Suggest Batch + Conflict Detection
+### ✅ v0.48 — Suggest Batch + Conflict Detection
 **Effort:** M
 
 - [x] `arx suggest --all` applies ALL fixes with smart conflict detection
@@ -275,7 +275,7 @@
 - [x] Fix preview with `--dry-run`
 - [x] Integration with `arx explain` for each fix
 
-### ✅ v49 — Dashboard Real-Time (SSE)
+### ✅ v0.49 — Dashboard Real-Time (SSE)
 **Effort:** M
 
 - [x] Replace 5 polling fetch() calls with single EventSource (SSE) connection
@@ -287,7 +287,7 @@
 - [x] Graceful fallback to polling when EventSource unavailable
 - [x] Auto-reconnect (native EventSource behavior)
 
-### ✅ v50 — Ultimate Quality Pass
+### ✅ v0.50 — Ultimate Quality Pass
 **Effort:** L
 
 - [x] 100% test coverage in all core packages (`internal/domain`, `internal/application`)
@@ -297,14 +297,14 @@
 - [x] All dogfooding violations in arx's own codebase fixed
 - [x] Documentation audit: every feature reference in README
 - [x] Security audit: .gitignore coverage, 0700 permissions on .arx-cache
-- [x] Final v50.0 release — the most polished version of arx
+- [x] Final v0.50.0 release — the most polished version of arx
 - [x] Fuzz seed corpora for all 13 fuzz functions (hand-crafted from real fixtures)
 
 ---
 
-## 🔜 v51 — v60 Roadmap (Next Generation)
+## 🔜 v0.51 — v0.60 Roadmap (Next Generation)
 
-### 🔲 v51 — Plugin System & Custom Detectors
+### 🔲 v0.51 — Plugin System & Custom Detectors
 **Priority:** High | **Effort:** XL | **Target:** v51.0
 
 **Problem:** arx supports 10 languages out of the box, but every codebase has unique technology choices. Users working with Dart, Elixir, Scala, or internal DSLs cannot benefit from architecture validation.
@@ -335,7 +335,7 @@
 
 ---
 
-### 🔲 v52 — GitHub Integration & PR Review
+### 🔲 v0.52 — GitHub Integration & PR Review
 **Priority:** High | **Effort:** XL | **Target:** v52.0
 
 **Problem:** Architecture violations discovered post-merge are too late. The highest-leverage intervention point is the pull request — before bad patterns propagate.
@@ -361,7 +361,7 @@
 
 ---
 
-### 🔲 v53 — arx LSP (Language Server Protocol)
+### 🔲 v0.53 — arx LSP (Language Server Protocol)
 **Priority:** Medium | **Effort:** L | **Target:** v53.0
 
 **Problem:** Users discover violations only when they remember to run `arx check`. Real-time feedback while editing is orders of magnitude more valuable for enforcing architectural discipline.
@@ -388,7 +388,7 @@
 
 ---
 
-### 🔲 v54 — Team Dashboard & Multi-User Mode
+### 🔲 v0.54 — Team Dashboard & Multi-User Mode
 **Priority:** Medium | **Effort:** L | **Target:** v54.0
 
 **Problem:** The dashboard is single-user. Teams share a codebase but have no shared view of architectural health, no audit trail of who suppressed what, and no notification system when violations regress.
@@ -416,7 +416,7 @@
 
 ---
 
-### 🔲 v55 — Policy as Code & WASM Rules
+### 🔲 v0.55 — Policy as Code & WASM Rules
 **Priority:** Low | **Effort:** XL | **Target:** v55.0
 
 **Problem:** YAML-configured rules cover common patterns (cannot-depend, must-depend, circular) but complex organizational policies require arbitrary logic — cross-cutting concerns, data flow validation, custom metrics.
@@ -455,7 +455,7 @@
 
 ---
 
-### 🔲 v56 — Config Migration & Versioning
+### 🔲 v0.56 — Config Migration & Versioning
 **Priority:** Medium | **Effort:** M | **Target:** v56.0
 
 **Problem:** As arx evolves, config schema changes. Users with existing configs need a safe, automated migration path — not manual diffs.
@@ -484,7 +484,7 @@
 
 ---
 
-### 🔲 v57 — Performance v2: Parallelism & Profiling
+### 🔲 v0.57 — Performance v2: Parallelism & Profiling
 **Priority:** Medium | **Effort:** M | **Target:** v57.0
 
 **Problem:** v45 fixed the concurrency model (no more errgroup cancellation) but didn't optimize parallel execution granularity. Large monorepos still bottleneck on sequential detector phases.
@@ -510,7 +510,7 @@
 
 ---
 
-### 🔲 v58 — Architecture Reports & Visualizations
+### 🔲 v0.58 — Architecture Reports & Visualizations
 **Priority:** Low | **Effort:** M | **Target:** v58.0
 
 **Problem:** The dashboard and CLI provide raw violation data but not actionable, shareable architecture reports that teams can discuss in meetings or attach to RFCs.
@@ -539,7 +539,7 @@
 
 ---
 
-### 🔲 v59 — GraphQL API & Integrations
+### 🔲 v0.59 — GraphQL API & Integrations
 **Priority:** Low | **Effort:** XL | **Target:** v59.0
 
 **Problem:** The REST API is simple but forces clients to fetch multiple endpoints and over-fetch data. Integrations (CI/CD, dashboards, bots) need a flexible query interface.
@@ -567,7 +567,7 @@
 
 ---
 
-### 🔲 v60 — Editor Ecosystem: VS Code & JetBrains Plugins
+### 🔲 v0.60 — Editor Ecosystem: VS Code & JetBrains Plugins
 **Priority:** Medium | **Effort:** XL | **Target:** v60.0
 
 **Problem:** The LSP (v53) provides language-agnostic editor support, but native plugins offer deeper integration: gutter icons, project views, configuration UI, and one-click installation.

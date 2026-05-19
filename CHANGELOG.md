@@ -5,13 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v50.0] - 2026-05-19
+## [v0.50.0] - 2026-05-19
 
 ### Added
 - Fuzz seed corpora for all 13 fuzz functions (expression, 10 languages, config)
 - Flaky test detection: `go test -count=5 -race` CI gate for core packages
 - Benchstat hard fail: >5% regression on DetectionPipeline_10k blocks CI
-- `docs/roadmap.md` updated for v40-v50 including v50.0 completion
+- `docs/roadmap.md` updated for v0.40-v0.50 including v0.50.0 completion
 
 ### Changed
 - Domain coverage: 88.5% → 89.9% (config.go Validate: 71% → 90%, template.go checkParamType: 76% → 91%, toInt: 50% → 100%)
