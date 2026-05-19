@@ -47,3 +47,4 @@ temp/
 .env
 .env.local
 .arx-cache/
+/sdd/
