@@ -1,0 +1,96 @@
+# Arx Rule Test Example
+#
+# This file defines example test cases for the arx rule testing framework.
+# Each test case specifies a fixture (existing project directory), a rule to
+# verify, and expectations about the violations that should be produced.
+#
+# The test runner loads the fixture's arx.yaml, detects dependencies,
+# evaluates rules, and compares results against the expectations.
+#
+# Match modes (at least one must be set per test case):
+#   violations: int     — expected EXACT count of violations
+#   files: [string]     — glob patterns matching violation file paths
+#   layers: [{source,target}] — expected source/target layer combinations
+#   patterns: [string]  — regex patterns matching violation messages
+#
+# All specified expectation fields are AND-ed together (all must pass).
+
+tests:
+  # ── Count matching ─────────────────────────────────────────────
+  # Verify that a specific rule produces an exact number of violations.
+
+  - name: "domain-cannot-depend-on-infra count"
+    fixture: "test/fixtures/go-project"
+    rule: "domain-cannot-depend-on-infrastructure"
+    expect:
+      violations: 1
+
+  - name: "application-must-depend-on-domain count"
+    fixture: "test/fixtures/go-project"
+    rule: "application-must-depend-on-domain"
+    expect:
+      violations: 0
+      # application/order_service.go imports domain/order.go — this satisfies
+      # the "must depend on domain" rule, so 0 violations expected.
+
+  - name: "application-cannot-depend-on-infra count"
+    fixture: "test/fixtures/go-project"
+    rule: "application-cannot-depend-on-infrastructure"
+    expect:
+      violations: 0
+      # application/order_service.go only imports domain, not infra.
+      # 0 violations expected for this rule.
+
+  - name: "no-circular-dependencies count"
+    fixture: "test/fixtures/go-project"
+    rule: "no-circular-dependencies"
+    expect:
+      violations: 1
+      # The default circular rule detects domain → infrastructure → domain cycle.
+
+  # ── File matching ───────────────────────────────────────────────
+  # Verify that violations occur in specific files.
+
+  - name: "domain violation file match"
+    fixture: "test/fixtures/go-project"
+    rule: "domain-cannot-depend-on-infrastructure"
+    expect:
+      files:
+        - "internal/domain/**"
+
+  # ── Layer matching ──────────────────────────────────────────────
+  # Verify violations involve specific source→target layer pairs.
+
+  - name: "domain-to-infra layer match"
+    fixture: "test/fixtures/go-project"
+    rule: "domain-cannot-depend-on-infrastructure"
+    expect:
+      layers:
+        - source: "domain"
+          target: "infrastructure"
+
+  # ── Pattern matching ────────────────────────────────────────────
+  # Verify violation messages match regex patterns.
+
+  - name: "violation message pattern match"
+    fixture: "test/fixtures/go-project"
+    rule: "domain-cannot-depend-on-infrastructure"
+    expect:
+      patterns:
+        - "business logic"
+
+  # ── Combined expectations (AND) ─────────────────────────────────
+  # All fields must be satisfied simultaneously.
+
+  - name: "combined expectations"
+    fixture: "test/fixtures/go-project"
+    rule: "domain-cannot-depend-on-infrastructure"
+    expect:
+      violations: 1
+      files:
+        - "internal/domain/**"
+      layers:
+        - source: "domain"
+          target: "infrastructure"
+      patterns:
+        - "business logic"

@@ -203,14 +203,24 @@
 - [x] Arrow highlighting on hover
 - [x] 9 new tests, TDD flow, zero Go backend changes
 
-### v0.43 — Rule Testing Framework
+### ✅ v0.43 — Rule Testing Framework
 **Effort:** L
 
-- `arx test` command — test rules against fixtures
-- YAML-based test definitions: `given violations, expect result`
-- Built-in test fixtures for common architecture patterns
-- CI integration: `arx test --ci` with JUnit output
-- Examples in docs for writing custom rule tests
+- [x] `arx test` command — test rules against fixtures
+- [x] YAML-based test definitions: `given violations, expect result`
+- [x] Built-in test fixtures for common architecture patterns
+- [x] CI integration: `arx test --ci` with JUnit output
+- [x] Examples in docs for writing custom rule tests
+- [x] Domain types: TestSuite, TestCase, Expectation, MatchMode
+- [x] ViolationMatcher: Count, Files, Layers, Patterns (AND logic)
+- [x] Expectation matching via EvalSuite
+- [x] RuleTestRunner with config reader + detection pipeline
+- [x] YAML parser with validation (no duplicates, required fields)
+- [x] Table output reporter (human-readable, --verbose)
+- [x] JUnit XML reporter (CI-ready)
+- [x] Application service orchestrating parse → run → report
+- [x] Rule-based violation filtering per test case
+- [x] Strict TDD: 40+ tests across all layers (unit + integration)
 
 ### v0.44 — Multi-Project / Workspace Mode
 **Effort:** L
