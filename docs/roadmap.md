@@ -222,14 +222,20 @@
 - [x] Rule-based violation filtering per test case
 - [x] Strict TDD: 40+ tests across all layers (unit + integration)
 
-### v0.44 — Multi-Project / Workspace Mode
+### ✅ v0.44 — Multi-Project / Workspace Mode
 **Effort:** L
 
-- `arx workspace` — run check across multiple sub-projects
-- Shared config with per-project overrides
-- Aggregated violation reports across the workspace
-- `arx.yaml` workspace discovery (globs, monorepo layout)
-- GitHub Action supports workspace mode
+- [x] `arx workspace` — run check across multiple sub-projects
+- [x] Shared config with per-project overrides (shallow merge)
+- [x] Aggregated violation reports across the workspace
+- [x] `arx.yaml` workspace discovery (globs, monorepo layout)
+- [x] Glob-based project discovery with duplicate dedup
+- [x] Terminal table output (PASS/FAIL per project)
+- [x] JSON output (`--json` flag, `--output` file)
+- [x] Error isolation (one failing project doesn't block others)
+- [x] WorkspaceConfig domain types with validation
+- [x] WorkspaceService orchestration layer
+- [x] Strict TDD: 30+ tests across domain, application, output, CLI
 
 ### v0.45 — Performance Pass
 **Effort:** M

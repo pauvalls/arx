@@ -46,6 +46,7 @@ type Config struct {
 	SeverityMapping map[string]string           `json:"severity_mapping,omitempty" yaml:"severity_mapping,omitempty"`
 	Functions      map[string]string            `json:"functions,omitempty" yaml:"functions,omitempty"`
 	CrossLanguage  *CrossLanguageConfig         `json:"cross_language,omitempty" yaml:"cross_language,omitempty"`
+	Workspace      *WorkspaceConfig             `json:"workspace,omitempty" yaml:"workspace,omitempty"`
 
 	userFunctions map[string]Expr `json:"-" yaml:"-"`
 }
