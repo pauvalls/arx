@@ -5,11 +5,11 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/pauvalls/arx/internal/application"
+	"github.com/pauvalls/arx/internal/ports"
 )
 
 // GenerateMermaid creates a Mermaid flowchart representation of the dependency graph
-func GenerateMermaid(result *application.DiagramResult) string {
+func GenerateMermaid(data ports.DiagramData) string {
 	var sb strings.Builder
 
 	sb.WriteString("flowchart TD\n")
@@ -17,8 +17,8 @@ func GenerateMermaid(result *application.DiagramResult) string {
 
 	// Build layer dependency counts
 	layerDeps := make(map[string]map[string]int)
-	for _, dep := range result.Dependencies {
-		sourceLayer := resolveLayer(dep.SourceFile, result.Layers)
+	for _, dep := range data.Dependencies {
+		sourceLayer := resolveLayer(dep.SourceFile, data.Layers)
 		targetLayer := dep.ResolvedLayer
 		if sourceLayer != "" && targetLayer != "" && sourceLayer != targetLayer {
 			if layerDeps[sourceLayer] == nil {
@@ -30,14 +30,14 @@ func GenerateMermaid(result *application.DiagramResult) string {
 
 	// Build violation lookup
 	violationSet := make(map[string]bool)
-	for _, v := range result.Violations {
+	for _, v := range data.Violations {
 		key := fmt.Sprintf("%s->%s", v.SourceLayer, v.TargetLayer)
 		violationSet[key] = true
 	}
 
 	// Sort layer names for consistent output
-	layerNames := make([]string, 0, len(result.Layers))
-	for _, layer := range result.Layers {
+	layerNames := make([]string, 0, len(data.Layers))
+	for _, layer := range data.Layers {
 		layerNames = append(layerNames, layer.Name)
 	}
 	sort.Strings(layerNames)

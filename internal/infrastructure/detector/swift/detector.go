@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/pauvalls/arx/internal/domain"
-	"github.com/pauvalls/arx/internal/infrastructure/detector/shared"
+	"github.com/pauvalls/arx/internal/ports"
 )
 
 // SwiftDetector implements dependency extraction for Swift projects
@@ -204,7 +204,7 @@ func (d *SwiftDetector) resolveImport(importPath, filePath, projectRoot string, 
 
 		// Also try matching against layer paths directly using our custom matcher
 		for _, layerPath := range layer.Paths {
-			if shared.MatchImportToLayer(importPath, layerPath) {
+			if ports.MatchImportToLayer(importPath, layerPath) {
 				return name
 			}
 		}

@@ -11,6 +11,10 @@ func FuzzJavaParse(f *testing.F) {
 	f.Add([]byte("import java.util.List;"))
 	f.Add([]byte("import static java.lang.Math.PI;"))
 	f.Add([]byte("package com.example;"))
+	f.Add([]byte("import java.util.*;\nimport java.io.*;\nimport java.net.*;"))
+	f.Add([]byte("package com.example.service;\nimport com.example.model.User;"))
+	f.Add([]byte("import java.util.concurrent.CompletableFuture;\nimport static java.util.concurrent.CompletableFuture.supplyAsync;"))
+	f.Add([]byte("import java.util.List;\nimport java.util.ArrayList;\nimport java.util.Optional;"))
 
 	f.Fuzz(func(t *testing.T, data []byte) {
 		tmpDir := t.TempDir()

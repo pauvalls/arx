@@ -9,6 +9,7 @@ import (
 	"github.com/pauvalls/arx/internal/infrastructure/config"
 	"github.com/pauvalls/arx/internal/infrastructure/detector"
 	"github.com/pauvalls/arx/internal/infrastructure/output"
+	"github.com/pauvalls/arx/internal/ports"
 	"github.com/spf13/cobra"
 )
 
@@ -103,14 +104,20 @@ func runDiagram(cmd *cobra.Command, args []string) error {
 	}
 
 	// Format output
+	// Convert to ports.DiagramData to avoid circular dependency (infrastructure → application)
+	diagramData := ports.DiagramData{
+		Layers:       result.Layers,
+		Dependencies: result.Dependencies,
+		Violations:   result.Violations,
+	}
 	var outputContent string
 	switch diagramFormat {
 	case "ascii":
-		outputContent = output.GenerateASCII(result)
+		outputContent = output.GenerateASCII(diagramData)
 	case "dot":
-		outputContent = output.GenerateDOT(result)
+		outputContent = output.GenerateDOT(diagramData)
 	case "mermaid":
-		outputContent = output.GenerateMermaid(result)
+		outputContent = output.GenerateMermaid(diagramData)
 	}
 
 	// Write output

@@ -248,6 +248,12 @@ func FuzzTypeScriptDetector(f *testing.F) {
 		"import express from 'express';\n",
 		"const fs = require('fs');\n",
 		"import './styles.css';\n",
+		"import * as d3 from 'd3';\n",
+		"import React, { useState, useEffect } from 'react';\n",
+		"import type { User } from './types';\n",
+		"export { User } from './user';\n",
+		"const { merge } = require('./utils/helpers');\n",
+		"const lodash = await import('lodash');\n",
 	}
 	for _, s := range seeds {
 		f.Add(s)

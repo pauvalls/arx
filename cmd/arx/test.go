@@ -8,7 +8,7 @@ import (
 
 	"github.com/pauvalls/arx/internal/application"
 	"github.com/pauvalls/arx/internal/domain"
-	"github.com/pauvalls/arx/internal/domain/ruletest"
+	"github.com/pauvalls/arx/internal/ruletest"
 	"github.com/pauvalls/arx/internal/infrastructure/config"
 	"github.com/pauvalls/arx/internal/infrastructure/detector"
 	infraruletest "github.com/pauvalls/arx/internal/infrastructure/ruletest"

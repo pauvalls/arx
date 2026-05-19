@@ -4,20 +4,20 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/pauvalls/arx/internal/application"
 	"github.com/pauvalls/arx/internal/domain"
+	"github.com/pauvalls/arx/internal/ports"
 )
 
 func TestGenerateMermaid(t *testing.T) {
 	tests := []struct {
 		name           string
-		result         *application.DiagramResult
+		result         ports.DiagramData
 		wantContains   []string
 		wantNotContain []string
 	}{
 		{
 			name: "empty result",
-			result: &application.DiagramResult{
+			result: ports.DiagramData{
 				Layers:     []domain.Layer{},
 				Dependencies: []domain.Dependency{},
 				Violations: []domain.Violation{},
@@ -26,7 +26,7 @@ func TestGenerateMermaid(t *testing.T) {
 		},
 		{
 			name: "single layer no dependencies",
-			result: &application.DiagramResult{
+			result: ports.DiagramData{
 				Layers: []domain.Layer{
 					{Name: "domain", Paths: []string{"domain/"}},
 				},
@@ -41,7 +41,7 @@ func TestGenerateMermaid(t *testing.T) {
 		},
 		{
 			name: "multiple layers with dependencies",
-			result: &application.DiagramResult{
+			result: ports.DiagramData{
 				Layers: []domain.Layer{
 					{Name: "domain", Paths: []string{"domain/"}},
 					{Name: "application", Paths: []string{"application/"}},
@@ -65,7 +65,7 @@ func TestGenerateMermaid(t *testing.T) {
 		},
 		{
 			name: "dependencies with violations",
-			result: &application.DiagramResult{
+			result: ports.DiagramData{
 				Layers: []domain.Layer{
 					{Name: "domain", Paths: []string{"domain/"}},
 					{Name: "application", Paths: []string{"application/"}},
@@ -95,7 +95,7 @@ func TestGenerateMermaid(t *testing.T) {
 		},
 		{
 			name: "multiple dependencies between same layers",
-			result: &application.DiagramResult{
+			result: ports.DiagramData{
 				Layers: []domain.Layer{
 					{Name: "domain", Paths: []string{"domain/"}},
 					{Name: "application", Paths: []string{"application/"}},
@@ -128,7 +128,7 @@ func TestGenerateMermaid(t *testing.T) {
 		},
 		{
 			name: "layer names with special characters",
-			result: &application.DiagramResult{
+			result: ports.DiagramData{
 				Layers: []domain.Layer{
 					{Name: "my-domain", Paths: []string{"my-domain/"}},
 					{Name: "my_app", Paths: []string{"my_app/"}},
@@ -171,7 +171,7 @@ func TestGenerateMermaid(t *testing.T) {
 }
 
 func TestGenerateMermaidColorCoding(t *testing.T) {
-	result := &application.DiagramResult{
+	result := ports.DiagramData{
 		Layers: []domain.Layer{
 			{Name: "domain", Paths: []string{"domain/"}},
 			{Name: "application", Paths: []string{"application/"}},
@@ -196,7 +196,7 @@ func TestGenerateMermaidColorCoding(t *testing.T) {
 }
 
 func TestGenerateMermaidSubgraphStructure(t *testing.T) {
-	result := &application.DiagramResult{
+	result := ports.DiagramData{
 		Layers: []domain.Layer{
 			{Name: "domain", Paths: []string{"domain/"}},
 			{Name: "application", Paths: []string{"application/"}},

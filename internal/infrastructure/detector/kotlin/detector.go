@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/pauvalls/arx/internal/domain"
-	"github.com/pauvalls/arx/internal/infrastructure/detector/shared"
+	"github.com/pauvalls/arx/internal/ports"
 )
 
 // KotlinDetector implements dependency extraction for Kotlin projects (Gradle Kotlin DSL, Maven)
@@ -250,7 +250,7 @@ func (d *KotlinDetector) resolveImport(importPath, filePath, projectRoot string,
 
 		// Also try matching against layer paths directly using our custom matcher
 		for _, layerPath := range layer.Paths {
-			if shared.MatchImportToLayer(importAsPath, layerPath) {
+			if ports.MatchImportToLayer(importAsPath, layerPath) {
 				return name
 			}
 		}

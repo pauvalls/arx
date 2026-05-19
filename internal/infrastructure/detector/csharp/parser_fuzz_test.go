@@ -11,6 +11,10 @@ func FuzzCSharpParse(f *testing.F) {
 	f.Add([]byte("using System;"))
 	f.Add([]byte("using static System.Math;"))
 	f.Add([]byte("using Alias = Namespace.Class;"))
+	f.Add([]byte("using System;\nusing System.Collections.Generic;\nusing System.Linq;"))
+	f.Add([]byte("using System.Threading.Tasks;"))
+	f.Add([]byte("#nullable enable\nusing System;\nusing System.Collections.Immutable;"))
+	f.Add([]byte("using A = System.Collections.ArrayList;\nusing B = System.Collections.Hashtable;"))
 
 	f.Fuzz(func(t *testing.T, data []byte) {
 		tmpDir := t.TempDir()

@@ -49,7 +49,10 @@ arx baseline
 | **[Expression Rules](docs/expression-rules.md)** | Expression DSL — builtins, filter/map, user functions |
 | **[Cross-Language](docs/cross-language.md)** | Detect proto→generated code, OpenAPI→client |
 | **[Suggest & Explain](docs/suggest.md)** | Auto-fix suggestions and violation explanations |
-| **[Roadmap](docs/roadmap.md)** | Full release history v0.1.0 → v0.33.0 |
+| **[Rule Testing](docs/roadmap.md#v043--rule-testing-framework)** | `arx test` — test rules against YAML fixtures |
+| **[Workspace Mode](docs/roadmap.md#v044--multi-project--workspace-mode)** | `arx workspace` — multi-project architecture audit |
+| **[Dashboard / SSE](docs/roadmap.md#v049--dashboard-real-time-sse)** | Real-time dashboard with Server-Sent Events |
+| **[Roadmap](docs/roadmap.md)** | Full release history v0.1.0 → v50.0 |
 
 ## Commands
 

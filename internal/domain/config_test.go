@@ -1029,3 +1029,359 @@ func TestConfig_SchemaField_OmittedWhenEmpty(t *testing.T) {
 		t.Errorf("YAML output should not contain $schema when empty:\n%s", string(data))
 	}
 }
+
+// ─── Cross-Language Validation ───────────────────────────────────────────────
+
+func TestConfig_Validate_CrossLanguage_EmptySourcePattern(t *testing.T) {
+	config := Config{
+		Version: "1.0.0",
+		Layers:  []Layer{{Name: "domain", Paths: []string{"internal/domain"}}},
+		Rules:   []Rule{},
+		CrossLanguage: &CrossLanguageConfig{
+			Mappings: []CrossLanguageMapping{
+				{
+					SourcePattern:     "",
+					GeneratedPattern:  "**/generated/*.go",
+					GeneratedLanguage: "go",
+				},
+			},
+		},
+	}
+	err := config.Validate()
+	if err == nil {
+		t.Fatal("expected error for empty source_pattern")
+	}
+	if !strings.Contains(err.Error(), "source_pattern is required") {
+		t.Errorf("error = %q, want to contain 'source_pattern is required'", err.Error())
+	}
+}
+
+func TestConfig_Validate_CrossLanguage_EmptyGeneratedPattern(t *testing.T) {
+	config := Config{
+		Version: "1.0.0",
+		Layers:  []Layer{{Name: "domain", Paths: []string{"internal/domain"}}},
+		Rules:   []Rule{},
+		CrossLanguage: &CrossLanguageConfig{
+			Mappings: []CrossLanguageMapping{
+				{
+					SourcePattern:     "**/*.proto",
+					GeneratedPattern:  "",
+					GeneratedLanguage: "go",
+				},
+			},
+		},
+	}
+	err := config.Validate()
+	if err == nil {
+		t.Fatal("expected error for empty generated_pattern")
+	}
+	if !strings.Contains(err.Error(), "generated_pattern is required") {
+		t.Errorf("error = %q, want to contain 'generated_pattern is required'", err.Error())
+	}
+}
+
+func TestConfig_Validate_CrossLanguage_EmptyLanguage(t *testing.T) {
+	config := Config{
+		Version: "1.0.0",
+		Layers:  []Layer{{Name: "domain", Paths: []string{"internal/domain"}}},
+		Rules:   []Rule{},
+		CrossLanguage: &CrossLanguageConfig{
+			Mappings: []CrossLanguageMapping{
+				{
+					SourcePattern:     "**/*.proto",
+					GeneratedPattern:  "**/generated/*.go",
+					GeneratedLanguage: "",
+				},
+			},
+		},
+	}
+	err := config.Validate()
+	if err == nil {
+		t.Fatal("expected error for empty language")
+	}
+	if !strings.Contains(err.Error(), "language is required") {
+		t.Errorf("error = %q, want to contain 'language is required'", err.Error())
+	}
+}
+
+func TestConfig_Validate_CrossLanguage_InvalidMatchStrategy(t *testing.T) {
+	config := Config{
+		Version: "1.0.0",
+		Layers:  []Layer{{Name: "domain", Paths: []string{"internal/domain"}}},
+		Rules:   []Rule{},
+		CrossLanguage: &CrossLanguageConfig{
+			Mappings: []CrossLanguageMapping{
+				{
+					SourcePattern:     "**/*.proto",
+					GeneratedPattern:  "**/generated/*.go",
+					GeneratedLanguage: "go",
+					MatchStrategy:     "invalid",
+				},
+			},
+		},
+	}
+	err := config.Validate()
+	if err == nil {
+		t.Fatal("expected error for invalid match_strategy")
+	}
+	if !strings.Contains(err.Error(), "match_strategy must be 'stem' or 'glob'") {
+		t.Errorf("error = %q, want to contain valid strategy message", err.Error())
+	}
+}
+
+// ─── Check Expression Field Conflicts ────────────────────────────────────────
+
+func TestConfig_Validate_CheckExpressionWithFrom(t *testing.T) {
+	config := Config{
+		Version: "1.0.0",
+		Layers:  []Layer{{Name: "domain", Paths: []string{"internal/domain"}}},
+		Rules: []Rule{
+			{
+				ID:   "R1",
+				From: "domain",
+				Check: CheckExpr{
+					Raw: "count(deps(domain, infra)) > 0",
+				},
+				Severity: SeverityError,
+			},
+		},
+	}
+	err := config.Validate()
+	if err == nil {
+		t.Fatal("expected error for check expression with 'from'")
+	}
+	if !strings.Contains(err.Error(), "'check' expression rules cannot have 'from' field") {
+		t.Errorf("error = %q, want to contain check+from conflict", err.Error())
+	}
+}
+
+func TestConfig_Validate_CheckExpressionWithTo(t *testing.T) {
+	config := Config{
+		Version: "1.0.0",
+		Layers:  []Layer{{Name: "domain", Paths: []string{"internal/domain"}}},
+		Rules: []Rule{
+			{
+				ID: "R1",
+				To: []string{"infrastructure"},
+				Check: CheckExpr{
+					Raw: "count(deps(domain, infra)) > 0",
+				},
+				Severity: SeverityError,
+			},
+		},
+	}
+	err := config.Validate()
+	if err == nil {
+		t.Fatal("expected error for check expression with 'to'")
+	}
+	if !strings.Contains(err.Error(), "'check' expression rules cannot have 'to' field") {
+		t.Errorf("error = %q, want to contain check+to conflict", err.Error())
+	}
+}
+
+func TestConfig_Validate_CheckExpressionWithTemplate(t *testing.T) {
+	config := Config{
+		Version: "1.0.0",
+		Layers:  []Layer{{Name: "domain", Paths: []string{"internal/domain"}}},
+		Rules: []Rule{
+			{
+				ID:       "R1",
+				Template: "max-deps",
+				Check: CheckExpr{
+					Raw: "count(deps(domain, infra)) > 0",
+				},
+				Severity: SeverityError,
+			},
+		},
+	}
+	err := config.Validate()
+	if err == nil {
+		t.Fatal("expected error for check expression with 'template'")
+	}
+	if !strings.Contains(err.Error(), "'check' expression rules cannot have 'template' field") {
+		t.Errorf("error = %q, want to contain check+template conflict", err.Error())
+	}
+}
+
+func TestConfig_Validate_CheckExpressionWithPattern(t *testing.T) {
+	config := Config{
+		Version: "1.0.0",
+		Layers:  []Layer{{Name: "domain", Paths: []string{"internal/domain"}}},
+		Rules: []Rule{
+			{
+				ID:      "R1",
+				Pattern: `.*`,
+				Check: CheckExpr{
+					Raw: "count(deps(domain, infra)) > 0",
+				},
+				Severity: SeverityError,
+			},
+		},
+	}
+	err := config.Validate()
+	if err == nil {
+		t.Fatal("expected error for check expression with 'pattern'")
+	}
+	if !strings.Contains(err.Error(), "'check' expression rules cannot have 'pattern' field") {
+		t.Errorf("error = %q, want to contain check+pattern conflict", err.Error())
+	}
+}
+
+// ─── Function Compilation Errors ─────────────────────────────────────────────
+
+func TestConfig_Validate_FunctionInvalidIdentifier(t *testing.T) {
+	config := Config{
+		Version: "1.0.0",
+		Layers:  []Layer{{Name: "domain", Paths: []string{"internal/domain"}}},
+		Rules:   []Rule{},
+		Functions: map[string]string{
+			"invalid-name!": "count(deps(domain, infra))",
+		},
+	}
+	err := config.Validate()
+	if err == nil {
+		t.Fatal("expected error for invalid function identifier")
+	}
+	if !strings.Contains(err.Error(), "invalid identifier") {
+		t.Errorf("error = %q, want to contain 'invalid identifier'", err.Error())
+	}
+}
+
+func TestConfig_Validate_FunctionBuiltinShadow(t *testing.T) {
+	config := Config{
+		Version: "1.0.0",
+		Layers:  []Layer{{Name: "domain", Paths: []string{"internal/domain"}}},
+		Rules:   []Rule{},
+		Functions: map[string]string{
+			"count": "count(deps(domain, infra))",
+		},
+	}
+	err := config.Validate()
+	if err == nil {
+		t.Fatal("expected error for shadowing builtin")
+	}
+	if !strings.Contains(err.Error(), "cannot shadow builtin") {
+		t.Errorf("error = %q, want to contain 'cannot shadow builtin'", err.Error())
+	}
+}
+
+func TestConfig_Validate_FunctionParseError(t *testing.T) {
+	config := Config{
+		Version: "1.0.0",
+		Layers:  []Layer{{Name: "domain", Paths: []string{"internal/domain"}}},
+		Rules:   []Rule{},
+		Functions: map[string]string{
+			"myfunc": "count(deps(domain, infra) > ", // invalid expression (unclosed paren)
+		},
+	}
+	err := config.Validate()
+	if err == nil {
+		t.Fatal("expected error for function parse error")
+	}
+}
+
+func TestConfig_Validate_FunctionCycleDetection(t *testing.T) {
+	config := Config{
+		Version: "1.0.0",
+		Layers:  []Layer{{Name: "domain", Paths: []string{"internal/domain"}}},
+		Rules:   []Rule{},
+		Functions: map[string]string{
+			"a": "b()",
+			"b": "a()",
+		},
+	}
+	err := config.Validate()
+	if err == nil {
+		t.Fatal("expected error for circular function reference")
+	}
+	if !strings.Contains(err.Error(), "circular reference") {
+		t.Errorf("error = %q, want to contain 'circular reference'", err.Error())
+	}
+}
+
+// ─── validateTemplateLayerRefs Edge Cases ────────────────────────────────────
+
+func TestConfig_Validate_TemplateRefsNonStringInSlice(t *testing.T) {
+	config := Config{
+		Version: "1.0.0",
+		Layers: []Layer{
+			{Name: "domain", Paths: []string{"internal/domain"}},
+		},
+		Rules: []Rule{
+			{
+				ID:       "T1",
+				Template: "max-deps",
+				Severity: SeverityError,
+				Params: map[string]interface{}{
+					"from": "domain",
+					"to":   []interface{}{"infrastructure", 42},
+					"max":  3,
+				},
+			},
+		},
+	}
+	// Should fail because ValidateTemplateParams catches the invalid type first
+	err := config.Validate()
+	if err == nil {
+		t.Fatal("expected error for non-string element in to slice")
+	}
+	// The error comes from ValidateTemplateParams not validateTemplateLayerRefs
+	// because 42 is not a string in the []interface{} slice
+}
+
+func TestConfig_Validate_NoLeakWithEmptyForbidden(t *testing.T) {
+	config := Config{
+		Version: "1.0.0",
+		Layers: []Layer{
+			{Name: "domain", Paths: []string{"internal/domain"}},
+			{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
+		},
+		Rules: []Rule{
+			{
+				ID:       "T1",
+				Template: "no-leak",
+				Severity: SeverityError,
+				Params: map[string]interface{}{
+					"layer":     "domain",
+					"forbidden": []interface{}{"infrastructure", "nonexistent"},
+				},
+			},
+		},
+	}
+	err := config.Validate()
+	if err == nil {
+		t.Fatal("expected error for unknown layer in forbidden")
+	}
+	if !strings.Contains(err.Error(), "template param \"forbidden\"") {
+		t.Errorf("error = %q, want to contain 'template param'", err.Error())
+	}
+}
+
+func TestConfig_Validate_MaxDepsWithUnknownToLayer(t *testing.T) {
+	config := Config{
+		Version: "1.0.0",
+		Layers: []Layer{
+			{Name: "domain", Paths: []string{"internal/domain"}},
+		},
+		Rules: []Rule{
+			{
+				ID:       "T1",
+				Template: "max-deps",
+				Severity: SeverityError,
+				Params: map[string]interface{}{
+					"from": "domain",
+					"to":   []string{"nonexistent"},
+					"max":  3,
+				},
+			},
+		},
+	}
+	err := config.Validate()
+	if err == nil {
+		t.Fatal("expected error for unknown layer in to ([]string)")
+	}
+	// Now to is []string, and validateTemplateLayerRefs should catch it
+	if !strings.Contains(err.Error(), "references unknown layer") {
+		t.Errorf("error = %q, want to contain 'references unknown layer'", err.Error())
+	}
+}

@@ -6,8 +6,8 @@ import (
 	"os"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/pauvalls/arx/internal/application"
 	"github.com/pauvalls/arx/internal/domain"
+	"github.com/pauvalls/arx/internal/ports"
 )
 
 // DiffRenderer renders a DiffResult to the terminal with color-coded output.
@@ -19,7 +19,7 @@ func NewDiffRenderer() *DiffRenderer {
 }
 
 // Render outputs the diff result with color-coded terminal formatting.
-func (r *DiffRenderer) Render(result application.DiffResult) {
+func (r *DiffRenderer) Render(result ports.DiffResultData) {
 	addedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true)     // Red
 	resolvedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("46")).Bold(true)    // Green
 	unchangedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))              // Dim gray
@@ -97,7 +97,7 @@ type DiffJSONOutput struct {
 }
 
 // RenderJSON outputs the diff result as JSON to stdout.
-func (r *DiffRenderer) RenderJSON(result application.DiffResult) error {
+func (r *DiffRenderer) RenderJSON(result ports.DiffResultData) error {
 	output := DiffJSONOutput{
 		RefBefore:     result.RefBefore,
 		RefAfter:      result.RefAfter,

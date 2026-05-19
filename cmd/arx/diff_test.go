@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/pauvalls/arx/internal/application"
 	"github.com/pauvalls/arx/internal/domain"
 	"github.com/pauvalls/arx/internal/infrastructure/output"
+	"github.com/pauvalls/arx/internal/ports"
 )
 
 func TestDiffCommand_DefaultRefs(t *testing.T) {
@@ -58,7 +58,7 @@ func TestDiffCommand_WrongArgs(t *testing.T) {
 }
 
 func TestDiffRenderer_Render(t *testing.T) {
-	result := application.DiffResult{
+	result := ports.DiffResultData{
 		RefBefore: "HEAD~1",
 		RefAfter:  "HEAD",
 		Added: []domain.Violation{
@@ -108,7 +108,7 @@ func TestDiffRenderer_Render(t *testing.T) {
 }
 
 func TestDiffRenderer_RenderJSON(t *testing.T) {
-	result := application.DiffResult{
+	result := ports.DiffResultData{
 		RefBefore:     "HEAD~1",
 		RefAfter:      "HEAD",
 		ConfigChanged: true,
@@ -167,7 +167,7 @@ func TestDiffRenderer_RenderJSON(t *testing.T) {
 }
 
 func TestDiffRenderer_RenderJSON_NoANSI(t *testing.T) {
-	result := application.DiffResult{
+	result := ports.DiffResultData{
 		RefBefore: "HEAD~1",
 		RefAfter:  "HEAD",
 		Added:     []domain.Violation{{RuleID: "R001"}},
@@ -195,7 +195,7 @@ func TestDiffRenderer_RenderJSON_NoANSI(t *testing.T) {
 }
 
 func TestDiffRenderer_EmptyDiff(t *testing.T) {
-	result := application.DiffResult{
+	result := ports.DiffResultData{
 		RefBefore: "HEAD~1",
 		RefAfter:  "HEAD",
 	}

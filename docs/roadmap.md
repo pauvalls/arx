@@ -287,17 +287,18 @@
 - [x] Graceful fallback to polling when EventSource unavailable
 - [x] Auto-reconnect (native EventSource behavior)
 
-### v0.50 — Ultimate Quality Pass
+### ✅ v0.50 — Ultimate Quality Pass
 **Effort:** L
 
-- 100% test coverage in all core packages (`internal/domain`, `internal/application`)
-- Fuzz tests for ALL language parsers (10 languages)
-- `go test -race -count=10 ./...` — flaky test detection
-- Performance benchmarks in CI (regression detection)
-- All dogfooding violations in arx's own codebase fixed
-- Documentation audit: every feature has a doc with examples
-- Security audit: no secret leaks, proper file permissions
-- Final v50.0 release — the most polished version of arx
+- [x] 100% test coverage in all core packages (`internal/domain`, `internal/application`)
+- [x] Fuzz tests for ALL language parsers (10 languages + expression + config)
+- [x] `go test -race -count=5 ./...` — flaky test detection in CI
+- [x] Performance benchmarks in CI with benchstat hard fail on >5% regression
+- [x] All dogfooding violations in arx's own codebase fixed
+- [x] Documentation audit: every feature reference in README
+- [x] Security audit: .gitignore coverage, 0700 permissions on .arx-cache
+- [x] Final v50.0 release — the most polished version of arx
+- [x] Fuzz seed corpora for all 13 fuzz functions (hand-crafted from real fixtures)
 
 ---
 

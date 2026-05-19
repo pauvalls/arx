@@ -5,7 +5,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/pauvalls/arx/internal/domain/ruletest"
+	"github.com/pauvalls/arx/internal/ruletest"
 )
 
 // TestParser defines the interface for parsing test definition files

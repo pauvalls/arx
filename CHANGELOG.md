@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v50.0] - 2026-05-19
+
+### Added
+- Fuzz seed corpora for all 13 fuzz functions (expression, 10 languages, config)
+- Flaky test detection: `go test -count=5 -race` CI gate for core packages
+- Benchstat hard fail: >5% regression on DetectionPipeline_10k blocks CI
+- `docs/roadmap.md` updated for v0.40-v0.50 including v50.0 completion
+
+### Changed
+- Domain coverage: 88.5% → 89.9% (config.go Validate: 71% → 90%, template.go checkParamType: 76% → 91%, toInt: 50% → 100%)
+- Application coverage: Phase 2 complete at 79.6% with diagram, importscan, suggest, diff, doctor tests
+- Dogfooding: all 5 C-01 circular dependency violations fixed (1 pre-existing masked remaining)
+- .arx-cache directory permissions hardened from 0755 to 0700
+- `.gitignore` now covers `.arx-backup/` and `.arx-baseline-history/`
+- README.md docs table updated with Rule Testing, Workspace Mode, Dashboard/SSE references
+- Makefile bench-compare target now hard-fails (>5% regression on DetectionPipeline_10k)
+- GitHub CI: added flaky test detection step with go test -count=5 -race
+- Benchstat regression checked with hard fail on >5% for DetectionPipeline_10k
+
+### Fixed
+- Security: .arx-cache now created with 0700 permissions instead of 0755
+- .gitignore now covers `.arx-backup/` and `.arx-baseline-history/`
+
+### Coverage
+- `internal/domain` config.go: Validate 89.8%, compileFunctions 97.7%, validateTemplateLayerRefs 88.9%
+- `internal/domain` template.go: checkParamType 90.5%, toInt 100%, toStrSlice 87.5%, resolveSourceLayer 100%
+- All existing fuzz tests supplemented with hand-crafted seeds from real fixture code
+
+---
+
 ## [v0.32.0] - 2026-05-18
 
 ### Added

@@ -4,7 +4,7 @@ import (
 	"encoding/xml"
 	"fmt"
 
-	"github.com/pauvalls/arx/internal/domain/ruletest"
+	"github.com/pauvalls/arx/internal/ruletest"
 )
 
 // JUnitTestSuites is the root element for JUnit XML output

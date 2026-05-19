@@ -11,6 +11,12 @@ func FuzzPythonDetector(f *testing.F) {
 		"from typing import List, Optional\n",
 		"from .models import User\nfrom ..utils import helper\n",
 		"import os\n\ndef test():\n    pass\n",
+		"import numpy as np\nimport pandas as pd\n",
+		"from collections import defaultdict, Counter\n",
+		"import json\nfrom pathlib import Path\nimport sys\nfrom datetime import datetime\n",
+		"import __future__\n",
+		"from __future__ import annotations\n",
+		"import os, sys, json\nfrom pathlib import Path as P\n",
 	}
 	for _, s := range seeds {
 		f.Add(s)

@@ -47,4 +47,6 @@ temp/
 .env
 .env.local
 .arx-cache/
+.arx-backup/
+.arx-baseline-history/
 /sdd/

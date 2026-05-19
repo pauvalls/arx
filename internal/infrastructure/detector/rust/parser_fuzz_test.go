@@ -11,6 +11,9 @@ func FuzzRustParse(f *testing.F) {
 	f.Add([]byte("use std::collections::HashMap;"))
 	f.Add([]byte("use crate::domain::Entity;"))
 	f.Add([]byte("pub use self::helper::format;"))
+	f.Add([]byte("use std::sync::{Arc, Mutex};\nuse std::sync::mpsc::{self, Sender};"))
+	f.Add([]byte("extern crate serde;\nuse serde::{Serialize, Deserialize};"))
+	f.Add([]byte("use super::*;\nuse self::inner::Helper;"))
 
 	f.Fuzz(func(t *testing.T, data []byte) {
 		tmpDir := t.TempDir()

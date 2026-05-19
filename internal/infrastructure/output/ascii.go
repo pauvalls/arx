@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/pauvalls/arx/internal/application"
+	"github.com/pauvalls/arx/internal/ports"
 )
 
 // GenerateASCII creates an ASCII art representation of the dependency graph
-func GenerateASCII(result *application.DiagramResult) string {
-	if len(result.Layers) == 0 {
+func GenerateASCII(data ports.DiagramData) string {
+	if len(data.Layers) == 0 {
 		return "No layers defined in configuration\n"
 	}
 
@@ -17,8 +17,8 @@ func GenerateASCII(result *application.DiagramResult) string {
 
 	// Build layer dependency summary
 	layerDeps := make(map[string]map[string]int)
-	for _, dep := range result.Dependencies {
-		sourceLayer := resolveLayer(dep.SourceFile, result.Layers)
+	for _, dep := range data.Dependencies {
+		sourceLayer := resolveLayer(dep.SourceFile, data.Layers)
 		targetLayer := dep.ResolvedLayer
 		if sourceLayer != "" && targetLayer != "" && sourceLayer != targetLayer {
 			if layerDeps[sourceLayer] == nil {
@@ -30,18 +30,18 @@ func GenerateASCII(result *application.DiagramResult) string {
 
 	// Build violation lookup
 	violationSet := make(map[string]bool)
-	for _, v := range result.Violations {
+	for _, v := range data.Violations {
 		key := fmt.Sprintf("%s->%s", v.SourceLayer, v.TargetLayer)
 		violationSet[key] = true
 	}
 
 	// Draw layer boxes with dependencies
-	for i, layer := range result.Layers {
+	for i, layer := range data.Layers {
 		// Draw layer box
 		sb.WriteString(drawLayerBox(layer.Name, layerDeps[layer.Name], violationSet))
 
 		// Draw dependency arrows to next layer
-		if i < len(result.Layers)-1 {
+		if i < len(data.Layers)-1 {
 			if deps, ok := layerDeps[layer.Name]; ok && len(deps) > 0 {
 				for targetLayer, count := range deps {
 					isViolation := violationSet[fmt.Sprintf("%s->%s", layer.Name, targetLayer)]
@@ -53,7 +53,7 @@ func GenerateASCII(result *application.DiagramResult) string {
 
 	// Add summary
 	sb.WriteString("\n")
-	sb.WriteString(drawSummary(result))
+	sb.WriteString(drawSummary(data))
 
 	return sb.String()
 }
@@ -113,18 +113,18 @@ func drawDependencyArrow(from, to string, count int, isViolation bool) string {
 }
 
 // drawSummary creates a summary section
-func drawSummary(result *application.DiagramResult) string {
+func drawSummary(data ports.DiagramData) string {
 	var sb strings.Builder
 
 	sb.WriteString("\n")
 	sb.WriteString("═══════════════════════════════════════\n")
 	sb.WriteString(" SUMMARY\n")
 	sb.WriteString("═══════════════════════════════════════\n")
-	sb.WriteString(fmt.Sprintf("Layers:        %d\n", len(result.Layers)))
-	sb.WriteString(fmt.Sprintf("Dependencies:  %d\n", len(result.Dependencies)))
-	sb.WriteString(fmt.Sprintf("Violations:    %d\n", len(result.Violations)))
+	sb.WriteString(fmt.Sprintf("Layers:        %d\n", len(data.Layers)))
+	sb.WriteString(fmt.Sprintf("Dependencies:  %d\n", len(data.Dependencies)))
+	sb.WriteString(fmt.Sprintf("Violations:    %d\n", len(data.Violations)))
 
-	if len(result.Violations) > 0 {
+	if len(data.Violations) > 0 {
 		sb.WriteString("\n[!] = Violation\n")
 	}
 

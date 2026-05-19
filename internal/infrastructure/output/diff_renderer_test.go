@@ -6,12 +6,12 @@ import (
 	"os"
 	"testing"
 
-	"github.com/pauvalls/arx/internal/application"
 	"github.com/pauvalls/arx/internal/domain"
+	"github.com/pauvalls/arx/internal/ports"
 )
 
 func TestDiffRenderer_RenderJSON_Structure(t *testing.T) {
-	result := application.DiffResult{
+	result := ports.DiffResultData{
 		RefBefore:     "v1.0.0",
 		RefAfter:      "v2.0.0",
 		ConfigChanged: false,
@@ -117,7 +117,7 @@ func TestDiffRenderer_RenderJSON_Structure(t *testing.T) {
 }
 
 func TestDiffRenderer_RenderJSON_Empty(t *testing.T) {
-	result := application.DiffResult{
+	result := ports.DiffResultData{
 		RefBefore: "HEAD~1",
 		RefAfter:  "HEAD",
 	}
@@ -152,7 +152,7 @@ func TestDiffRenderer_RenderJSON_Empty(t *testing.T) {
 }
 
 func TestDiffRenderer_RenderJSON_JqParseable(t *testing.T) {
-	result := application.DiffResult{
+	result := ports.DiffResultData{
 		RefBefore: "HEAD~1",
 		RefAfter:  "HEAD",
 		Added: []domain.Violation{

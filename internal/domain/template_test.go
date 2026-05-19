@@ -533,6 +533,224 @@ func TestTemplateBackwardCompat(t *testing.T) {
 
 // ─── Missing params error ────────────────────────────────────────────────────
 
+// ─── checkParamType Edge Cases ─────────────────────────────────────────────
+
+func TestCheckParamType_DefaultBranches(t *testing.T) {
+	tests := []struct {
+		name         string
+		key          string
+		val          interface{}
+		expectedType string
+		wantErr      bool
+		errContain   string
+	}{
+		{
+			name:         "[]string default — int value",
+			key:          "to",
+			val:          42,
+			expectedType: "[]string",
+			wantErr:      true,
+			errContain:   "expected []string, got int",
+		},
+		{
+			name:         "[]string default — bool value",
+			key:          "to",
+			val:          true,
+			expectedType: "[]string",
+			wantErr:      true,
+			errContain:   "expected []string, got bool",
+		},
+		{
+			name:         "int default — bool value",
+			key:          "max",
+			val:          true,
+			expectedType: "int",
+			wantErr:      true,
+			errContain:   "expected int, got bool",
+		},
+		{
+			name:         "int default — map value",
+			key:          "max",
+			val:          map[string]int{},
+			expectedType: "int",
+			wantErr:      true,
+			errContain:   "expected int, got map",
+		},
+		{
+			name:         "unknown expected type",
+			key:          "test",
+			val:          "hello",
+			expectedType: "unknown-type",
+			wantErr:      true,
+			errContain:   `unknown expected type "unknown-type"`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := checkParamType(tt.key, tt.val, tt.expectedType)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("checkParamType() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr && tt.errContain != "" {
+				if err == nil {
+					t.Errorf("expected error containing %q, got nil", tt.errContain)
+				} else if !strings.Contains(err.Error(), tt.errContain) {
+					t.Errorf("error = %q, want to contain %q", err.Error(), tt.errContain)
+				}
+			}
+		})
+	}
+}
+
+// ─── toInt Edge Cases ───────────────────────────────────────────────────────
+
+func TestToInt(t *testing.T) {
+	tests := []struct {
+		name  string
+		val   interface{}
+		want  int
+	}{
+		{
+			name: "int value",
+			val:  42,
+			want: 42,
+		},
+		{
+			name: "float64 value (YAML default)",
+			val:  float64(3),
+			want: 3,
+		},
+		{
+			name: "string numeric value",
+			val:  "7",
+			want: 7,
+		},
+		{
+			name: "string non-numeric defaults to 0",
+			val:  "hello",
+			want: 0,
+		},
+		{
+			name: "bool value defaults to 0",
+			val:  true,
+			want: 0,
+		},
+		{
+			name: "nil value defaults to 0",
+			val:  nil,
+			want: 0,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := toInt(tt.val)
+			if got != tt.want {
+				t.Errorf("toInt(%v) = %d, want %d", tt.val, got, tt.want)
+			}
+		})
+	}
+}
+
+// ─── resolveSourceLayer Edge Cases ─────────────────────────────────────────
+
+func TestResolveSourceLayer(t *testing.T) {
+	layers := []Layer{
+		{Name: "domain", Paths: []string{"internal/domain/"}},
+		{Name: "application", Paths: []string{"internal/application/"}},
+	}
+
+	tests := []struct {
+		name     string
+		filePath string
+		want     string
+	}{
+		{
+			name:     "matching path returns layer name",
+			filePath: "internal/domain/user.go",
+			want:     "domain",
+		},
+		{
+			name:     "non-matching path returns empty",
+			filePath: "external/pkg/main.go",
+			want:     "",
+		},
+		{
+			name:     "empty path returns empty",
+			filePath: "",
+			want:     "",
+		},
+		{
+			name:     "path with no segments returns empty",
+			filePath: "random",
+			want:     "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := resolveSourceLayer(tt.filePath, layers)
+			if got != tt.want {
+				t.Errorf("resolveSourceLayer(%q) = %q, want %q", tt.filePath, got, tt.want)
+			}
+		})
+	}
+}
+
+// ─── toStrSlice Edge Cases ─────────────────────────────────────────────────
+
+func TestToStrSlice(t *testing.T) {
+	tests := []struct {
+		name string
+		val  interface{}
+		want []string
+	}{
+		{
+			name: "[]string value",
+			val:  []string{"a", "b"},
+			want: []string{"a", "b"},
+		},
+		{
+			name: "[]interface{} with strings",
+			val:  []interface{}{"x", "y"},
+			want: []string{"x", "y"},
+		},
+		{
+			name: "[]interface{} with non-string elements skips them",
+			val:  []interface{}{"a", 42, "b"},
+			want: []string{"a", "b"},
+		},
+		{
+			name: "default — non-slice value returns nil",
+			val:  "hello",
+			want: nil,
+		},
+		{
+			name: "default — int value returns nil",
+			val:  42,
+			want: nil,
+		},
+		{
+			name: "default — nil returns nil",
+			val:  nil,
+			want: nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := toStrSlice(tt.val)
+			if len(got) != len(tt.want) {
+				t.Errorf("toStrSlice(%v) = %v (len %d), want %v (len %d)", tt.val, got, len(got), tt.want, len(tt.want))
+				return
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("toStrSlice(%v)[%d] = %q, want %q", tt.val, i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
+
 func TestTemplateMissingParamsError(t *testing.T) {
 	layers := testLayers()
 

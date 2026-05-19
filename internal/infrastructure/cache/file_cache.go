@@ -76,7 +76,7 @@ func (c *FileCache) Put(fileHash string, detectorName string, deps []domain.Depe
 
 // SetConfigHash stores the current config hash for invalidation checks.
 func (c *FileCache) SetConfigHash(hash string) error {
-	if err := os.MkdirAll(c.root, 0o755); err != nil {
+	if err := os.MkdirAll(c.root, 0o700); err != nil {
 		return err
 	}
 	path := filepath.Join(c.root, "config-hash")

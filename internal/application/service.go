@@ -61,7 +61,7 @@ func InitWithPreset(s *InitService, projectRoot, outputPath, presetName string) 
 		return nil, err
 	}
 
-	config, err := GenerateConfigWithPreset(info, presetName)
+	config, err := GenerateConfigWithPreset(info, presetName, s.presetService)
 	if err != nil {
 		return nil, err
 	}

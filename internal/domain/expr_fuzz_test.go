@@ -6,7 +6,7 @@ import (
 
 // FuzzParseExpression fuzzes the expression parser with random inputs.
 func FuzzParseExpression(f *testing.F) {
-	// Seed corpus with valid expressions
+	// Seed corpus with valid expressions (hand-crafted from real rules)
 	seeds := []string{
 		"count(deps(domain, infra)) > 0",
 		"all(deps(a, b))",
@@ -18,6 +18,12 @@ func FuzzParseExpression(f *testing.F) {
 		`map(deps(a,b), "SourceFile")`,
 		"count(deps(domain, infra)) > 0 && !has_circular()",
 		"threshold(files(domain), 1, 10)",
+		// Additional seeds from real fixture code
+		"((count(deps(a,b)) > 0) && (files(domain) < 10))",
+		"my_custom_check(domain, infra) > 0",
+		"violations(no_infra_import) == 0 && layers() >= 2",
+		"!has_circular()",
+		"ratio(deps(domain, infra), deps(domain, all)) < 0.5",
 	}
 	for _, s := range seeds {
 		f.Add(s)
@@ -39,6 +45,14 @@ func FuzzEvaluateExpression(f *testing.F) {
 		"count(deps(domain, infra)) > 0",
 		"all(deps(a, b))",
 		"!has_circular()",
+		// Additional seeds from real fixture code
+		"files(domain) >= 1",
+		"layers() > 0",
+		"ratio(deps(domain, infra), deps(domain, all)) < 0.5",
+		"violations(test) == 0",
+		`filter(deps(a,b), "ResolvedLayer == infra")`,
+		"count(map(deps(a,b), \"SourceFile\"))",
+		"all(deps(domain, infra)) || any(deps(domain, all))",
 	}
 	ctx := EvalContext{
 		Deps: []Dependency{

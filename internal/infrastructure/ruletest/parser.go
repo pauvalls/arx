@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/pauvalls/arx/internal/domain/ruletest"
+	"github.com/pauvalls/arx/internal/ruletest"
 	"gopkg.in/yaml.v3"
 )
 

@@ -11,6 +11,9 @@ func FuzzPHPParse(f *testing.F) {
 	f.Add([]byte("use App\\Domain\\Order;"))
 	f.Add([]byte("use App\\Infra\\Repo as RepoInterface;"))
 	f.Add([]byte("use function App\\Helpers\\format;"))
+	f.Add([]byte("use App\\Models\\{User, Order, Product};"))
+	f.Add([]byte("use App\\Domain\\Order;\nuse App\\Domain\\Customer;\nuse App\\Infra\\Repository;"))
+	f.Add([]byte("use const App\\Config\\MAX_RETRIES;"))
 
 	f.Fuzz(func(t *testing.T, data []byte) {
 		tmpDir := t.TempDir()

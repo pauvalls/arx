@@ -3,7 +3,7 @@ package java
 import (
 	"regexp"
 
-	"github.com/pauvalls/arx/internal/infrastructure/detector/shared"
+	"github.com/pauvalls/arx/internal/ports"
 )
 
 // Regex patterns for Java import statements
@@ -59,5 +59,5 @@ func extractPackage(line string) string {
 // This wrapper preserves the unexported name so existing callers in the
 // java package and its tests work without changes.
 func importMatchesLayer(importPath, layerPattern string) bool {
-	return shared.MatchImportToLayer(importPath, layerPattern)
+	return ports.MatchImportToLayer(importPath, layerPattern)
 }

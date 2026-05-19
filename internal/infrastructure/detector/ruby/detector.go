@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/pauvalls/arx/internal/domain"
-	"github.com/pauvalls/arx/internal/infrastructure/detector/shared"
+	"github.com/pauvalls/arx/internal/ports"
 )
 
 // RubyDetector implements dependency extraction for Ruby projects
@@ -209,7 +209,7 @@ func (d *RubyDetector) resolveImport(importPath, filePath, projectRoot string, l
 					return name
 				}
 				for _, layerPath := range layer.Paths {
-					if shared.MatchImportToLayer(relPath, layerPath) {
+					if ports.MatchImportToLayer(relPath, layerPath) {
 						return name
 					}
 				}
@@ -228,7 +228,7 @@ func (d *RubyDetector) resolveImport(importPath, filePath, projectRoot string, l
 
 		// Also try matching against layer paths directly using our custom matcher
 		for _, layerPath := range layer.Paths {
-			if shared.MatchImportToLayer(importAsPath, layerPath) {
+			if ports.MatchImportToLayer(importAsPath, layerPath) {
 				return name
 			}
 		}

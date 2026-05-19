@@ -1,0 +1,146 @@
+# Onion Architecture Preset (ports and adapters)
+# Layers: domain, application, ports, infrastructure
+
+version: "1.0"
+
+layers:
+  - name: domain
+    paths:
+      - "domain/**"
+      - "core/**"
+    description: Domain layer containing entities and core business rules
+
+  - name: application
+    paths:
+      - "application/**"
+      - "app/**"
+    description: Application layer orchestrating use cases and business workflows
+
+  - name: ports
+    paths:
+      - "ports/**"
+      - "contracts/**"
+      - "interfaces/**"
+    description: Ports layer defining interfaces and contracts for external interaction
+
+  - name: infrastructure
+    paths:
+      - "infrastructure/**"
+      - "adapters/**"
+      - "persistence/**"
+    description: Infrastructure layer implementing adapters and external concerns
+
+rules:
+  # Domain layer constraints
+  - id: domain-no-import-application
+    from: domain
+    to:
+      - application
+    type: cannot
+    severity: error
+    explanation: Domain must not depend on application orchestration
+
+  - id: domain-no-import-ports
+    from: domain
+    to:
+      - ports
+    type: cannot
+    severity: error
+    explanation: Domain must not depend on port definitions
+
+  - id: domain-no-import-infrastructure
+    from: domain
+    to:
+      - infrastructure
+    type: cannot
+    severity: error
+    explanation: Domain must remain pure and independent from infrastructure
+
+  # Application layer constraints
+  - id: application-no-import-infrastructure
+    from: application
+    to:
+      - infrastructure
+    type: cannot
+    severity: error
+    explanation: Application should depend on ports, not infrastructure implementations
+
+  - id: application-no-import-ports
+    from: application
+    to:
+      - ports
+    type: cannot
+    severity: warning
+    explanation: Application should define its own interfaces; ports are for external contracts
+
+  # Ports layer constraints
+  - id: ports-no-import-application
+    from: ports
+    to:
+      - application
+    type: cannot
+    severity: error
+    explanation: Ports are contracts and must not depend on application logic
+
+  - id: ports-no-import-infrastructure
+    from: ports
+    to:
+      - infrastructure
+    type: cannot
+    severity: error
+    explanation: Ports must not depend on infrastructure implementations
+
+  # Allowed dependencies (informational)
+  - id: application-can-import-domain
+    from: application
+    to:
+      - domain
+    type: can
+    severity: info
+    explanation: Application use cases coordinate domain operations - expected flow
+
+  - id: infrastructure-can-import-ports
+    from: infrastructure
+    to:
+      - ports
+    type: can
+    severity: info
+    explanation: Infrastructure adapters implement port interfaces - dependency inversion
+
+  - id: infrastructure-can-import-domain
+    from: infrastructure
+    to:
+      - domain
+    type: can
+    severity: info
+    explanation: Infrastructure may need domain entities for data mapping
+
+  - id: infrastructure-can-import-application
+    from: infrastructure
+    to:
+      - application
+    type: can
+    severity: info
+    explanation: Infrastructure may use application services for initialization
+
+exclude:
+  - vendor/**
+  - node_modules/**
+  - .git/**
+  - dist/**
+  - build/**
+  - tmp/**
+  - testdata/**
+
+language_overrides:
+  go:
+    extensions:
+      - .go
+    comment: //
+    import: import
+  typescript:
+    extensions:
+      - .ts
+      - .tsx
+    comment: //
+    import: import

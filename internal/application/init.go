@@ -8,7 +8,6 @@ import (
 
 	"github.com/pauvalls/arx/internal/domain"
 	"github.com/pauvalls/arx/internal/ports"
-	presetpkg "github.com/pauvalls/arx/internal/application/presets"
 	"gopkg.in/yaml.v3"
 )
 
@@ -365,22 +364,26 @@ func WriteConfig(config *domain.Config, outputPath string, writer ports.FileWrit
 
 // GenerateConfigWithPreset creates a configuration from a preset template.
 // If presetName is empty, falls back to GenerateConfig based on project detection.
-func GenerateConfigWithPreset(projectInfo *ProjectInfo, presetName string) (*domain.Config, error) {
+// The presetService parameter is used to load presets; if nil, falls back to detection-based logic.
+func GenerateConfigWithPreset(projectInfo *ProjectInfo, presetName string, presetServices ...ports.PresetService) (*domain.Config, error) {
 	if presetName == "" {
 		// No preset specified, use existing detection-based logic
 		return GenerateConfig(projectInfo)
 	}
 
-	// Load preset template
-	template, err := presetpkg.LoadPreset(presetName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load preset %q: %w", presetName, err)
+	// Get the preset service from arguments or use default
+	var presetSvc ports.PresetService
+	if len(presetServices) > 0 && presetServices[0] != nil {
+		presetSvc = presetServices[0]
+	}
+	if presetSvc == nil {
+		return nil, fmt.Errorf("preset service is required to load preset %q", presetName)
 	}
 
-	// Apply preset with project-specific customization
-	config, err := presetpkg.ApplyPreset(template, projectInfo.Root)
+	// Load preset via injected interface
+	config, err := presetSvc.LoadPreset(presetName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to apply preset %q: %w", presetName, err)
+		return nil, fmt.Errorf("failed to load preset %q: %w", presetName, err)
 	}
 
 	// Add language overrides based on detected languages if not present in preset

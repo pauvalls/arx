@@ -461,6 +461,11 @@ func FuzzGoDetector(f *testing.F) {
 		"package test\n\nimport (\n\t\"fmt\"\n\t\"os\"\n)\n\nfunc Test(t testing.T) {}",
 		"package main",
 		"package main\nimport _ \"embed\"",
+		"package main\nimport . \"math\"\nfunc main() { Pi() }",
+		"package main\nimport alias \"fmt\"\nfunc main() { alias.Println() }",
+		"package main\nimport \"fmt\"\nimport \"os\"\nfunc main() { fmt.Println(os.Args[0]) }",
+		"package main\n/*\n#include <stdio.h>\n*/\nimport \"C\"\nfunc main() {}",
+		"package main\nimport _ \"net/http/pprof\"",
 	}
 	for _, s := range seeds {
 		f.Add(s)

@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/pauvalls/arx/internal/infrastructure/config"
 	"github.com/pauvalls/arx/internal/ports"
 )
 
@@ -30,15 +29,17 @@ type DoctorResult struct {
 
 // DoctorService runs diagnostic checks on an arx project
 type DoctorService struct {
-	version   string
-	detectors []ports.Detector
+	version      string
+	detectors    []ports.Detector
+	configReader ports.ConfigReader
 }
 
-// NewDoctorService creates a new DoctorService with the given detectors.
-func NewDoctorService(version string, detectors []ports.Detector) *DoctorService {
+// NewDoctorService creates a new DoctorService with the given detectors and config reader.
+func NewDoctorService(version string, detectors []ports.Detector, configReader ports.ConfigReader) *DoctorService {
 	return &DoctorService{
-		version:   version,
-		detectors: detectors,
+		version:      version,
+		detectors:    detectors,
+		configReader: configReader,
 	}
 }
 
@@ -102,14 +103,13 @@ func (s *DoctorService) checkConfigFile(projectRoot string) CheckResult {
 		return CheckResult{OK: false, Message: "Config file not found: arx.yaml"}
 	}
 
-	// Try to read and validate
-	reader := config.NewYAMLReader()
-	cfg, err := reader.Read(configPath)
+	// Try to read and validate using the injected config reader
+	cfg, err := s.configReader.Read(configPath)
 	if err != nil {
 		return CheckResult{OK: false, Message: fmt.Sprintf("Failed to read config: %v", err)}
 	}
 
-	if err := reader.Validate(cfg); err != nil {
+	if err := s.configReader.Validate(cfg); err != nil {
 		return CheckResult{OK: false, Message: fmt.Sprintf("Config validation error: %v", err)}
 	}
 

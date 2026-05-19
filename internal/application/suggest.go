@@ -267,21 +267,21 @@ func simpleUnifiedDiff(path, original, suggested string) string {
 // Apply writes the fix to disk, creating a timestamped backup first.
 // backupDir is the root backup directory (e.g., ".arx-backup").
 func (e *FixEngine) Apply(fix Fix, backupDir string) error {
-	return e.apply(fix, backupDir, "")
+	return e.apply(&fix, backupDir, "")
 }
 
 // ApplyWithID writes the fix to disk using violation-ID-based backup naming.
 // backupDir is the root backup directory (e.g., ".arx-backup").
 // Returns the backup path set on the fix.
 func (e *FixEngine) ApplyWithID(fix Fix, backupDir string) (string, error) {
-	err := e.apply(fix, backupDir, fix.ViolationID)
+	err := e.apply(&fix, backupDir, fix.ViolationID)
 	return fix.BackupPath, err
 }
 
 // apply writes the fix to disk, creating a backup first.
 // If violationID is non-empty, uses violation-ID-based backup naming.
 // Otherwise uses timestamp-based naming.
-func (e *FixEngine) apply(fix Fix, backupDir, violationID string) error {
+func (e *FixEngine) apply(fix *Fix, backupDir, violationID string) error {
 	if fix.File == "" {
 		return fmt.Errorf("cannot apply fix: no file specified")
 	}

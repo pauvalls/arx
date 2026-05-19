@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/pauvalls/arx/internal/infrastructure/config"
 	"github.com/pauvalls/arx/internal/infrastructure/detector"
 )
 
@@ -15,7 +16,7 @@ var testDetectors = detector.GetDetectors()
 // TestDoctorServiceCheckProjectRootExists tests project root check when directory exists
 func TestDoctorServiceCheckProjectRootExists(t *testing.T) {
 	tmpDir := t.TempDir()
-	service := NewDoctorService("test-version", nil)
+	service := NewDoctorService("test-version", nil, config.NewYAMLReader())
 
 	result := service.checkProjectRoot(tmpDir)
 
@@ -30,7 +31,7 @@ func TestDoctorServiceCheckProjectRootExists(t *testing.T) {
 
 // TestDoctorServiceCheckProjectRootNotExists tests project root check when directory doesn't exist
 func TestDoctorServiceCheckProjectRootNotExists(t *testing.T) {
-	service := NewDoctorService("test-version", nil)
+	service := NewDoctorService("test-version", nil, config.NewYAMLReader())
 
 	result := service.checkProjectRoot("/nonexistent/path")
 
@@ -60,7 +61,7 @@ rules:
 		t.Fatalf("failed to write test config: %v", err)
 	}
 
-	service := NewDoctorService("test-version", nil)
+	service := NewDoctorService("test-version", nil, config.NewYAMLReader())
 	result := service.checkConfigFile(tmpDir)
 
 	if !result.OK {
@@ -74,7 +75,7 @@ rules:
 // TestDoctorServiceCheckConfigFileMissing tests config check when file is missing
 func TestDoctorServiceCheckConfigFileMissing(t *testing.T) {
 	tmpDir := t.TempDir()
-	service := NewDoctorService("test-version", nil)
+	service := NewDoctorService("test-version", nil, config.NewYAMLReader())
 
 	result := service.checkConfigFile(tmpDir)
 
@@ -97,7 +98,7 @@ func TestDoctorServiceCheckConfigFileInvalid(t *testing.T) {
 		t.Fatalf("failed to write test config: %v", err)
 	}
 
-	service := NewDoctorService("test-version", nil)
+	service := NewDoctorService("test-version", nil, config.NewYAMLReader())
 	result := service.checkConfigFile(tmpDir)
 
 	if result.OK {
@@ -111,7 +112,7 @@ func TestDoctorServiceCheckConfigFileInvalid(t *testing.T) {
 // TestDoctorServiceCheckDetectorsNoFiles tests detector check when no files found
 func TestDoctorServiceCheckDetectorsNoFiles(t *testing.T) {
 	tmpDir := t.TempDir()
-	service := NewDoctorService("test-version", nil)
+	service := NewDoctorService("test-version", nil, config.NewYAMLReader())
 
 	result := service.checkDetectors(tmpDir)
 
@@ -155,7 +156,7 @@ func Hello() {
 
 	// Create minimal arx.yaml
 	configPath := filepath.Join(tmpDir, "arx.yaml")
-	config := []byte(`version: "1.0"
+	cfgData := []byte(`version: "1.0"
 layers:
   - name: domain
     paths: [./domain]
@@ -165,11 +166,11 @@ rules:
     to: [domain]
     type: Cannot
 `)
-	if err := os.WriteFile(configPath, config, 0644); err != nil {
-		t.Fatalf("failed to write test config: %v", err)
+	if err := os.WriteFile(configPath, cfgData, 0644); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
 	}
 
-	service := NewDoctorService("test-version", testDetectors)
+	service := NewDoctorService("test-version", testDetectors, config.NewYAMLReader())
 	result := service.checkDetectors(tmpDir)
 
 	if !result.OK {
@@ -179,7 +180,7 @@ rules:
 
 // TestDoctorServiceCheckVersion tests version check
 func TestDoctorServiceCheckVersion(t *testing.T) {
-	service := NewDoctorService("v1.2.3", nil)
+	service := NewDoctorService("v1.2.3", nil, config.NewYAMLReader())
 
 	result := service.checkVersion()
 
@@ -197,7 +198,7 @@ func TestDoctorServiceCheckAllChecksPassed(t *testing.T) {
 
 	// Create valid config
 	configPath := filepath.Join(tmpDir, "arx.yaml")
-	config := []byte(`version: "1.0"
+	cfgData := []byte(`version: "1.0"
 layers:
   - name: domain
     paths: [./domain]
@@ -207,7 +208,7 @@ rules:
     to: [domain]
     type: Cannot
 `)
-	if err := os.WriteFile(configPath, config, 0644); err != nil {
+	if err := os.WriteFile(configPath, cfgData, 0644); err != nil {
 		t.Fatalf("failed to write test config: %v", err)
 	}
 
@@ -230,7 +231,7 @@ go 1.23
 		t.Fatalf("failed to write test file: %v", err)
 	}
 
-	service := NewDoctorService("test-version", testDetectors)
+	service := NewDoctorService("test-version", testDetectors, config.NewYAMLReader())
 	result := service.Check(tmpDir)
 
 	if !result.AllChecksPassed {
@@ -255,7 +256,7 @@ func TestDoctorServiceCheckAllChecksFailed(t *testing.T) {
 	tmpDir := t.TempDir()
 	// No config, no source files
 
-	service := NewDoctorService("test-version", nil)
+	service := NewDoctorService("test-version", nil, config.NewYAMLReader())
 	result := service.Check(tmpDir)
 
 	if result.AllChecksPassed {

@@ -11,6 +11,9 @@ func FuzzSwiftParse(f *testing.F) {
 	f.Add([]byte("import Foundation"))
 	f.Add([]byte("import struct SwiftUI.View"))
 	f.Add([]byte("@_exported import UIKit"))
+	f.Add([]byte("import UIKit\nimport SwiftUI\nimport Combine"))
+	f.Add([]byte("import class UIKit.UIView\nimport protocol SwiftUI.View"))
+	f.Add([]byte("@testable import MyApp"))
 
 	f.Fuzz(func(t *testing.T, data []byte) {
 		tmpDir := t.TempDir()

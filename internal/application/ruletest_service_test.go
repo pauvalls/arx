@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/pauvalls/arx/internal/domain/ruletest"
+	"github.com/pauvalls/arx/internal/ruletest"
 )
 
 // mockTestParser implements TestParser for unit testing

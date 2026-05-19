@@ -56,7 +56,18 @@ bench:
 bench-compare:
 	$(GO) test -bench=/Detection -benchmem -count=5 ./internal/application/ | tee /tmp/bench.new
 	@if command -v benchstat >/dev/null 2>&1; then \
-		benchstat .bench-baseline /tmp/bench.new; \
+		benchstat .bench-baseline /tmp/bench.new > /tmp/benchstat.out; \
+		cat /tmp/benchstat.out; \
+		echo "---"; \
+		# Hard fail if DetectionPipeline_10k has >5% regression \
+		if grep "DetectionPipeline_10k" /tmp/benchstat.out | grep -qP '\d+\.\d+%'; then \
+			REGRESSION=$$(grep "DetectionPipeline_10k" /tmp/benchstat.out | grep -oP '\d+\.\d+(?=%)'); \
+			if [ -n "$$REGRESSION" ] && [ "$$(echo "$$REGRESSION > 5" | bc)" = "1" ]; then \
+				echo "❌ FAIL: DetectionPipeline_10k regression of $$REGRESSION% exceeds 5% threshold"; \
+				exit 1; \
+			fi; \
+		fi; \
+		echo "✓ No significant regression detected"; \
 	else \
 		echo "⚠️  benchstat not installed. Install with: go install golang.org/x/perf/cmd/benchstat@latest"; \
 	fi

@@ -5,12 +5,12 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/pauvalls/arx/internal/application"
 	"github.com/pauvalls/arx/internal/domain"
+	"github.com/pauvalls/arx/internal/ports"
 )
 
 // GenerateDOT creates a Graphviz DOT representation of the dependency graph
-func GenerateDOT(result *application.DiagramResult) string {
+func GenerateDOT(data ports.DiagramData) string {
 	var sb strings.Builder
 
 	sb.WriteString("digraph ArxDependencies {\n")
@@ -20,8 +20,8 @@ func GenerateDOT(result *application.DiagramResult) string {
 
 	// Group files by layer
 	layerFiles := make(map[string][]string)
-	for _, dep := range result.Dependencies {
-		layer := resolveLayer(dep.SourceFile, result.Layers)
+	for _, dep := range data.Dependencies {
+		layer := resolveLayer(dep.SourceFile, data.Layers)
 		if layer != "" {
 			if !contains(layerFiles[layer], dep.SourceFile) {
 				layerFiles[layer] = append(layerFiles[layer], dep.SourceFile)
@@ -30,7 +30,7 @@ func GenerateDOT(result *application.DiagramResult) string {
 	}
 
 	// Add target files that might not be sources
-	for _, dep := range result.Dependencies {
+	for _, dep := range data.Dependencies {
 		if dep.ResolvedLayer != "" {
 			if !contains(layerFiles[dep.ResolvedLayer], dep.ImportPath) {
 				layerFiles[dep.ResolvedLayer] = append(layerFiles[dep.ResolvedLayer], dep.ImportPath)
@@ -81,18 +81,18 @@ func GenerateDOT(result *application.DiagramResult) string {
 	}
 
 	// Create edges for dependencies
-	if len(result.Dependencies) == 0 {
+	if len(data.Dependencies) == 0 {
 		sb.WriteString("  // No inter-layer dependencies detected\n")
 	} else {
 		// Build violation lookup for quick access
 		violationSet := make(map[string]bool)
-		for _, v := range result.Violations {
+		for _, v := range data.Violations {
 			key := fmt.Sprintf("%s->%s", v.File, v.TargetLayer)
 			violationSet[key] = true
 		}
 
 		// Add edges
-		for _, dep := range result.Dependencies {
+		for _, dep := range data.Dependencies {
 			if dep.ResolvedLayer == "" {
 				continue
 			}

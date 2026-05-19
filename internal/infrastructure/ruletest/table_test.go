@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/pauvalls/arx/internal/domain/ruletest"
+	"github.com/pauvalls/arx/internal/ruletest"
 )
 
 func TestTableReporter_AllPass(t *testing.T) {

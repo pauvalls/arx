@@ -11,6 +11,9 @@ func FuzzKotlinParse(f *testing.F) {
 	f.Add([]byte("import java.util.List"))
 	f.Add([]byte("import com.example.domain.*"))
 	f.Add([]byte("package com.example"))
+	f.Add([]byte("import kotlinx.coroutines.*\nimport kotlinx.coroutines.flow.Flow"))
+	f.Add([]byte("import com.example.dto as DTO"))
+	f.Add([]byte("import java.util.*\nimport kotlin.collections.List"))
 
 	f.Fuzz(func(t *testing.T, data []byte) {
 		tmpDir := t.TempDir()

@@ -390,7 +390,24 @@ func TestGenerateConfigWithPreset_CleanPreset(t *testing.T) {
 		SuggestedLayers: []domain.Layer{},
 	}
 
-	config, err := GenerateConfigWithPreset(info, "clean")
+	ps := newMockPresetService()
+	ps.addPreset("clean", &domain.Config{
+		Version: "1.0",
+		Layers: []domain.Layer{
+			{Name: "domain", Paths: []string{"internal/domain/**"}},
+			{Name: "application", Paths: []string{"internal/application/**"}},
+			{Name: "infrastructure", Paths: []string{"internal/infrastructure/**"}},
+			{Name: "presentation", Paths: []string{"cmd/**"}},
+		},
+		Rules: []domain.Rule{
+			{ID: "R1", From: "domain", To: []string{"infrastructure"}, Type: domain.RuleTypeCannot},
+		},
+		LanguageOverrides: map[string]domain.LanguageOverride{
+			"go": {Extensions: []string{".go"}, Comment: "//", Import: "import"},
+		},
+	})
+
+	config, err := GenerateConfigWithPreset(info, "clean", ps)
 	if err != nil {
 		t.Fatalf("GenerateConfigWithPreset() error = %v", err)
 	}
@@ -425,7 +442,18 @@ func TestGenerateConfigWithPreset_HexagonalPreset(t *testing.T) {
 		SuggestedLayers: []domain.Layer{},
 	}
 
-	config, err := GenerateConfigWithPreset(info, "hexagonal")
+	ps := newMockPresetService()
+	ps.addPreset("hexagonal", &domain.Config{
+		Version: "1.0",
+		Layers: []domain.Layer{
+			{Name: "domain", Paths: []string{"internal/domain/**"}},
+			{Name: "application", Paths: []string{"internal/application/**"}},
+			{Name: "ports", Paths: []string{"internal/ports/**"}},
+			{Name: "infrastructure", Paths: []string{"internal/infrastructure/**"}},
+		},
+	})
+
+	config, err := GenerateConfigWithPreset(info, "hexagonal", ps)
 	if err != nil {
 		t.Fatalf("GenerateConfigWithPreset() error = %v", err)
 	}
@@ -450,7 +478,18 @@ func TestGenerateConfigWithPreset_DddPreset(t *testing.T) {
 		SuggestedLayers: []domain.Layer{},
 	}
 
-	config, err := GenerateConfigWithPreset(info, "ddd")
+	ps := newMockPresetService()
+	ps.addPreset("ddd", &domain.Config{
+		Version: "1.0",
+		Layers: []domain.Layer{
+			{Name: "domain", Paths: []string{"internal/domain/**"}},
+			{Name: "application", Paths: []string{"internal/application/**"}},
+			{Name: "infrastructure", Paths: []string{"internal/infrastructure/**"}},
+			{Name: "interfaces", Paths: []string{"cmd/**"}},
+		},
+	})
+
+	config, err := GenerateConfigWithPreset(info, "ddd", ps)
 	if err != nil {
 		t.Fatalf("GenerateConfigWithPreset() error = %v", err)
 	}
@@ -474,7 +513,10 @@ func TestGenerateConfigWithPreset_InvalidPreset(t *testing.T) {
 		Languages: []string{"go"},
 	}
 
-	_, err := GenerateConfigWithPreset(info, "invalid")
+	ps := newMockPresetService()
+	// No presets added, so any lookup fails
+
+	_, err := GenerateConfigWithPreset(info, "invalid", ps)
 	if err == nil {
 		t.Fatal("GenerateConfigWithPreset(invalid) should return error")
 	}
@@ -490,12 +532,32 @@ func TestGenerateConfigWithPreset_AddsLanguageOverrides(t *testing.T) {
 		Languages: []string{"go", "typescript"},
 	}
 
-	config, err := GenerateConfigWithPreset(info, "clean")
+	ps := newMockPresetService()
+	ps.addPreset("clean", &domain.Config{
+		Version: "1.0",
+		Layers: []domain.Layer{
+			{Name: "domain", Paths: []string{"internal/domain/**"}},
+			{Name: "application", Paths: []string{"internal/application/**"}},
+			{Name: "infrastructure", Paths: []string{"internal/infrastructure/**"}},
+			{Name: "presentation", Paths: []string{"cmd/**"}},
+		},
+		Rules: []domain.Rule{
+			{ID: "R1", From: "domain", To: []string{"infrastructure"}, Type: domain.RuleTypeCannot},
+		},
+		// No language overrides in preset — they should be added
+	})
+
+	config, err := GenerateConfigWithPreset(info, "clean", ps)
 	if err != nil {
 		t.Fatalf("GenerateConfigWithPreset() error = %v", err)
 	}
 
-	// Presets already have language overrides, but verify they're present
+	// Verify config is valid
+	if err := config.Validate(); err != nil {
+		t.Fatalf("Generated config is invalid: %v", err)
+	}
+
+	// Language overrides should have been added since preset had none
 	if len(config.LanguageOverrides) == 0 {
 		t.Error("GenerateConfigWithPreset() did not include language overrides")
 	}

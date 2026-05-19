@@ -11,6 +11,9 @@ func FuzzRubyParse(f *testing.F) {
 	f.Add([]byte("require 'json'"))
 	f.Add([]byte("require_relative 'lib/domain/order'"))
 	f.Add([]byte("require_all 'lib/'"))
+	f.Add([]byte("require 'json'\nrequire 'yaml'\nrequire 'erb'"))
+	f.Add([]byte("require 'rails'\nrequire 'active_support/core_ext'"))
+	f.Add([]byte("require './lib/helper'\nrequire_relative '../config/initializers'"))
 
 	f.Fuzz(func(t *testing.T, data []byte) {
 		tmpDir := t.TempDir()

@@ -11,6 +11,7 @@ import (
 	"github.com/pauvalls/arx/internal/infrastructure/config"
 	"github.com/pauvalls/arx/internal/infrastructure/detector"
 	"github.com/pauvalls/arx/internal/infrastructure/output"
+	"github.com/pauvalls/arx/internal/ports"
 	"github.com/spf13/cobra"
 )
 
@@ -93,12 +94,20 @@ func runDiff(cmd *cobra.Command, args []string) error {
 
 	// Render output
 	renderer := output.NewDiffRenderer()
+	diffData := ports.DiffResultData{
+		Added:         result.Added,
+		Resolved:      result.Resolved,
+		Unchanged:     result.Unchanged,
+		RefBefore:     result.RefBefore,
+		RefAfter:      result.RefAfter,
+		ConfigChanged: result.ConfigChanged,
+	}
 	if diffFormat == "json" {
-		if err := renderer.RenderJSON(*result); err != nil {
+		if err := renderer.RenderJSON(diffData); err != nil {
 			return fmt.Errorf("rendering JSON output: %w", err)
 		}
 	} else {
-		renderer.Render(*result)
+		renderer.Render(diffData)
 	}
 
 	// Exit code: 1 if added violations exist
