@@ -602,3 +602,204 @@ func TestDashboard_ContainsMetricsPolling(t *testing.T) {
 		}
 	}
 }
+
+// ============================================================================
+// Dependency Graph Tests (v0.42.0)
+// ============================================================================
+
+func TestDashboard_GraphSection_Exists(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test"})
+	srv := &Server{state: state}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.handleDashboard(rec, req)
+
+	body := rec.Body.String()
+
+	if !strings.Contains(body, `id="graph-section"`) {
+		t.Error("expected graph section with id='graph-section'")
+	}
+	if !strings.Contains(body, "Layer Dependency Graph") {
+		t.Error("expected 'Layer Dependency Graph' heading")
+	}
+	if !strings.Contains(body, `id="graph-container"`) {
+		t.Error("expected graph container div in graph section")
+	}
+}
+
+func TestDashboard_GraphSection_Ordering(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test"})
+	srv := &Server{state: state}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.handleDashboard(rec, req)
+
+	body := rec.Body.String()
+
+	// Graph section must appear after coupling section and before debt section
+	couplingPos := strings.Index(body, `id="coupling-section"`)
+	graphPos := strings.Index(body, `id="graph-section"`)
+	debtPos := strings.Index(body, `id="debt-section"`)
+
+	if couplingPos < 0 {
+		t.Fatal("expected coupling section in HTML")
+	}
+	if graphPos < 0 {
+		t.Fatal("expected graph section in HTML")
+	}
+	if debtPos < 0 {
+		t.Fatal("expected debt section in HTML")
+	}
+
+	if graphPos < couplingPos {
+		t.Error("graph section should appear AFTER coupling section")
+	}
+	if debtPos < graphPos {
+		t.Error("debt section should appear AFTER graph section")
+	}
+}
+
+func TestDashboard_GraphCSS_Exists(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test"})
+	srv := &Server{state: state}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.handleDashboard(rec, req)
+
+	body := rec.Body.String()
+
+	requiredCSS := []string{
+		"dep-graph",
+		"dep-node",
+		"dep-arrow",
+		"dep-label",
+		"dep-tooltip",
+		"graph-empty",
+	}
+	for _, cls := range requiredCSS {
+		if !strings.Contains(body, cls) {
+			t.Errorf("expected CSS class %q in dashboard styles", cls)
+		}
+	}
+}
+
+func TestDashboard_GraphConfigEndpoint(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test"})
+	srv := &Server{state: state}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.handleDashboard(rec, req)
+
+	body := rec.Body.String()
+
+	if !strings.Contains(body, "/api/config") {
+		t.Error("expected polling script to fetch /api/config")
+	}
+}
+
+func TestDashboard_GraphRenderFunction_Exists(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test"})
+	srv := &Server{state: state}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.handleDashboard(rec, req)
+
+	body := rec.Body.String()
+
+	if !strings.Contains(body, "function renderGraph") {
+		t.Error("expected renderGraph function definition in dashboard JS")
+	}
+	if !strings.Contains(body, "renderGraph({") {
+		t.Error("expected renderGraph call in checkDone()")
+	}
+}
+
+func TestDashboard_GraphRendersSVG(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test"})
+	srv := &Server{state: state}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.handleDashboard(rec, req)
+
+	body := rec.Body.String()
+
+	// The graph contains SVG-related JS code
+	svgIndicators := []string{
+		"svg viewBox",
+		"dep-graph",
+		"circle",
+		"dep-node",
+	}
+	for _, ind := range svgIndicators {
+		if !strings.Contains(body, ind) {
+			t.Errorf("expected SVG/JS to contain %q for graph rendering", ind)
+		}
+	}
+}
+
+func TestDashboard_GraphHasTooltipJS(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test"})
+	srv := &Server{state: state}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.handleDashboard(rec, req)
+
+	body := rec.Body.String()
+
+	tooltipIndicators := []string{
+		"dep-tooltip",
+		"mouseover",
+		"mousemove",
+		"mouseout",
+	}
+	for _, ind := range tooltipIndicators {
+		if !strings.Contains(body, ind) {
+			t.Errorf("expected graph JS to contain %q for tooltip interactions", ind)
+		}
+	}
+}
+
+func TestDashboard_GraphHasClickInteraction(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test"})
+	srv := &Server{state: state}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.handleDashboard(rec, req)
+
+	body := rec.Body.String()
+
+	if !strings.Contains(body, "addEventListener('click'") {
+		t.Error("expected graph JS to have click event listener for filter interaction")
+	}
+}
+
+func TestDashboard_GraphUsesLayerStats(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test"})
+	srv := &Server{state: state}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.handleDashboard(rec, req)
+
+	body := rec.Body.String()
+
+	// Verify the graph uses coupling and config data
+	dataIndicators := []string{
+		"layerStats",
+		"outgoing",
+		"incoming",
+	}
+	for _, ind := range dataIndicators {
+		if !strings.Contains(body, ind) {
+			t.Errorf("expected graph JS to use %q for computing layer stats", ind)
+		}
+	}
+}

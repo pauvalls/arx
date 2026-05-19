@@ -379,6 +379,38 @@ th[data-sortable].sort-desc::after {
   table { font-size: 0.8rem; }
   th, td { padding: 6px 8px; }
 }
+
+/* Dependency Graph */
+.dep-graph {
+  width: 100%;
+  max-width: 600px;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+}
+.dep-node { cursor: pointer; transition: opacity 0.2s; }
+.dep-node:hover { opacity: 0.8; }
+.dep-node.selected { stroke-width: 3; stroke: var(--color-text); }
+.dep-arrow { fill: none; stroke-width: 2; transition: opacity 0.2s; }
+.dep-arrow:hover { opacity: 1 !important; }
+.dep-label { font-size: 12px; text-anchor: middle; pointer-events: none; }
+.dep-tooltip {
+  position: absolute;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  font-size: 0.8rem;
+  box-shadow: var(--shadow);
+  pointer-events: none;
+  z-index: 10;
+}
+.graph-empty {
+  text-align: center;
+  padding: 20px;
+  color: var(--color-text-muted);
+  font-style: italic;
+}
 </style>
 </head>
 <body>
@@ -527,6 +559,12 @@ th[data-sortable].sort-desc::after {
     {{else}}
     <div class="empty-state" id="coupling-empty">No coupling data available.</div>
     {{end}}
+  </section>
+
+  <!-- Dependency Graph -->
+  <section id="graph-section" style="display:none;">
+    <h2>Layer Dependency Graph</h2>
+    <div id="graph-container"></div>
   </section>
 
   <!-- Debt Score Detail -->
@@ -878,6 +916,11 @@ th[data-sortable].sort-desc::after {
         populateLayerDropdown(violations);
         reRender();
         renderCoupling(coupling);
+        renderGraph({
+          coupling: results.coupling || [],
+          violations: results.violations || [],
+          config: results.config || null
+        });
 
         // Update metric cards
         var metrics = results.metrics || {};
@@ -924,6 +967,7 @@ th[data-sortable].sort-desc::after {
     fetchOne('/api/debt', 'debt');
     fetchOne('/api/status', 'status');
     fetchOne('/api/metrics', 'metrics');
+    fetchOne('/api/config', 'config');
   }
 
   // --- Wire event listeners (task 1.9) ---
@@ -1010,6 +1054,201 @@ th[data-sortable].sort-desc::after {
     document.addEventListener('DOMContentLoaded', wireFilters);
   } else {
     wireFilters();
+  }
+
+  // --- Dependency Graph (v0.42.0) ---
+  function renderGraph(data) {
+    var container = document.getElementById('graph-section');
+    if (!container) return;
+
+    var coupling = data.coupling || [];
+    var violations = data.violations || [];
+    var config = data.config;
+
+    // Hide if no layers or only 1 layer
+    if (!config || !config.layers || config.layers.length < 2) {
+      container.style.display = 'none';
+      return;
+    }
+    container.style.display = '';
+
+    var layers = config.layers;
+    var svg = document.getElementById('dep-graph-svg');
+    var tooltip = document.getElementById('dep-tooltip');
+
+    // Compute per-layer stats
+    var layerStats = {};
+    for (var i = 0; i < layers.length; i++) {
+      var name = layers[i];
+      layerStats[name] = { name: name, outgoing: 0, incoming: 0, violations: 0, hasError: false, hasWarning: false };
+    }
+
+    for (var i = 0; i < coupling.length; i++) {
+      var c = coupling[i];
+      if (layerStats[c.from_layer]) layerStats[c.from_layer].outgoing += c.count;
+      if (layerStats[c.to_layer]) layerStats[c.to_layer].incoming += c.count;
+    }
+
+    for (var i = 0; i < violations.length; i++) {
+      var v = violations[i];
+      if (layerStats[v.source_layer]) {
+        layerStats[v.source_layer].violations++;
+        if (v.severity === 'error') layerStats[v.source_layer].hasError = true;
+        else if (v.severity === 'warning') layerStats[v.source_layer].hasWarning = true;
+      }
+    }
+
+    // Determine colors
+    function layerColor(name) {
+      var s = layerStats[name];
+      if (!s) return '#ccc';
+      if (s.hasError) return '#dc3545';
+      if (s.hasWarning) return '#ffc107';
+      if (s.violations > 0) return '#ffc107';
+      return '#28a745';
+    }
+
+    // Layout: circular
+    var w = 600, h = 600, cx = w / 2, cy = h / 2;
+    var radius = Math.min(w, h) * 0.35;
+    var maxDeps = 1;
+    for (var key in layerStats) {
+      var total = layerStats[key].outgoing + layerStats[key].incoming;
+      if (total > maxDeps) maxDeps = total;
+    }
+
+    var nodes = [];
+    for (var i = 0; i < layers.length; i++) {
+      var angle = (i / layers.length) * 2 * Math.PI - Math.PI / 2;
+      var x = cx + radius * Math.cos(angle);
+      var y = cy + radius * Math.sin(angle);
+      var stats = layerStats[layers[i]];
+      var total = (stats ? stats.outgoing + stats.incoming : 0);
+      var nodeR = 20 + (total / maxDeps) * 30;
+      nodes.push({ name: layers[i], x: x, y: y, r: Math.max(nodeR, 15), stats: stats });
+    }
+
+    // Build SVG
+    var s = '<svg viewBox="0 0 ' + w + ' ' + h + '" class="dep-graph" id="dep-graph-svg">';
+
+    // Arrows
+    for (var i = 0; i < coupling.length; i++) {
+      var c = coupling[i];
+      var fromNode = null, toNode = null;
+      for (var j = 0; j < nodes.length; j++) {
+        if (nodes[j].name === c.from_layer) fromNode = nodes[j];
+        if (nodes[j].name === c.to_layer) toNode = nodes[j];
+      }
+      if (!fromNode || !toNode) continue;
+      if (fromNode.name === toNode.name) continue;
+
+      // Bezier curve from source to target
+      var dx = toNode.x - fromNode.x, dy = toNode.y - fromNode.y;
+      var dist = Math.sqrt(dx * dx + dy * dy);
+      var mx = (fromNode.x + toNode.x) / 2;
+      var my = (fromNode.y + toNode.y) / 2;
+      var curvature = 0.2 * dist;
+      var nx = -dy / dist, ny = dx / dist;
+      var cpx = mx + nx * curvature * 0.3;
+      var cpy = my + ny * curvature * 0.3;
+
+      // Offset multiple arrows between same layers
+      var samePair = 0;
+      for (var k = 0; k < i; k++) {
+        if (coupling[k].from_layer === c.from_layer && coupling[k].to_layer === c.to_layer) samePair++;
+      }
+      cpx += nx * samePair * 15;
+      cpy += ny * samePair * 15;
+
+      s += '<path class="dep-arrow" d="M' + fromNode.x + ',' + fromNode.y + ' Q' + cpx + ',' + cpy + ',' + toNode.x + ',' + toNode.y + '" style="stroke:' + layerColor(c.to_layer) + ';opacity:0.3" data-from="' + c.from_layer + '" data-to="' + c.to_layer + '"/>';
+    }
+
+    // Nodes
+    for (var i = 0; i < nodes.length; i++) {
+      var n = nodes[i];
+      s += '<circle class="dep-node" cx="' + n.x + '" cy="' + n.y + '" r="' + n.r + '" fill="' + layerColor(n.name) + '" data-layer="' + n.name + '" opacity="0.85"/>';
+      // Label
+      var label = n.name.length > 12 ? n.name.substring(0, 11) + '\u2026' : n.name;
+      s += '<text class="dep-label" x="' + n.x + '" y="' + (n.y + n.r + 14) + '">' + label + '</text>';
+    }
+
+    s += '</svg>';
+    container.innerHTML = s;
+
+    // Re-bind after innerHTML replacement
+    svg = document.getElementById('dep-graph-svg');
+    if (!svg) return;
+
+    // Tooltip
+    var tt = document.getElementById('dep-tooltip');
+    if (!tt) {
+      tt = document.createElement('div');
+      tt.id = 'dep-tooltip';
+      tt.className = 'dep-tooltip';
+      tt.style.display = 'none';
+      document.querySelector('.container').appendChild(tt);
+    }
+
+    // Hover interactions
+    svg.addEventListener('mouseover', function(e) {
+      var circle = e.target.closest('circle');
+      if (!circle) { tt.style.display = 'none'; return; }
+      var name = circle.getAttribute('data-layer');
+      var stats = layerStats[name];
+      if (!stats) return;
+
+      tt.style.display = '';
+      tt.innerHTML = '<b>' + name + '</b><br>Outgoing: ' + stats.outgoing + '<br>Incoming: ' + stats.incoming + '<br>Violations: ' + stats.violations;
+
+      // Position tooltip
+      var rect = svg.getBoundingClientRect();
+      tt.style.left = (e.clientX - rect.left + 10) + 'px';
+      tt.style.top = (e.clientY - rect.top - 10) + 'px';
+
+      // Highlight connected edges
+      var arrows = svg.querySelectorAll('.dep-arrow');
+      for (var a = 0; a < arrows.length; a++) {
+        var from = arrows[a].getAttribute('data-from');
+        var to = arrows[a].getAttribute('data-to');
+        arrows[a].style.opacity = (from === name || to === name) ? '0.8' : '0.1';
+      }
+    });
+
+    svg.addEventListener('mousemove', function(e) {
+      var tt = document.getElementById('dep-tooltip');
+      if (!tt || tt.style.display === 'none') return;
+      var rect = svg.getBoundingClientRect();
+      tt.style.left = (e.clientX - rect.left + 10) + 'px';
+      tt.style.top = (e.clientY - rect.top - 10) + 'px';
+    });
+
+    svg.addEventListener('mouseout', function(e) {
+      var tt = document.getElementById('dep-tooltip');
+      if (tt) tt.style.display = 'none';
+      var arrows = svg.querySelectorAll('.dep-arrow');
+      for (var a = 0; a < arrows.length; a++) {
+        arrows[a].style.opacity = '0.3';
+      }
+    });
+
+    // Click to filter
+    svg.addEventListener('click', function(e) {
+      var circle = e.target.closest('circle');
+      var layerSel = document.getElementById('layer-filter');
+      if (!layerSel) return;
+
+      if (circle) {
+        var name = circle.getAttribute('data-layer');
+        layerSel.value = name;
+        layerSel.className = 'active';
+        activeFilters.sourceLayer = name;
+      } else {
+        layerSel.value = '';
+        layerSel.className = '';
+        activeFilters.sourceLayer = '';
+      }
+      reRender();
+    });
   }
 })();
 </script>
