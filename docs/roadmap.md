@@ -364,30 +364,31 @@
 
 ---
 
-### 🔲 v0.53 — arx LSP (Language Server Protocol)
-**Priority:** Medium | **Effort:** L | **Target:** v53.0
+### ✅ v0.53 — arx LSP (Language Server Protocol)
+**Status:** Complete | **Release:** v53.0
 
-**Problem:** Users discover violations only when they remember to run `arx check`. Real-time feedback while editing is orders of magnitude more valuable for enforcing architectural discipline.
+**What was built:**
+- **Stdlib-only JSON-RPC 2.0** — Hand-written protocol types (Position, Range, Diagnostic, CodeAction, Hover, etc.) with Content-Length header parsing over stdin/stdout. No LSP SDK imports.
+- **`arx lsp` command** — Cobra command that wires CheckService, FixEngine, and starts the LSP server. Handles SIGINT/SIGTERM for graceful shutdown.
+- **Server state machine** — Initialize → (open/change/close) → Shutdown → Exit lifecycle with proper error codes (-32002 before init, -32600 after shutdown).
+- **Document synchronization** — didOpen/didChange/didClose with in-memory document cache.
+- **Diagnostic types** — Violation → Diagnostic mapping with severity conversion (error→1, warning→2, info→3, hint→4), source "arx", rule ID as code.
+- **Code actions** — Wraps FixEngine.SuggestFix per diagnostic, returns quickfix CodeAction with arx.fix command.
+- **Hover provider** — Scans import lines, resolves layer via Layer.MatchesPath, returns markdown with layer name and applicable rules.
+- **Config file watching** — Handles workspace/didChangeWatchedFiles for arx.yaml changes.
+- **Push diagnostics** — textDocument/publishDiagnostics notification support via PushDiagnostics().
+- **Integration test** — Full LSP lifecycle test as subprocess: initialize → didOpen → codeAction → hover → shutdown → exit.
+- **All 8 tasks completed** across 5 phases. All tests pass race-clean.
 
-**Solution:** A Language Server Protocol implementation that provides real-time diagnostics, code actions, and hover information for any editor with LSP support (VS Code, Neovim, Helix, Zed, etc.).
-
-**Scope:**
-- **`arx lsp` command** — LSP server implementing `initialize`, `textDocument/didChange`, `textDocument/diagnostic`, `textDocument/codeAction`, and `textDocument/hover`.
-- **Diagnostic push** — On file save or change, run the detection pipeline for the affected file only (not full project) and push diagnostics showing:
-  - Severity-mapped diagnostic level (error/warning/information/hint).
-  - Exact file+line range from the violation.
-  - Rule ID and explanation as diagnostic message.
-- **Code actions** — For each violation, offer a "Show fix" code action that opens a diff view or applies the fix inline (using the existing FixEngine).
-- **Hover provider** — Hovering over an import shows its resolved layer and any applicable rules.
-- **Workspace-level diagnostics** — On project open, run full check and cache results. Serve cached diagnostics for instant feedback on subsequent opens.
-- **Config file watching** — Detect `arx.yaml` changes and recompute diagnostics automatically.
-- **Editor installation guides** — Scripts for VS Code (`arx skill install vscode`), Neovim (lspconfig snippet), Helix, Zed.
-
-**Out of scope:** Inlay hints, semantic tokens, document symbols.
-
-**Risks:** Performance of full-project check on LSP startup (mitigation: background async check with progress notification). Memory usage on large monorepos (mitigation: workspace-level caching with LRU eviction).
-
-**Dependencies:** None — additive, leverages existing CheckService and FixEngine.
+**Implementation details:**
+- `internal/infrastructure/lsp/protocol.go` — 350+ lines of LSP + JSON-RPC types, ReadMessage/WriteMessage
+- `internal/infrastructure/lsp/server.go` — Server state, initialize/didOpen/didChange/didClose/shutdown/exit
+- `internal/infrastructure/lsp/handler.go` — Message dispatcher, method routing, PushDiagnostics
+- `internal/infrastructure/lsp/diagnostics.go` — Violation→Diagnostic mapping, severity conversion
+- `internal/infrastructure/lsp/codeaction.go` — ComputeCodeActions wrapping FixEngine
+- `internal/infrastructure/lsp/hover.go` — ComputeHover, import path extraction, layer resolution
+- `cmd/arx/lsp.go` — Cobra command wiring CheckService + FixEngine + Server
+- `test/integration/lsp_test.go` — Full lifecycle subprocess integration test
 
 ---
 
