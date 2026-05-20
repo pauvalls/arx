@@ -56,5 +56,10 @@ jobs:
           git config user.name "arx-bot"
           git config user.email "bot@arx"
           git add CHANGELOG.md
-          git diff --cached --quiet || git commit -m "docs: update changelog for ${{ github.ref_name }}"
-          git push
+          if git diff --cached --quiet; then
+            echo "No changelog changes to commit"
+          else
+            git commit -m "docs: update changelog for ${{ github.ref_name }}"
+            # CI runs in detached HEAD when triggered by tag — push explicitly to master
+            git push origin HEAD:refs/heads/master
+          fi
