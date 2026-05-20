@@ -47,6 +47,7 @@ type Config struct {
 	Functions      map[string]string            `json:"functions,omitempty" yaml:"functions,omitempty"`
 	CrossLanguage  *CrossLanguageConfig         `json:"cross_language,omitempty" yaml:"cross_language,omitempty"`
 	Workspace      *WorkspaceConfig             `json:"workspace,omitempty" yaml:"workspace,omitempty"`
+	Plugins        []PluginConfig               `json:"plugins,omitempty" yaml:"plugins,omitempty"`
 
 	userFunctions map[string]Expr `json:"-" yaml:"-"`
 }
@@ -126,6 +127,18 @@ func (c *Config) Validate() error {
 				return err
 			}
 		}
+	}
+
+	// Validate plugin configurations
+	pluginNames := make(map[string]bool)
+	for i := range c.Plugins {
+		if err := c.Plugins[i].Validate(); err != nil {
+			return fmt.Errorf("plugins[%d]: %w", i, err)
+		}
+		if pluginNames[c.Plugins[i].Name] {
+			return fmt.Errorf("plugins[%d]: duplicate plugin name %q", i, c.Plugins[i].Name)
+		}
+		pluginNames[c.Plugins[i].Name] = true
 	}
 
 	// Validate cross-language mappings

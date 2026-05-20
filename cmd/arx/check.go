@@ -239,9 +239,9 @@ func runCheckWithService(service *application.CheckService, config *domain.Confi
 	start := time.Now()
 	ctx := context.Background()
 
-	// Re-create service with cache if needed
+	// Re-create service with cache and config (for plugin detectors)
 	if cache != nil {
-		service = newCheckService(format, cache)
+		service = newCheckService(format, cache, config)
 	}
 
 	var dependencies []domain.Dependency
@@ -264,7 +264,7 @@ func runCheckWithService(service *application.CheckService, config *domain.Confi
 			if result != nil {
 				detectorStatuses = result.Statuses
 			}
-			return checkResult{projectRoot: projectRoot, format: format, detectorStatuses: detectorStatuses}
+			return checkResult{projectRoot: projectRoot, format: format, config: config, detectorStatuses: detectorStatuses}
 		}
 		dependencies = result.Dependencies
 		detectorStatuses = result.Statuses
@@ -273,7 +273,7 @@ func runCheckWithService(service *application.CheckService, config *domain.Confi
 		dependencies, err = service.DetectCached(ctx, projectRoot, config.Layers)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: detection failed: %v\n", err)
-			return checkResult{projectRoot: projectRoot, format: format}
+			return checkResult{projectRoot: projectRoot, format: format, config: config}
 		}
 	}
 
@@ -385,7 +385,7 @@ func printCheckResult(result checkResult, format ports.OutputFormat, isWatchUpda
 		if suppressedCount > 0 {
 			// Use baseline-aware reporter
 			reporter = output.NewJSONReporterWithBaseline(suppressedCount)
-		} else if result.config.MaxViolations > 0 {
+		} else if result.config != nil && result.config.MaxViolations > 0 {
 			// Use threshold-aware reporter
 			reporter = output.NewJSONReporterWithThreshold(result.config.MaxViolations)
 		} else {
@@ -399,13 +399,21 @@ func printCheckResult(result checkResult, format ports.OutputFormat, isWatchUpda
 		}
 	} else if format == ports.OutputFormatTerminal {
 		// Use threshold-aware terminal reporter
-		reporter := output.NewTerminalReporterWithThreshold(result.config.MaxViolations)
+		maxV := 0
+		if result.config != nil {
+			maxV = result.config.MaxViolations
+		}
+		reporter := output.NewTerminalReporterWithThreshold(maxV)
 		if err := reporter.Report(violations, format); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: report generation failed: %v\n", err)
 		}
 	} else {
 		// Other formats don't support threshold display yet
-		service := newCheckService(format, nil)
+		cfg := result.config
+		if cfg == nil {
+			cfg = &domain.Config{Version: "1"}
+		}
+		service := newCheckService(format, nil, cfg)
 		if err := service.Report(violations, format); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: report generation failed: %v\n", err)
 		}

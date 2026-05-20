@@ -304,34 +304,37 @@
 
 ## 🔜 v0.51 — v0.60 Roadmap (Next Generation)
 
-### 🔲 v0.51 — Plugin System & Custom Detectors
-**Priority:** High | **Effort:** XL | **Target:** v51.0
+### ✅ v0.51 — Plugin System & Custom Detectors
+**Status:** Complete | **Release:** v51.0
 
-**Problem:** arx supports 10 languages out of the box, but every codebase has unique technology choices. Users working with Dart, Elixir, Scala, or internal DSLs cannot benefit from architecture validation.
-
-**Solution:** A plugin system that allows third-party detectors to be authored in any language and executed as subprocesses communicating via JSON over stdout.
-
-**Scope:**
-- **Plugin Detector Protocol** — Well-defined JSON contract for subprocess-based detectors. Input: project root + layers. Output: dependencies with file, line, source, target.
-- **`detectors:` config section** — New configuration block for registering external detectors alongside built-in ones:
+**What was built:**
+- **Plugin Detector Protocol** — JSON-based subprocess protocol for external detectors. Input: JSON on stdin with action, project_root, layers. Output: JSON on stdout with dependencies.
+- **`plugins:` config section** — New configuration block for registering external detectors:
   ```yaml
-  detectors:
-    - type: plugin
-      name: dart-detector
-      command: "dart run bin/detect.dart"
+  plugins:
+    - name: dart-detector
+      command: dart run bin/detect.dart
       languages: [dart]
       timeout: 30s
   ```
-- **Lifecycle management** — Plugin execution with timeout, error isolation, output validation, and graceful degradation on failure.
-- **Discovery protocol** — Plugins can advertise capabilities (languages, version, confidence) via `--capabilities` flag for interactive `arx init --detect`.
-- **Caching** — Plugin results participate in the existing per-file SHA256 caching infrastructure transparently.
-- **Documentation** — Authoring guide with examples in Go, Python, and TypeScript.
+- **Plugin lifecycle** — Timeout, error isolation, non-zero exit handling, stderr capture.
+- **Capability discovery** — Plugins can advertise name, languages, version via `capabilities` action.
+- **3 mock test plugins** — Go-based mock plugin for testing all paths (detect-only, full, slow, error).
+- **Documentation** — Authoring guide in Go, Python, and shell script.
 
-**Out of scope:** Plugin marketplace, WASM-based plugins, remote plugin execution.
+**Implementation details:**
+- `internal/domain/plugin.go` — `PluginConfig` type with validation (name regex, builtin conflict detection, timeout parsing)
+- `internal/domain/protocol.go` — All request/response types (`PluginRequest`, `PluginResponse`, `PluginCapabilities`, etc.)
+- `internal/infrastructure/detector/plugin/runner.go` — `RunPlugin()` with `os/exec.CommandContext` for timeout
+- `internal/infrastructure/detector/plugin/detector.go` — `PluginDetector` implementing `ports.Detector`
+- `internal/infrastructure/detector/registry.go` — `GetPlugins()` and `GetDetectorsForConfig()` updated
+- `cmd/arx/root.go` — `newCheckService()` accepts optional config for plugin injection
+- `cmd/arx/check.go`, `baseline.go`, `workspace.go`, `server.go` — Updated for plugin support
+- `docs/plugins.md` — Full plugin authoring guide
+- `test/testdata/plugins/mockplugin.go` — Go-based mock plugin for testing
+- `test/integration/plugin_test.go` — Full round-trip integration test
 
-**Risks:** Subprocess overhead for large projects. Mitigation: caching and optional persistent plugin daemon mode. Security: plugins run with user privileges, documented as trusted code.
-
-**Dependencies:** None — purely additive, no existing code changes.
+**All 24 tasks completed across 4 phases. All tests pass race-clean.**
 
 ---
 

@@ -210,6 +210,45 @@
         "type": "string",
         "description": "Expression string (e.g. 'count(deps(domain, infra)) > 0')"
       }
+    },
+    "plugins": {
+      "type": "array",
+      "description": "External plugin detectors (custom language support)",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Unique plugin identifier"
+          },
+          "command": {
+            "type": "string",
+            "description": "Plugin binary path or command"
+          },
+          "args": {
+            "type": "array",
+            "description": "Command-line arguments for the plugin",
+            "items": { "type": "string" }
+          },
+          "languages": {
+            "type": "array",
+            "description": "Languages this plugin supports",
+            "items": { "type": "string" }
+          },
+          "timeout": {
+            "type": "string",
+            "description": "Plugin execution timeout (e.g. 30s)",
+            "pattern": "^[0-9]+[smh]$"
+          },
+          "extensions": {
+            "type": "array",
+            "description": "File extensions this plugin handles",
+            "items": { "type": "string" }
+          }
+        },
+        "required": ["name", "command", "languages"]
+      }
     }
   }
 }

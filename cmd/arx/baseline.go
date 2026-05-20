@@ -98,26 +98,29 @@ func runBaseline(cmd *cobra.Command, args []string) error {
 	service := newCheckService(ports.OutputFormatTerminal, nil)
 
 	// Load config
-	config, err := service.Load(configPath)
+	cfg, err := service.Load(configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
+	// Re-create service with config (for plugin detectors)
+	service = newCheckService(ports.OutputFormatTerminal, nil, cfg)
+
 	// Compute config hash
-	configHash, err := config.Hash()
+	configHash, err := cfg.Hash()
 	if err != nil {
 		return fmt.Errorf("failed to compute config hash: %w", err)
 	}
 
 	// Run detection
 	ctx := cmd.Context()
-	dependencies, err := service.DetectCached(ctx, projectRoot, config.Layers)
+	dependencies, err := service.DetectCached(ctx, projectRoot, cfg.Layers)
 	if err != nil {
 		return fmt.Errorf("detection failed: %w", err)
 	}
 
 	// Evaluate rules
-	violations := service.Evaluate(dependencies, config.Rules, config.Layers)
+	violations := service.Evaluate(dependencies, cfg.Rules, cfg.Layers)
 
 	// Generate baseline
 	baselineSvc := newBaselineService()
@@ -174,17 +177,20 @@ func runBaselineDiff(projectRoot string) error {
 	}
 
 	service := newCheckService(ports.OutputFormatTerminal, nil)
-	config, err := service.Load(configPath)
+	cfg, err := service.Load(configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
-	dependencies, err := service.DetectCached(context.Background(), projectRoot, config.Layers)
+	// Re-create service with config (for plugin detectors)
+	service = newCheckService(ports.OutputFormatTerminal, nil, cfg)
+
+	dependencies, err := service.DetectCached(context.Background(), projectRoot, cfg.Layers)
 	if err != nil {
 		return fmt.Errorf("detection failed: %w", err)
 	}
 
-	currentViolations := service.Evaluate(dependencies, config.Rules, config.Layers)
+	currentViolations := service.Evaluate(dependencies, cfg.Rules, cfg.Layers)
 
 	added, resolved, err := extSvc.DiffFromSnapshot(*snapshot, currentViolations)
 	if err != nil {

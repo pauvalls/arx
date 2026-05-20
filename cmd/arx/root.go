@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/pauvalls/arx/internal/application"
+	"github.com/pauvalls/arx/internal/domain"
 	"github.com/pauvalls/arx/internal/infrastructure/config"
 	"github.com/pauvalls/arx/internal/infrastructure/detector"
 	"github.com/pauvalls/arx/internal/infrastructure/fs"
@@ -61,10 +62,16 @@ func newInitService() *application.InitService {
 
 // newCheckService creates a CheckService with all dependencies wired.
 // If cache is nil, caching is disabled.
-func newCheckService(format ports.OutputFormat, cache ports.Cache) *application.CheckService {
+// If cfg is provided, plugin detectors from the config are included.
+func newCheckService(format ports.OutputFormat, cache ports.Cache, cfgs ...*domain.Config) *application.CheckService {
 	reader := config.NewYAMLReader()
-	detectors := detector.GetDetectors()
-	// Cross-language detector will be added dynamically by Check() when config has mappings
+
+	var detectors []ports.Detector
+	if len(cfgs) > 0 && cfgs[0] != nil {
+		detectors = detector.GetDetectorsForConfig(cfgs[0])
+	} else {
+		detectors = detector.GetDetectors()
+	}
 
 	var reporter ports.Reporter
 	switch format {

@@ -7,8 +7,11 @@ import (
 	"path/filepath"
 
 	"github.com/pauvalls/arx/internal/application"
+	"github.com/pauvalls/arx/internal/domain"
+	"github.com/pauvalls/arx/internal/infrastructure/config"
 	"github.com/pauvalls/arx/internal/infrastructure/detector"
 	"github.com/pauvalls/arx/internal/infrastructure/output"
+	"github.com/pauvalls/arx/internal/ports"
 	"github.com/spf13/cobra"
 )
 
@@ -65,8 +68,23 @@ func runWorkspace(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("resolving workspace path: %w", err)
 	}
 
-	// Create service
-	detectors := detector.GetDetectors()
+	// Load root-level arx.yaml config for plugin detectors
+	reader := config.NewYAMLReader()
+	var cfg *domain.Config
+	rootConfigPath := filepath.Join(absRoot, "arx.yaml")
+	if _, statErr := os.Stat(rootConfigPath); statErr == nil {
+		if loadedCfg, loadErr := reader.Read(rootConfigPath); loadErr == nil {
+			cfg = loadedCfg
+		}
+	}
+
+	// Create service with plugin detectors if configured
+	var detectors []ports.Detector
+	if cfg != nil {
+		detectors = detector.GetDetectorsForConfig(cfg)
+	} else {
+		detectors = detector.GetDetectors()
+	}
 	svc := application.NewWorkspaceService(detectors)
 
 	opts := application.WorkspaceOptions{

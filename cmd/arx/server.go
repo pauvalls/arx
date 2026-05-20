@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"github.com/pauvalls/arx/internal/domain"
+	"github.com/pauvalls/arx/internal/infrastructure/config"
 	"github.com/pauvalls/arx/internal/infrastructure/server"
 	"github.com/spf13/cobra"
 )
@@ -77,8 +79,18 @@ func runServer(cmd *cobra.Command, args []string) error {
 		GoVersion: versionInfo.GoVersion,
 	})
 
-	// Create CheckService
-	service := server.NewDefaultCheckService()
+	// Load config for plugin detectors
+	var cfg *domain.Config
+	reader := config.NewYAMLReader()
+	cfgPath := filepath.Join(projectRoot, "arx.yaml")
+	if _, statErr := os.Stat(cfgPath); statErr == nil {
+		if loadedCfg, loadErr := reader.Read(cfgPath); loadErr == nil {
+			cfg = loadedCfg
+		}
+	}
+
+	// Create CheckService (with plugin detectors if configured)
+	service := server.NewDefaultCheckService(cfg)
 
 	// Run initial check
 	ctx := context.Background()

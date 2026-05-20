@@ -153,6 +153,19 @@ language_overrides:
             - .tsx
         comment: //
         import: import
+# plugins:
+#     # Custom plugin detector: any binary that implements the arx plugin protocol
+#     # See docs/plugins.md for the protocol specification
+#     - name: dart-detector
+#       command: dart
+#       args:
+#         - run
+#         - bin/detect.dart
+#       languages:
+#         - dart
+#       timeout: 30s
+#       extensions:
+#         - .dart
 exclude:
     - vendor/**
     - node_modules/**

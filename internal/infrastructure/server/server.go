@@ -17,6 +17,7 @@ import (
 	"github.com/pauvalls/arx/internal/infrastructure/detector"
 	"github.com/pauvalls/arx/internal/infrastructure/output"
 	"github.com/pauvalls/arx/internal/infrastructure/watcher"
+	"github.com/pauvalls/arx/internal/ports"
 )
 
 // Server is an HTTP server that serves the arx dashboard and REST API.
@@ -384,11 +385,19 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 // NewDefaultCheckService creates a CheckService with default infrastructure wiring.
 // This mirrors the wiring in cmd/arx/root.go but without a specific output format
 // (the server uses JSON for all API responses).
-func NewDefaultCheckService() *application.CheckService {
+// If cfg is provided, plugin detectors from the config are included.
+func NewDefaultCheckService(cfgs ...*domain.Config) *application.CheckService {
 	reader := config.NewYAMLReader()
-	detectors := detector.GetDetectors()
+
+	var d []ports.Detector
+	if len(cfgs) > 0 && cfgs[0] != nil {
+		d = detector.GetDetectorsForConfig(cfgs[0])
+	} else {
+		d = detector.GetDetectors()
+	}
+
 	reporter := output.NewJSONReporter()
-	return application.NewCheckService(reader, detectors, reporter)
+	return application.NewCheckService(reader, d, reporter)
 }
 
 // runCheck performs a full architecture check and updates the ServerState.
