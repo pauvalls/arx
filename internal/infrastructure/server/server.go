@@ -15,6 +15,7 @@ import (
 	"github.com/pauvalls/arx/internal/domain"
 	"github.com/pauvalls/arx/internal/infrastructure/config"
 	"github.com/pauvalls/arx/internal/infrastructure/detector"
+	arxgithub "github.com/pauvalls/arx/internal/infrastructure/github"
 	"github.com/pauvalls/arx/internal/infrastructure/output"
 	"github.com/pauvalls/arx/internal/infrastructure/watcher"
 	"github.com/pauvalls/arx/internal/ports"
@@ -29,6 +30,8 @@ type Server struct {
 	service       *application.CheckService
 	state         *ServerState
 	registry      *SSERegistry
+	prCheckSvc    *application.PRCheckService // optional PR check service
+	ghSecret      string                      // webhook secret
 	mu            sync.Mutex
 	httpServer    *http.Server
 	watcherCancel context.CancelFunc
@@ -47,6 +50,14 @@ func New(port int, bind string, projectRoot string, cachePath string, service *a
 	}
 }
 
+// WithPRCheckService sets the PR check service and webhook secret on the server.
+// This enables the GitHub webhook endpoint.
+func (s *Server) WithPRCheckService(prCheckSvc *application.PRCheckService, webhookSecret string) *Server {
+	s.prCheckSvc = prCheckSvc
+	s.ghSecret = webhookSecret
+	return s
+}
+
 // Start launches the HTTP server and blocks until shutdown.
 // It registers signal handlers for graceful shutdown on SIGINT/SIGTERM.
 // A 30s ticker and file watcher trigger periodic re-checks.
@@ -63,6 +74,11 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/config", s.handleConfig)
 	mux.HandleFunc("/api/reload", s.handleReload)
 	mux.HandleFunc("/api/events", s.handleSSE)
+
+	// GitHub webhook endpoint (only if PR check service is configured)
+	if s.prCheckSvc != nil {
+		mux.HandleFunc("/api/github-webhook", arxgithub.HandleWebhook(s.ghSecret, s.prCheckSvc))
+	}
 
 	// Dashboard root
 	mux.HandleFunc("/", s.handleDashboard)

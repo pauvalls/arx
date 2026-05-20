@@ -1,0 +1,32 @@
+# Arx GitHub Integration Configuration
+# This file configures arx's GitHub PR check and webhook integration.
+# Copy this file to your project root and fill in your GitHub App details.
+version: "1.0"
+
+github_app:
+  # GitHub App ID (find in GitHub App settings)
+  app_id: 123456
+
+  # Optional: GitHub App slug (from the URL)
+  app_slug: arx-bot
+
+  # Installation ID (find in the installation URL)
+  installation_id: 789012
+
+  # Path to the GitHub App's private key PEM file
+  private_key_path: .github/arx-bot.pem
+
+webhook:
+  # Webhook secret for verifying payload signatures
+  # Use environment variable substitution for secrets
+  secret: "${GITHUB_WEBHOOK_SECRET}"
+
+pr_check:
+  # Automatically approve PRs when no violations are found
+  auto_approve: true
+
+  # Condition for auto-approval: "success" (default) or "neutral"
+  auto_approve_on: success
+
+  # Summary format: "markdown" (default) or "text"
+  summary_format: markdown
