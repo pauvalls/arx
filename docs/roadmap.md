@@ -392,34 +392,6 @@
 
 ---
 
-### 🔲 v0.54 — Team Dashboard & Multi-User Mode
-**Priority:** Medium | **Effort:** L | **Target:** v54.0
-
-**Problem:** The dashboard is single-user. Teams share a codebase but have no shared view of architectural health, no audit trail of who suppressed what, and no notification system when violations regress.
-
-**Solution:** Multi-user dashboard with authentication, session management, notification webhooks, and team-wide aggregated views.
-
-**Scope:**
-- **Authentication** — Token-based auth for API endpoints. Optional GitHub OAuth for dashboard login. Multiple user roles: `admin`, `developer`, `viewer`.
-- **Session management** — In-memory session store with configurable TTL. Dashboard login page with session cookie.
-- **Audit trail** — Log every `arx baseline` suppress/refresh action with user identity and timestamp. API endpoint `/api/audit-log` retrieves history.
-- **Team view** — Aggregated workspace view showing health across multiple projects with historical trend lines, per-team member violation introduction rate.
-- **Webhook notifications** — Configurable webhook URLs per event type:
-  - `violation.introduced` — New violation detected.
-  - `violation.resolved` — Violation cleared.
-  - `baseline.refreshed` — Baseline automatically updated.
-  - `threshold.exceeded` — Violation count exceeds configured threshold.
-- **Slack integration** — Pre-formatted Slack message blocks for each event type, with violation ID, file, severity, and direct link.
-- **Dashboard alerts** — In-dashboard toast notifications for real-time events (SSE already supports push).
-
-**Out of scope:** SAML/SSO, LDAP, team management UI, RBAC with custom roles.
-
-**Risks:** Stateful sessions complicate horizontal scaling (mitigation: session persistence to `.arx-cache/`, documented single-server deployment).
-
-**Dependencies:** v49 (SSE infrastructure reused for push notifications).
-
----
-
 ### ✅ v0.55 — Policy as Code & WASM Rules
 **Priority:** Low | **Effort:** XL | **Completed:** v55.0
 
@@ -459,178 +431,132 @@
 
 ---
 
-### 🔲 v0.56 — Config Migration & Versioning
-**Priority:** Medium | **Effort:** M | **Target:** v56.0
+---
 
-**Problem:** As arx evolves, config schema changes. Users with existing configs need a safe, automated migration path — not manual diffs.
+## 🎯 v0.56 — v0.60: The Road to 1.0
 
-**Solution:** Versioned config schema with automatic migration tool, format upgrades, and deprecation warnings.
+No más features nuevas. El producto está completo. Estas 5 releases son exclusivamente **pulido, estabilidad, y ecosistema** para llegar a una **v1.0.0** sólida.
+
+| Release | Enfoque | ¿Por qué? |
+|---------|---------|-----------|
+| **v0.56** | Quality Hardening | Cerrar los últimos gaps |
+| **v0.57** | Documentation & Onboarding | Que cualquiera pueda arrancar |
+| **v0.58** | Config Migration & Versioning | Contrato de schema estable |
+| **v0.59** | Performance Polish | Benchmarks publicados |
+| **v0.60** | 1.0.0 Release | Homebrew core, Marketplace, contrato |
+
+---
+
+### 🔲 v0.56 — Quality Hardening
+**Priority:** 🔴 Alta | **Effort:** M
+
+**Qué:** Cerrar los últimos gaps de calidad antes de congelar el contrato.
 
 **Scope:**
-- **Config version field** — `version` field in `arx.yaml` determines the schema version. Current is `1`. New versions bump as schema evolves.
-- **`arx config migrate`** — Command that upgrades config files between versions:
-  ```bash
-  arx config migrate            # Auto-detect current version, migrate to latest
-  arx config migrate --to v2    # Migrate to specific version
-  arx config migrate --dry-run  # Show what would change
-  arx config migrate --backup   # Create .arx.yaml.bak before modifying
-  ```
-- **Migration registry** — Programmatic migration functions keyed by `(from, to)`. Each function transforms the raw YAML nodes, preserving comments and formatting where possible.
-- **Deprecation warnings** — When using a deprecated config field, warn on `arx check` with the version when it will be removed and the migration command to run.
-- **Schema version endpoints** — `GET /api/config/schema` returns the active schema version and available migrations.
-- **Git integration** — `arx config migrate` commits the migration automatically if in a git repo.
+- **100% coverage en domain + application** — Extraer interfaces para los paths que dependen de git (GitClient interface). Los `if err != nil` sin test hoy son porque no podés mockear `exec.Command`. Con una interfaz, sí.
+- **Fix C-01 en registry.go** — La última violación de dogfooding que quedó enmascarada. Extraer la lógica compartida a `ports` o reestructurar el registry.
+- **Fuzz test corpora final** — Pasar los 13 fuzz tests con `-count=1000` cada uno, sin crashes. Congelar los corpora en el repo.
+- **Flaky test pass** — `go test -count=10 -race ./...` pasa sin failures 10/10 veces.
+- **Race detector hardening** — `go test -race -count=5 ./...` pasa en CI como gate obligatorio.
+- **WASM 1MB size limit** — Implementar el límite de tamaño de módulo que estaba en el spec de v55 pero no se implementó.
 
-**Out of scope:** Online schema registry, multi-version concurrent support.
-
-**Risks:** Comment preservation in YAML transformations (mitigation: use yaml.Node manipulation, not marshal/unmarshal round-trip).
-
-**Dependencies:** v47 (schema generation and !include infrastructure).
+**Criterio de éxito:** `go test -count=10 -race ./...` pasa siempre. Cobertura 100% en domain + application. 0 dogfooding violations.
 
 ---
 
-### 🔲 v0.57 — Performance v2: Parallelism & Profiling
-**Priority:** Medium | **Effort:** M | **Target:** v57.0
+### 🔲 v0.57 — Documentation & Onboarding
+**Priority:** 🔴 Alta | **Effort:** M
 
-**Problem:** v45 fixed the concurrency model (no more errgroup cancellation) but didn't optimize parallel execution granularity. Large monorepos still bottleneck on sequential detector phases.
-
-**Solution:** Fine-grained parallel execution with adaptive worker pools, shared caching, and actionable profiling.
+**Qué:** Documentation completa y experiencia de onboarding que no asuma nada.
 
 **Scope:**
-- **Adaptive worker pool** — Configurable `--jobs N` flag for detector execution. Default: `runtime.NumCPU()`. Workers are shared across detectors, not per-detector. Idle detectors don't consume workers.
-- **Cross-project cache sharing** — In workspace mode, share the file content cache across projects. If `project-a` and `project-b` share a dependency, the second project skips parsing entirely.
-- **Profile dashboard** — New `/api/performance` endpoint and dashboard tab showing:
-  - Per-detector execution time (histogram over last 100 runs).
-  - Cache hit/miss ratios.
-  - Worker pool utilization (active/idle/waiting).
-  - Total check time trend (sparkline over last 50 runs).
-- **Benchmark comparison** — `arx check --benchmark` mode: runs the check, compares against stored baseline, reports performance delta.
-- **Profile-guided optimization hints** — If a detector consistently takes >50% of check time, suggest: "Go detector is the bottleneck. Consider --jobs or file caching."
+- **Quickstart (5 minutos)** — `curl -sfL https://arx.sh/install.sh | sh` + `arx init` + `arx check`. Nada más. Un solo comando, cero configuración manual.
+- **Conceptual guides** — Explicar qué son las capas, las reglas, los detectores, el DSL de expresiones, las políticas WASM, el workspace mode. Con diagramas. Con ejemplos reales.
+- **CLI reference** — Cada comando, cada flag, cada exit code. Auto-generado desde Cobra.
+- **Config reference** — Cada campo de `arx.yaml` documentado con schema, valores posibles, default, ejemplo.
+- **API reference** — Endpoints REST, WebSocket SSE, JSON-RPC LSP. Formato de requests y responses.
+- **Tutoriales** — CI/CD integration (GitHub Actions + GitLab), workspace monorepo, custom plugin authoring, GitHub App setup.
+- **Editor setup guides** — VS Code (settings.json para LSP), Neovim (lspconfig snippet), Helix, Zed.
+- **FAQ / Troubleshooting** — Por qué no detecta mi lenguaje, cómo excluir archivos, diferencia entre suppress y baseline, etc.
 
-**Out of scope:** Distributed execution across multiple machines, GPU acceleration.
-
-**Risks:** Worker pool contention on I/O-bound detectors (mitigation: separate I/O vs CPU detector pools).
-
-**Dependencies:** v45 (caching infrastructure and benchmark suite).
+**Criterio de éxito:** Un usuario nuevo puede pasar de 0 a `arx check` funcionando en ≤5 minutos sin preguntar nada.
 
 ---
 
-### 🔲 v0.58 — Architecture Reports & Visualizations
-**Priority:** Low | **Effort:** M | **Target:** v58.0
+### 🔲 v0.58 — Config Migration & Versioning
+**Priority:** 🟡 Media | **Effort:** M
 
-**Problem:** The dashboard and CLI provide raw violation data but not actionable, shareable architecture reports that teams can discuss in meetings or attach to RFCs.
-
-**Solution:** Rich, exportable architecture reports with interactive diagrams, trend analysis, and narrative summaries.
+**Qué:** Garantizar que nadie se rompe cuando el schema evoluciona.
 
 **Scope:**
-- **`arx report` command** — Generates a standalone HTML report with:
-  - Executive summary: architecture health score, trend arrow, top 3 issues.
-  - Layer dependency diagram (SVG, interactive, reusing existing graph layout).
-  - Violation table (sortable, filterable, with severity badges).
-  - Trend chart (violations over time from baseline history).
-  - Per-layer breakdown (files, imports, dependencies, violations).
-  - Rule coverage table (which rules triggered, which didn't).
-  - Export to PDF (via CSS print styles).
-- **Report themes** — Configurable branding: `default`, `minimal`, `executive` (summary only).
-- **Scheduled reports** — `arx report --schedule "0 9 * * 1"` generates a weekly report every Monday.
-- **Email delivery** — SMTP configuration for sending reports via email.
-- **Report comparison** — `arx report --diff <previous>` shows side-by-side comparison of two points in time.
+- **`arx config migrate`** — Comando que migra `arx.yaml` entre versiones de schema. Soporta `--to`, `--dry-run`, `--backup`.
+- **Migration registry** — Funciones de migración programáticas keyeadas por `(from, to)`. Transforman nodos YAML preservando comentarios.
+- **Deprecation warnings** — Cuando se usa un campo deprecado, `arx check` warn ea con la versión en que se va a eliminar y el comando de migración.
+- **Schema version endpoint** — `GET /api/config/schema` devuelve la versión activa y las migraciones disponibles.
+- **Schema freeze** — El schema v1 queda congelado. Cualquier cambio breaking requiere schema v2 con su migración desde v1.
+- **Output contract freeze** — `arx check --json` output se versiona. Se congela v1. Tests que rompen si cambia sin bumpear versión.
 
-**Out of scope:** Interactive dashboard builder, custom report templates.
-
-**Risks:** PDF quality from HTML print (mitigation: dedicated CSS print stylesheet with page breaks and no interactive elements).
-
-**Dependencies:** v46 (baseline history for trend data), v49 (SSE for live data not needed for reports).
+**Criterio de éxito:** Un usuario puede migrar de schema v1 a v2 con un solo comando, sin perder datos ni comentarios.
 
 ---
 
-### 🔲 v0.59 — GraphQL API & Integrations
-**Priority:** Low | **Effort:** XL | **Target:** v59.0
+### 🔲 v0.59 — Performance Polish
+**Priority:** 🟡 Media | **Effort:** S
 
-**Problem:** The REST API is simple but forces clients to fetch multiple endpoints and over-fetch data. Integrations (CI/CD, dashboards, bots) need a flexible query interface.
-
-**Solution:** GraphQL API that exposes the full arx data model with composable queries, subscriptions for real-time events, and an integrated GraphiQL explorer.
+**Qué:** Publicar baseline de rendimiento, optimizar lo que queda.
 
 **Scope:**
-- **GraphQL endpoint** — `POST /api/graphql` with schema covering:
-  - `Violation` (id, rule, file, line, severity, message, layer pair).
-  - `Project` (layers, rules, detectors, dependencies).
-  - `Workspace` (projects, aggregated health, trends).
-  - `Baseline` (snapshots, history, trends).
-  - `Performance` (timings, cache stats, benchmark results).
-- **Subscriptions** — Real-time GraphQL subscriptions over SSE for violation events, config changes, check completions.
-- **GraphiQL IDE** — Embedded GraphiQL explorer at `GET /api/graphql/ide` for ad-hoc queries during development.
-- **Authentication** — Respects the same token/OAuth as the REST API.
-- **Rate limiting** — Configurable query depth and complexity limits to prevent abusive queries.
-- **Persisted queries** — Support for persisted queries (hash-based) for production CI/CD pipelines.
+- **Benchmark baseline público** — El `.bench-baseline` se publica como artefacto de CI. Cada release compara contra el anterior.
+- **Benchmark dashboard** — Tabla en el README o en una GitHub Page mostrando evolución de tiempos por release.
+- **`--jobs` flag** — Número configurable de workers para detección paralela.
+- **Cross-project cache sharing** — En workspace mode, compartir el file content cache entre proyectos.
+- **Profile output en JSON** — `arx check --profile --json` incluye per-detector timing en el output JSON.
 
-**Out of scope:** Federation for multi-service GraphQL, Apollo/Relay client libraries.
-
-**Risks:** GraphQL adds significant complexity for a CLI tool's API (mitigation: keep REST API as primary, GraphQL as secondary integration point).
-
-**Dependencies:** v54 (authentication infrastructure), v49 (SSE for subscriptions).
+**Criterio de éxito:** `go test -bench=. -benchmem ./internal/application/` se publica en CI. Cualquier regresión >5% bloquea el merge.
 
 ---
 
-### 🔲 v0.60 — Editor Ecosystem: VS Code & JetBrains Plugins
-**Priority:** Medium | **Effort:** XL | **Target:** v60.0
+### 🔲 v0.60 — 1.0.0 Release
+**Priority:** 🔴 Alta | **Effort:** M
 
-**Problem:** The LSP (v53) provides language-agnostic editor support, but native plugins offer deeper integration: gutter icons, project views, configuration UI, and one-click installation.
-
-**Solution:** Official VS Code and JetBrains IntelliJ plugins that wrap the LSP and add IDE-specific features.
+**Qué:** La release final. Contrato congelado, ecosistema completo, ready for production.
 
 **Scope:**
+- **Contract freeze** — JSON output v1, config schema v1, deprecation policy publicada. Cualquier cambio breaking requiere v2.0.0.
+- **Homebrew core** — Formula promovida de `pauvalls/homebrew-arx` a `Homebrew/homebrew-core`. Pasar el review de Homebrew (exigente: build reproducible, tests, sin red en build).
+- **GitHub Actions Marketplace** — `arx-action` publicada y verificada. Con screenshot, descripción, ejemplos.
+- **Deprecation policy documentada** — Los campos deprecados tienen mínimo 3 releases de ventana antes de eliminarse.
+- **Security audit final** — `gitleaks` en CI, permisos de archivos correctos, sin secretos hardcodeados.
+- **v1.0.0 tag** — Release final con changelog completo, release notes en GitHub, anuncio.
 
-**VS Code Extension (`arx-vscode`):**
-- Wraps `arx lsp` as the language server.
-- **Gutter decorations** — Visible icons next to lines with violations (red/green/yellow dots).
-- **Architecture view** — Side panel showing layer hierarchy, dependency graph (reusing SVG renderer), and violation list grouped by layer.
-- **Configuration UI** — Form-based editor for `arx.yaml` with schema validation, autocomplete, and inline documentation.
-- **Command palette** — `Arx: Check project`, `Arx: Show violations`, `Arx: Apply fix`, `Arx: Baseline refresh`.
-- **Status bar** — Architecture health score in the status bar, clickable to open violations panel.
-- **Auto-install** — Detection of `arx.yaml` in workspace root prompts to install arx.
-
-**JetBrains Plugin (`arx-jetbrains`):**
-- Same feature set as VS Code, targeting IntelliJ IDEA and GoLand.
-- **Tool window** — Architecture tool window integrated with the IDE's standard tool window layout.
-- **Quick-fix** — Alt+Enter on a violation shows "Apply arx fix" action.
-- **Project settings** — Architecture settings page in Preferences/Settings.
-- **Inspection** — Custom IntelliJ inspection backed by arx for real-time highlighting of violations.
-
-**Out of scope:** Sublime Text, Emacs, Vim (covered by LSP). Plugin marketplace listing (deferred to v61 1.0).
-
-**Risks:** Maintaining two plugin codebases (mitigation: LSP protocol means the Go backend is shared — plugins are thin wrappers).
-
-**Dependencies:** v53 (LSP provides the backend protocol both plugins consume).
+**Criterio de éxito:** `v1.0.0` taggeada, Homebrew core aceptado, Action en el Marketplace, documentación completa.
 
 ---
 
-## 📊 Release Matrix
+## 📊 Resumen del Camino a 1.0
 
-| Release | Theme | Effort | Dependencies | Primary Value |
-|---------|-------|--------|-------------|---------------|
-| **v51** | Plugin System | XL | — | Extensibility |
-| **v52** | GitHub PR Review | XL | v51 | Team workflow |
-| **v53** | LSP | L | — | Developer experience |
-| **v54** | Team Dashboard | L | v49 | Team visibility |
-| **v55** | Policy as Code | XL | v51 | Enterprise readiness |
-| **v56** | Config Migration | M | v47 | Stability |
-| **v57** | Performance v2 | M | v45 | Speed |
-| **v58** | Architecture Reports | M | v46, v49 | Communication |
-| **v59** | GraphQL API | XL | v54, v49 | Integration |
-| **v60** | Editor Plugins | XL | v53 | Ecosystem |
+| Release | Tema | Esfuerzo | Depende de | Criterio clave |
+|---------|------|----------|------------|----------------|
+| **v0.56** | Quality Hardening | M | — | 100% coverage, 0 dogfooding |
+| **v0.57** | Documentation | M | — | Onboarding ≤5 min |
+| **v0.58** | Config Migration | M | v47 | Schema freeze + migración |
+| **v0.59** | Performance Polish | S | v45 | Benchmark público |
+| **v0.60** | **1.0.0 Release** | M | v56-v59 | Homebrew core + Marketplace |
 
----
+## 🎯 Checklist 1.0.0
 
-## 🎯 Beyond v60: The 1.0 Horizon
-
-Before a stable 1.0 release, the following criteria must be met:
-
-1. **Stable JSON contract** — `arx check --json` output is versioned and guarantees backward compatibility within v1.x.
-2. **Config schema v1 stable** — No breaking changes without a major version bump.
-3. **100% core coverage** — `internal/domain` and `internal/application` at 100% statement coverage, including git-dependent paths via interface extraction.
-4. **Zero dogfooding violations** — arx's own architecture violations are eliminated.
-5. **Complete documentation** — Getting started guide, conceptual guides, CLI reference, config reference, API reference, tutorials for CI/CD and workspace mode.
-6. **Homebrew core** — Formula promoted from `pauvalls/homebrew-arx` to `Homebrew/homebrew-core`.
-7. **GitHub Actions Marketplace** — `arx-action` published and verified.
-8. **Benchmark baseline** — Published performance baseline with automatic regression detection.
-9. **Deprecation policy** — Documented policy for field deprecation with minimum 3-release migration window.
+- [ ] `internal/domain` + `internal/application` → 100% cobertura
+- [ ] 0 dogfooding violations (fix C-01 en registry.go)
+- [ ] `go test -count=10 -race ./...` → siempre verde
+- [ ] Fuzz tests 13/13 pasan `-count=1000`
+- [ ] JSON output v1 congelado (tests rompen si cambia)
+- [ ] Config schema v1 congelado (migración v1→v2 lista)
+- [ ] Deprecation policy publicada
+- [ ] Quickstart ≤5 minutos documentado y verificado
+- [ ] CLI reference + config reference + API reference completas
+- [ ] Tutoriales: CI/CD, workspace, plugins, GitHub App
+- [ ] Benchmark baseline público con CI guard
+- [ ] Homebrew core aceptado
+- [ ] GitHub Actions Marketplace publicado
+- [ ] Security audit: gitleaks + permisos + sin secrets
+- [ ] `v1.0.0` taggeada y releaseada
