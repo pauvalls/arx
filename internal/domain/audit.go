@@ -1,6 +1,9 @@
 package domain
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+)
 
 // Audit service evaluates architectural rules against detected dependencies
 
@@ -165,6 +168,62 @@ func GenerateViolationID(rule Rule, index int) string {
 // GenerateTemplateViolationID creates a sequential ID for a template-based violation
 func GenerateTemplateViolationID(index int) string {
 	return fmt.Sprintf("T-%02d", index)
+}
+
+// GenerateWasmViolationID creates a sequential ID for a WASM-based violation
+func GenerateWasmViolationID(index int) string {
+	return fmt.Sprintf("W-%02d", index)
+}
+
+// EvaluateWasmRules evaluates all rules with Wasm config and appends violations.
+// It requires an external WasmEvaluator to be provided per rule's WASM module path.
+// If evaluatorFn returns nil for a rule's path, the rule's policies are skipped.
+// Errors are logged by incrementing the returned error count.
+func EvaluateWasmRules(ctx context.Context, rules []Rule, deps []Dependency, layers []Layer, existingViolations []Violation, evaluatorFn func(wasmPath string) WasmEvaluator) ([]Violation, int) {
+	var violations []Violation
+	errorCount := 0
+
+	for i := range rules {
+		rule := &rules[i]
+		if rule.Wasm == nil {
+			continue
+		}
+		if !rule.IsEnabledFor("") {
+			continue
+		}
+
+		eval := evaluatorFn(rule.Wasm.Path)
+		if eval == nil {
+			errorCount++
+			continue
+		}
+
+		wasmViolations, err := eval.Evaluate(ctx, deps, layers, existingViolations, rule.Wasm.Params)
+		if err != nil {
+			errorCount++
+			continue // graceful degradation: skip this policy on error
+		}
+
+		// Map returned violations to the rule
+		for _, wv := range wasmViolations {
+			if rule.IsExcludedFor(wv.File) {
+				continue
+			}
+			if !rule.IsEnabledFor(wv.File) {
+				continue
+			}
+			v := wv
+			if v.RuleID == "" {
+				v.RuleID = rule.ID
+			}
+			if v.Severity == "" {
+				v.Severity = rule.Severity
+			}
+			violations = append(violations, v)
+		}
+	}
+
+	return violations, errorCount
 }
 
 // resolveLayer finds the layer that matches a given file path

@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -930,5 +931,257 @@ func TestAudit_EvaluateRules_TemplateRules(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// ─── WASM Rule Evaluation ────────────────────────────────────────────────────
+
+func TestEvaluateWasmRules_NoWasmRules(t *testing.T) {
+	rules := []Rule{
+		{ID: "R1", From: "domain", To: []string{"infrastructure"}, Type: RuleTypeCannot, Severity: SeverityError},
+	}
+	deps := []Dependency{
+		{SourceFile: "internal/domain/user.go", ImportPath: "pkg/infra", ResolvedLayer: "infrastructure"},
+	}
+	layers := []Layer{
+		{Name: "domain", Paths: []string{"internal/domain"}},
+		{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
+	}
+
+	evaluatorFn := func(wasmPath string) WasmEvaluator {
+		return nil // should not be called
+	}
+
+	violations, errCount := EvaluateWasmRules(context.Background(), rules, deps, layers, nil, evaluatorFn)
+	if errCount != 0 {
+		t.Errorf("expected 0 errors, got %d", errCount)
+	}
+	if len(violations) != 0 {
+		t.Errorf("expected 0 violations, got %d", len(violations))
+	}
+}
+
+func TestEvaluateWasmRules_WithWasmRule(t *testing.T) {
+	rules := []Rule{
+		{
+			ID:       "W1",
+			Severity: SeverityError,
+			Wasm:     &WasmConfig{Path: "policies/test.wasm"},
+		},
+	}
+	deps := []Dependency{
+		{SourceFile: "internal/domain/user.go", ImportPath: "pkg/infra", ResolvedLayer: "infrastructure"},
+	}
+	layers := []Layer{
+		{Name: "domain", Paths: []string{"internal/domain"}},
+	}
+
+	evaluatorFn := func(wasmPath string) WasmEvaluator {
+		if wasmPath == "policies/test.wasm" {
+			return &mockEvaluator{
+				violations: []Violation{
+					{Message: "balance violation", File: "internal/domain/user.go"},
+				},
+			}
+		}
+		return nil
+	}
+
+	violations, errCount := EvaluateWasmRules(context.Background(), rules, deps, layers, nil, evaluatorFn)
+	if errCount != 0 {
+		t.Errorf("expected 0 errors, got %d", errCount)
+	}
+	if len(violations) != 1 {
+		t.Fatalf("expected 1 violation, got %d", len(violations))
+	}
+	if violations[0].RuleID != "W1" {
+		t.Errorf("expected RuleID 'W1', got %q", violations[0].RuleID)
+	}
+	if violations[0].Message != "balance violation" {
+		t.Errorf("expected Message 'balance violation', got %q", violations[0].Message)
+	}
+}
+
+func TestEvaluateWasmRules_MultipleWasmRules(t *testing.T) {
+	rules := []Rule{
+		{
+			ID:       "W1",
+			Severity: SeverityError,
+			Wasm:     &WasmConfig{Path: "policies/balance.wasm"},
+		},
+		{
+			ID:       "W2",
+			Severity: SeverityWarning,
+			Wasm:     &WasmConfig{Path: "policies/symmetry.wasm"},
+		},
+	}
+
+	evaluatorFn := func(wasmPath string) WasmEvaluator {
+		switch wasmPath {
+		case "policies/balance.wasm":
+			return &mockEvaluator{
+				violations: []Violation{
+					{Message: "balance violation", File: "file1.go"},
+				},
+			}
+		case "policies/symmetry.wasm":
+			return &mockEvaluator{
+				violations: []Violation{
+					{Message: "symmetry violation", File: "file2.go"},
+				},
+			}
+		default:
+			return nil
+		}
+	}
+
+	violations, errCount := EvaluateWasmRules(context.Background(), rules, nil, nil, nil, evaluatorFn)
+	if errCount != 0 {
+		t.Errorf("expected 0 errors, got %d", errCount)
+	}
+	if len(violations) != 2 {
+		t.Fatalf("expected 2 violations, got %d", len(violations))
+	}
+}
+
+func TestEvaluateWasmRules_EvaluatorError(t *testing.T) {
+	rules := []Rule{
+		{
+			ID:   "W1",
+			Wasm: &WasmConfig{Path: "policies/broken.wasm"},
+		},
+	}
+
+	calls := 0
+	evaluatorFn := func(wasmPath string) WasmEvaluator {
+		calls++
+		return nil // evaluator not found (error case)
+	}
+
+	violations, errCount := EvaluateWasmRules(context.Background(), rules, nil, nil, nil, evaluatorFn)
+	if errCount != 1 {
+		t.Errorf("expected 1 error, got %d", errCount)
+	}
+	if len(violations) != 0 {
+		t.Errorf("expected 0 violations, got %d", len(violations))
+	}
+	if calls != 1 {
+		t.Errorf("expected 1 evaluatorFn call, got %d", calls)
+	}
+}
+
+func TestEvaluateWasmRules_EvaluatorReturnsError(t *testing.T) {
+	rules := []Rule{
+		{
+			ID:   "W1",
+			Wasm: &WasmConfig{Path: "policies/test.wasm"},
+		},
+	}
+
+	evaluatorFn := func(wasmPath string) WasmEvaluator {
+		return &mockEvaluator{err: fmt.Errorf("evaluation failed")}
+	}
+
+	violations, errCount := EvaluateWasmRules(context.Background(), rules, nil, nil, nil, evaluatorFn)
+	if errCount != 1 {
+		t.Errorf("expected 1 error, got %d", errCount)
+	}
+	if len(violations) != 0 {
+		t.Errorf("expected 0 violations, got %d", len(violations))
+	}
+}
+
+func TestEvaluateWasmRules_InheritsSeverity(t *testing.T) {
+	rules := []Rule{
+		{
+			ID:       "W1",
+			Severity: SeverityWarning,
+			Wasm:     &WasmConfig{Path: "policies/test.wasm"},
+		},
+	}
+
+	evaluatorFn := func(wasmPath string) WasmEvaluator {
+		return &mockEvaluator{
+			violations: []Violation{
+				{RuleID: "W1", Message: "test", File: "test.go"}, // no Severity set
+			},
+		}
+	}
+
+	violations, errCount := EvaluateWasmRules(context.Background(), rules, nil, nil, nil, evaluatorFn)
+	if errCount != 0 {
+		t.Errorf("expected 0 errors, got %d", errCount)
+	}
+	if len(violations) != 1 {
+		t.Fatalf("expected 1 violation, got %d", len(violations))
+	}
+	if violations[0].Severity != SeverityWarning {
+		t.Errorf("expected Severity %q, got %q", SeverityWarning, violations[0].Severity)
+	}
+}
+
+func TestEvaluateWasmRules_MixedWithStandardRules(t *testing.T) {
+	rules := []Rule{
+		{
+			ID:       "R1",
+			From:     "domain",
+			To:       []string{"infrastructure"},
+			Type:     RuleTypeCannot,
+			Severity: SeverityError,
+		},
+		{
+			ID:       "W1",
+			Severity: SeverityWarning,
+			Wasm:     &WasmConfig{Path: "policies/test.wasm"},
+		},
+	}
+
+	evaluatorFn := func(wasmPath string) WasmEvaluator {
+		return &mockEvaluator{
+			violations: []Violation{
+				{Message: "wasm violation"},
+			},
+		}
+	}
+
+	// Standard rules are evaluated via EvaluateRules, WASM rules via EvaluateWasmRules
+	standardViolations := EvaluateRules(nil, rules, nil)
+	wasmViolations, errCount := EvaluateWasmRules(context.Background(), rules, nil, nil, standardViolations, evaluatorFn)
+
+	if errCount != 0 {
+		t.Errorf("expected 0 errors, got %d", errCount)
+	}
+	// Standard rules produce no violations (no deps), WASM produces 1
+	if len(wasmViolations) != 1 {
+		t.Fatalf("expected 1 wasm violation, got %d", len(wasmViolations))
+	}
+}
+
+func TestEvaluateWasmRules_DisabledRule(t *testing.T) {
+	rules := []Rule{
+		{
+			ID:   "W1",
+			Wasm: &WasmConfig{Path: "policies/test.wasm"},
+			Overrides: []RuleOverride{
+				{Path: "", Enabled: boolPtr(false)},
+			},
+		},
+	}
+
+	called := false
+	evaluatorFn := func(wasmPath string) WasmEvaluator {
+		called = true
+		return nil
+	}
+
+	violations, errCount := EvaluateWasmRules(context.Background(), rules, nil, nil, nil, evaluatorFn)
+	if errCount != 0 {
+		t.Errorf("expected 0 errors, got %d", errCount)
+	}
+	if len(violations) != 0 {
+		t.Errorf("expected 0 violations, got %d", len(violations))
+	}
+	if called {
+		t.Error("evaluatorFn should not be called for disabled rule")
 	}
 }

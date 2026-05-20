@@ -420,36 +420,36 @@
 
 ---
 
-### 🔲 v0.55 — Policy as Code & WASM Rules
-**Priority:** Low | **Effort:** XL | **Target:** v55.0
+### ✅ v0.55 — Policy as Code & WASM Rules
+**Priority:** Low | **Effort:** XL | **Completed:** v55.0
 
 **Problem:** YAML-configured rules cover common patterns (cannot-depend, must-depend, circular) but complex organizational policies require arbitrary logic — cross-cutting concerns, data flow validation, custom metrics.
 
 **Solution:** Allow rules to be authored in any language and compiled to WebAssembly, evaluated at native speed with full isolation.
 
 **Scope:**
-- **WASM runtime** — Embed a lightweight WASM runtime (wasmer-go or wazero, zero C dependencies). Each policy is a WASM module exposing a `evaluate(params) -> []Violation` function.
-- **Policy definition** — New `policy` rule type:
+- ✅ **WASM runtime** — Embedded wazero (pure Go, zero CGO). Each policy is a WASM module exposing an `evaluate() -> i32` function via wazero's runtime.
+- ✅ **Policy definition** — New `wasm` field on `Rule`:
   ```yaml
   rules:
     - id: P-01
-      type: policy
-      path: policies/layer-metrics.wasm
+      wasm:
+        path: policies/layer-balance.wasm
+        params: { min: 3, max: 8 }
       severity: error
-      description: "Validates layer dependency metrics"
   ```
-- **Host API** — WASM modules receive a context object with access to:
-  - All dependencies and their layers.
-  - Layer count, file count, import count per layer.
-  - User-defined configuration parameters.
-  - Violations from previous phases (for cross-cutting checks).
-- **Cache** — WASM modules are cached in memory after first load. Module bytecode cached in `.arx-cache/policies/`.
-- **Pre-built policies** — Ship 3-5 reference policies:
-  - `layer-balance` — Enforce minimum/maximum file counts per layer.
-  - `dependency-symmetry` — Dependency direction between layers should be symmetric.
-  - `no-orphaned-types` — Every exported type must be used by another layer.
-  - `change-impact` — Flag high-impact layers (used by 80%+ of other layers).
-  - `decay-metrics` — Architectural debt score based on violation age and severity.
+- ✅ **Host API** — WASM modules import 5 host functions from the `arx` module:
+  - `arx_deps() -> i32` — total dependency count.
+  - `arx_layer_count() -> i32` — configured layer count.
+  - `arx_violation_count() -> i32` — violations from previous phases.
+  - `arx_get_dep(idx) -> i64` — dep data as JSON in guest memory.
+  - `arx_emit_violation(ptr, len) -> i32` — emit violation JSON from guest.
+- ✅ **Cache** — SHA-256 keyed disk cache in `.arx-cache/policies/<hash>/wasm.bin`. In-memory cache via `sync.RWMutex` map. Manager provides singleton evaluators per WASM path.
+- ✅ **EvaluateRules Phase 4** — WASM policies evaluated after templates and circular checks. Graceful degradation on errors and timeouts (5s default).
+- ✅ **Pre-built reference policies** (TinyGo source + pre-built .wasm):
+  - `layer-balance` — Checks deps/layer ratio.
+  - `dependency-symmetry` — Checks asymmetry via violations/deps ratio.
+  - `no-leak` — Flags deps without any violations.
 
 **Out of scope:** WASM module marketplace, debugger, online editor.
 

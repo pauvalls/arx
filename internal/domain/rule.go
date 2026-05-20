@@ -96,6 +96,7 @@ type Rule struct {
 	Template          string                 `json:"template,omitempty" yaml:"template,omitempty"`
 	Params            map[string]interface{} `json:"params,omitempty" yaml:"params,omitempty"`
 	Check             CheckExpr              `json:"check,omitempty" yaml:"check,omitempty"`
+	Wasm              *WasmConfig            `json:"wasm,omitempty" yaml:"wasm,omitempty"`
 	compiledPattern   *regexp.Regexp         `json:"-" yaml:"-"`
 	compiledExclude   []*regexp.Regexp       `json:"-" yaml:"-"`
 	compiledExpr      Expr                   `json:"-" yaml:"-"`
@@ -193,7 +194,7 @@ func (r *Rule) Validate() error {
 		return fmt.Errorf("rule %q: %w", r.ID, err)
 	}
 
-	// Check expression rules cannot be mixed with from/to/template/pattern
+	// Check expression rules cannot be mixed with from/to/template/pattern/wasm
 	if r.Check.Raw != "" {
 		if r.From != "" {
 			return fmt.Errorf("rule %q: 'check' expression rules cannot have 'from' field", r.ID)
@@ -206,6 +207,16 @@ func (r *Rule) Validate() error {
 		}
 		if r.Pattern != "" {
 			return fmt.Errorf("rule %q: 'check' expression rules cannot have 'pattern' field", r.ID)
+		}
+		if r.Wasm != nil {
+			return fmt.Errorf("rule %q: 'check' expression and 'wasm' are mutually exclusive", r.ID)
+		}
+	}
+
+	// Validate wasm config if set
+	if r.Wasm != nil {
+		if err := r.Wasm.Validate(); err != nil {
+			return fmt.Errorf("rule %q: %w", r.ID, err)
 		}
 	}
 
@@ -238,7 +249,7 @@ func (r *Rule) Validate() error {
 	}
 
 	// Template-only rules don't require from/to
-	if r.Template != "" && r.From == "" && len(r.To) == 0 && r.Pattern == "" {
+	if r.Template != "" && r.From == "" && len(r.To) == 0 && r.Pattern == "" && r.Wasm == nil {
 		// Validate type and severity only
 		switch r.Type {
 		case RuleTypeCannot, RuleTypeMust, RuleTypeCan, RuleTypeMustNotCircular, "":
@@ -256,11 +267,29 @@ func (r *Rule) Validate() error {
 	}
 
 	// Pattern-only rules don't require from/to
-	if r.Pattern != "" && r.From == "" && len(r.To) == 0 {
+	if r.Pattern != "" && r.From == "" && len(r.To) == 0 && r.Wasm == nil {
 		// Validate type and severity only
 		switch r.Type {
 		case RuleTypeCannot, RuleTypeMust, RuleTypeCan, RuleTypeMustNotCircular:
 			// valid
+		default:
+			return fmt.Errorf("rule %q: invalid rule type %q", r.ID, r.Type)
+		}
+		switch r.Severity {
+		case SeverityError, SeverityWarning, SeverityInfo, "":
+			// valid
+		default:
+			return fmt.Errorf("rule %q: invalid severity %q", r.ID, r.Severity)
+		}
+		return nil
+	}
+
+	// WASM-only rules don't require from/to
+	if r.Wasm != nil && r.From == "" && len(r.To) == 0 && r.Pattern == "" && r.Template == "" {
+		// Validate type and severity only
+		switch r.Type {
+		case RuleTypeCannot, RuleTypeMust, RuleTypeCan, RuleTypeMustNotCircular, "":
+			// valid (empty type defaults to Cannot)
 		default:
 			return fmt.Errorf("rule %q: invalid rule type %q", r.ID, r.Type)
 		}

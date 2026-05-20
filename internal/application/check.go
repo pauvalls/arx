@@ -11,6 +11,9 @@ import (
 	"github.com/pauvalls/arx/internal/ports"
 )
 
+// WasmEvaluatorFunc is a function that returns a WasmEvaluator for a given WASM path.
+type WasmEvaluatorFunc func(wasmPath string) domain.WasmEvaluator
+
 // LoadConfig reads and validates a configuration file using the provided ConfigReader.
 func LoadConfig(configPath string, reader ports.ConfigReader) (*domain.Config, error) {
 	if reader == nil {
@@ -220,6 +223,23 @@ func EvaluateArchitecture(dependencies []domain.Dependency, rules []domain.Rule,
 	violations := domain.EvaluateRules(dependencies, rules, layers, userFuncs...)
 
 	// Enrich violations with explanations from the built-in library
+	for i := range violations {
+		violations[i].Message = enrichViolationMessage(violations[i], rules)
+	}
+
+	return violations
+}
+
+// EvaluateArchitectureWithWasm is like EvaluateArchitecture but also evaluates WASM policies.
+// The wasmEval function returns an evaluator for the given WASM file path (may be nil).
+func EvaluateArchitectureWithWasm(ctx context.Context, dependencies []domain.Dependency, rules []domain.Rule, layers []domain.Layer, wasmEval WasmEvaluatorFunc, userFuncs ...map[string]domain.Expr) []domain.Violation {
+	violations := domain.EvaluateRules(dependencies, rules, layers, userFuncs...)
+
+	// Evaluate WASM policies
+	wasmViolations, _ := domain.EvaluateWasmRules(ctx, rules, dependencies, layers, violations, wasmEval)
+	violations = append(violations, wasmViolations...)
+
+	// Enrich all violations with explanations
 	for i := range violations {
 		violations[i].Message = enrichViolationMessage(violations[i], rules)
 	}

@@ -76,16 +76,26 @@ bench-compare:
 bench-baseline:
 	$(GO) test -bench=/Detection -benchmem -count=10 ./internal/application/ | tee .bench-baseline
 
+# Build WASM reference policies (requires tinygo)
+wasm-policies:
+	@if command -v tinygo >/dev/null 2>&1; then \
+		cd policies && ./build.sh; \
+	else \
+		echo "⚠️  tinygo not installed. Install from https://tinygo.org/"; \
+		echo "   Using pre-built .wasm stubs instead."; \
+	fi
+
 # Show help
 help:
 	@echo "Arx - Architectural Linter"
 	@echo ""
 	@echo "Usage:"
-	@echo "  make build    - Compile the binary to ./arx"
-	@echo "  make test     - Run all tests with verbose output"
-	@echo "  make lint     - Run golangci-lint (skips if not installed)"
-	@echo "  make bench    - Run benchmarks and save output"
+	@echo "  make build       - Compile the binary to ./arx"
+	@echo "  make test        - Run all tests with verbose output"
+	@echo "  make wasm-policies - Build WASM reference policies (requires tinygo)"
+	@echo "  make lint        - Run golangci-lint (skips if not installed)"
+	@echo "  make bench       - Run benchmarks and save output"
 	@echo "  make bench-compare - Compare benchmarks against baseline"
 	@echo "  make bench-baseline - Generate benchmark baseline"
-	@echo "  make clean    - Remove compiled binary"
-	@echo "  make help     - Show this help message"
+	@echo "  make clean       - Remove compiled binary"
+	@echo "  make help        - Show this help message"
