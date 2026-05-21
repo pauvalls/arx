@@ -6,6 +6,11 @@ import (
 	"github.com/pauvalls/arx/internal/domain"
 )
 
+// PluginDetectorFactory is a function type that creates a new plugin-based Detector.
+// Breaking the direct import dependency from detector/registry to detector/plugin
+// resolves an architecture circular dependency (C-01).
+type PluginDetectorFactory func(cfg domain.PluginConfig) Detector
+
 // Detector defines the interface for language-specific dependency detectors
 type Detector interface {
 	// Name returns the detector name (e.g., "go", "typescript", "python")

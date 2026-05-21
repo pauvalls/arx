@@ -15,6 +15,9 @@ import (
 	"github.com/pauvalls/arx/internal/domain"
 )
 
+// MaxWasmSize is the maximum allowed WASM module size in bytes (1MB).
+const MaxWasmSize = 1 * 1024 * 1024
+
 // wasmEvaluator implements domain.WasmEvaluator using the wazero runtime.
 type wasmEvaluator struct {
 	mu       sync.Mutex
@@ -30,7 +33,17 @@ type wasmEvaluator struct {
 
 // NewEvaluator creates a new WASM policy evaluator from the given wasm file.
 // If cache is non-nil, the evaluator will use it for storing/retrieving compiled modules.
+// Returns an error if the WASM module exceeds MaxWasmSize (1MB).
 func NewEvaluator(wasmPath string, cache *Cache) (domain.WasmEvaluator, error) {
+	// Check file size before reading to prevent loading oversized modules
+	info, err := os.Stat(wasmPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to stat wasm file %s: %w", wasmPath, err)
+	}
+	if info.Size() > MaxWasmSize {
+		return nil, fmt.Errorf("WASM module exceeds %d byte limit (size: %d)", MaxWasmSize, info.Size())
+	}
+
 	wasmBytes, err := os.ReadFile(wasmPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read wasm file %s: %w", wasmPath, err)

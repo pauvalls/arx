@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/pauvalls/arx/internal/application"
+	"github.com/pauvalls/arx/internal/bootstrap"
 	"github.com/pauvalls/arx/internal/domain"
 	"github.com/pauvalls/arx/internal/infrastructure/config"
 	"github.com/pauvalls/arx/internal/infrastructure/detector"
@@ -81,7 +82,7 @@ func runWorkspace(cmd *cobra.Command, args []string) error {
 	// Create service with plugin detectors if configured
 	var detectors []ports.Detector
 	if cfg != nil {
-		detectors = detector.GetDetectorsForConfig(cfg)
+		detectors = bootstrap.BuildDetectorsWithPlugins(cfg)
 	} else {
 		detectors = detector.GetDetectors()
 	}

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -32,15 +31,21 @@ type DoctorService struct {
 	version      string
 	detectors    []ports.Detector
 	configReader ports.ConfigReader
+	gitClient    ports.GitClient
 }
 
-// NewDoctorService creates a new DoctorService with the given detectors and config reader.
-func NewDoctorService(version string, detectors []ports.Detector, configReader ports.ConfigReader) *DoctorService {
-	return &DoctorService{
+// NewDoctorService creates a new DoctorService with the given dependencies.
+// gitClient is optional (nil is accepted, git checks will be skipped).
+func NewDoctorService(version string, detectors []ports.Detector, configReader ports.ConfigReader, gitClient ...ports.GitClient) *DoctorService {
+	s := &DoctorService{
 		version:      version,
 		detectors:    detectors,
 		configReader: configReader,
 	}
+	if len(gitClient) > 0 {
+		s.gitClient = gitClient[0]
+	}
+	return s
 }
 
 // Check runs all diagnostic checks on the given project root
@@ -148,36 +153,36 @@ func (s *DoctorService) checkDetectors(projectRoot string) CheckResult {
 
 // checkGitStatus checks if the project is in a git repository and its status
 func (s *DoctorService) checkGitStatus(projectRoot string) CheckResult {
+	if s.gitClient == nil {
+		return CheckResult{OK: false, Message: "Git client not configured"}
+	}
+
 	// Check if git is available
-	if _, err := exec.LookPath("git"); err != nil {
+	if !s.gitClient.CheckGitInstalled() {
 		return CheckResult{OK: false, Message: "Git not installed"}
 	}
 
 	// Check if in git repo
-	cmd := exec.Command("git", "rev-parse", "--is-inside-work-tree")
-	cmd.Dir = projectRoot
-	if err := cmd.Run(); err != nil {
+	ctx := context.Background()
+	_, err := s.gitClient.Run(ctx, projectRoot, "rev-parse", "--is-inside-work-tree")
+	if err != nil {
 		return CheckResult{OK: true, Message: "Not a git repository"}
 	}
 
 	// Get current branch
-	branchCmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
-	branchCmd.Dir = projectRoot
-	branchOutput, err := branchCmd.Output()
+	branchOutput, err := s.gitClient.Run(ctx, projectRoot, "rev-parse", "--abbrev-ref", "HEAD")
 	if err != nil {
 		return CheckResult{OK: false, Message: "Failed to get git branch"}
 	}
-	branch := strings.TrimSpace(string(branchOutput))
+	branch := strings.TrimSpace(branchOutput)
 
 	// Check for uncommitted changes
-	statusCmd := exec.Command("git", "status", "--porcelain")
-	statusCmd.Dir = projectRoot
-	statusOutput, err := statusCmd.Output()
+	statusOutput, err := s.gitClient.Status(ctx, projectRoot)
 	if err != nil {
 		return CheckResult{OK: false, Message: "Failed to get git status"}
 	}
 
-	if len(strings.TrimSpace(string(statusOutput))) > 0 {
+	if len(strings.TrimSpace(statusOutput)) > 0 {
 		return CheckResult{OK: true, Message: fmt.Sprintf("Git: %s (dirty)", branch)}
 	}
 

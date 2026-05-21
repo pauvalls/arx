@@ -9,6 +9,9 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/pauvalls/arx/internal/domain"
+	"github.com/pauvalls/arx/internal/ports"
 )
 
 // WebhookEvent holds the parsed fields from a GitHub pull_request webhook event.
@@ -22,11 +25,6 @@ type WebhookEvent struct {
 	RepoOwner      string
 	RepoName       string
 	InstallationID int64
-}
-
-// PRCheckRunner is the interface for running PR checks (avoids import cycle).
-type PRCheckRunner interface {
-	RunPRCheck(owner, repo string, event WebhookEvent) error
 }
 
 // VerifyWebhookSignature checks the HMAC-SHA256 signature of a webhook payload.
@@ -119,7 +117,7 @@ func ParseWebhookEvent(body []byte, eventType string) (*WebhookEvent, error) {
 }
 
 // HandleWebbook creates an HTTP handler for GitHub webhooks.
-func HandleWebhook(secret string, runner PRCheckRunner) http.HandlerFunc {
+func HandleWebhook(secret string, runner ports.PRCheckRunner) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -152,7 +150,14 @@ func HandleWebhook(secret string, runner PRCheckRunner) http.HandlerFunc {
 		// Run PR check asynchronously if we have a runner
 		if runner != nil {
 			go func() {
-				_ = runner.RunPRCheck(event.RepoOwner, event.RepoName, *event) //nolint:errcheck
+				pr := domain.PRInfo{
+					BaseSHA:   event.BaseSHA,
+					HeadSHA:   event.HeadSHA,
+					BaseRef:   event.BaseRef,
+					HeadRef:   event.HeadRef,
+					PRNumber:  event.PRNumber,
+				}
+				_ = runner.RunPRCheck(event.RepoOwner, event.RepoName, pr) //nolint:errcheck
 			}()
 		}
 

@@ -8,7 +8,11 @@ import (
 	"net/http"
 
 	"github.com/pauvalls/arx/internal/domain"
+	"github.com/pauvalls/arx/internal/ports"
 )
+
+// Compile-time check that Client implements ports.GitHubClient.
+var _ ports.GitHubClient = (*Client)(nil)
 
 // Client is an HTTP client for the GitHub REST API.
 type Client struct {

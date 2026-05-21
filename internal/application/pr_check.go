@@ -10,23 +10,31 @@ import (
 	"strings"
 
 	"github.com/pauvalls/arx/internal/domain"
-	"github.com/pauvalls/arx/internal/infrastructure/github"
+	"github.com/pauvalls/arx/internal/ports"
 )
 
 // PRCheckService runs architecture checks on pull requests.
 type PRCheckService struct {
 	checkService *CheckService
-	ghClient     *github.Client // optional (nil for CLI-only mode)
-	ghConfig     *github.Config // optional configuration
+	ghClient     ports.GitHubClient  // optional (nil for CLI-only mode)
+	gitClient    ports.GitClient
+	autoApprove  bool
 }
 
 // NewPRCheckService creates a new PRCheckService.
-func NewPRCheckService(checkService *CheckService, ghClient *github.Client, ghConfig *github.Config) *PRCheckService {
-	return &PRCheckService{
+// NewPRCheckService creates a new PRCheckService.
+// ghClient and gitClient are optional (nil is accepted).
+// autoApprove enables automatic PR approval when no violations are found.
+func NewPRCheckService(checkService *CheckService, ghClient ports.GitHubClient, autoApprove bool, gitClient ...ports.GitClient) *PRCheckService {
+	s := &PRCheckService{
 		checkService: checkService,
 		ghClient:     ghClient,
-		ghConfig:     ghConfig,
+		autoApprove:  autoApprove,
 	}
+	if len(gitClient) > 0 {
+		s.gitClient = gitClient[0]
+	}
+	return s
 }
 
 // PRCheckResult holds the result of a PR check.
@@ -38,16 +46,8 @@ type PRCheckResult struct {
 	Summary       string
 }
 
-// RunPRCheck runs a PR check from a webhook event (implements github.PRCheckRunner).
-func (s *PRCheckService) RunPRCheck(owner, repo string, event github.WebhookEvent) error {
-	pr := domain.PRInfo{
-		BaseSHA:   event.BaseSHA,
-		HeadSHA:   event.HeadSHA,
-		BaseRef:   event.BaseRef,
-		HeadRef:   event.HeadRef,
-		RepoPath:  "", // Not available from webhook; use git CLI in repo checkout
-		PRNumber:  event.PRNumber,
-	}
+// RunPRCheck runs a PR check from a webhook (implements ports.PRCheckRunner).
+func (s *PRCheckService) RunPRCheck(owner, repo string, pr domain.PRInfo) error {
 
 	result, err := s.Run(context.Background(), pr)
 	if err != nil {
@@ -70,7 +70,7 @@ func (s *PRCheckService) RunPRCheck(owner, repo string, event github.WebhookEven
 	}
 
 	// Auto-approve if enabled and no violations
-	if s.ghClient != nil && s.ghConfig != nil && result.Passed && AutoApproveEnabled(s.ghConfig) {
+	if s.ghClient != nil && s.autoApprove && result.Passed {
 		if err := s.ghClient.ApprovePR(owner, repo, pr.PRNumber); err != nil {
 			return fmt.Errorf("auto-approve failed: %w", err)
 		}
@@ -90,12 +90,26 @@ func (s *PRCheckService) Run(ctx context.Context, pr domain.PRInfo) (*PRCheckRes
 	}
 
 	// Get diff between base and head
-	diffOutput, err := GetGitDiff(pr.RepoPath, pr.BaseSHA, pr.HeadSHA)
-	if err != nil {
-		// Fallback: try git diff-tree
-		diffOutput, err = GetGitDiffTree(pr.RepoPath, pr.BaseSHA, pr.HeadSHA)
+	var diffOutput string
+	var err error
+
+	if s.gitClient != nil {
+		diffOutput, err = s.gitClient.Diff(ctx, pr.BaseSHA, pr.HeadSHA, pr.RepoPath)
 		if err != nil {
-			return nil, fmt.Errorf("getting git diff: %w", err)
+			// Fallback: try git diff-tree via Run
+			diffOutput, err = s.gitClient.Run(ctx, pr.RepoPath, "diff-tree", "--no-commit-id", "-r", "-p", pr.BaseSHA, pr.HeadSHA)
+			if err != nil {
+				return nil, fmt.Errorf("getting git diff: %w", err)
+			}
+		}
+	} else {
+		diffOutput, err = GetGitDiff(pr.RepoPath, pr.BaseSHA, pr.HeadSHA)
+		if err != nil {
+			// Fallback: try git diff-tree
+			diffOutput, err = GetGitDiffTree(pr.RepoPath, pr.BaseSHA, pr.HeadSHA)
+			if err != nil {
+				return nil, fmt.Errorf("getting git diff: %w", err)
+			}
 		}
 	}
 
@@ -401,7 +415,4 @@ func FilterViolationsForDiff(violations []domain.Violation, diff *domain.PRDiffS
 	return filtered
 }
 
-// AutoApproveEnabled checks if auto-approve is enabled in the config.
-func AutoApproveEnabled(cfg *github.Config) bool {
-	return github.AutoApproveEnabled(cfg)
-}
+

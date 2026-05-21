@@ -14,6 +14,7 @@ import (
 	"github.com/pauvalls/arx/internal/application"
 	"github.com/pauvalls/arx/internal/domain"
 	"github.com/pauvalls/arx/internal/infrastructure/config"
+	"github.com/pauvalls/arx/internal/bootstrap"
 	"github.com/pauvalls/arx/internal/infrastructure/detector"
 	arxgithub "github.com/pauvalls/arx/internal/infrastructure/github"
 	"github.com/pauvalls/arx/internal/infrastructure/output"
@@ -407,7 +408,7 @@ func NewDefaultCheckService(cfgs ...*domain.Config) *application.CheckService {
 
 	var d []ports.Detector
 	if len(cfgs) > 0 && cfgs[0] != nil {
-		d = detector.GetDetectorsForConfig(cfgs[0])
+		d = bootstrap.BuildDetectorsWithPlugins(cfgs[0])
 	} else {
 		d = detector.GetDetectors()
 	}

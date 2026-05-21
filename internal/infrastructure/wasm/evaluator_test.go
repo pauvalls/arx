@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -19,6 +20,29 @@ var minimalWasm = []byte{
 	0x03, 0x02, 0x01, 0x00, // function: 1 func, type 0
 	0x07, 0x0c, 0x01, 0x08, 0x65, 0x76, 0x61, 0x6c, 0x75, 0x61, 0x74, 0x65, 0x00, 0x00, // export "evaluate" func 0
 	0x0a, 0x06, 0x01, 0x04, 0x00, 0x41, 0x00, 0x0b, // code: i32.const 0, end
+}
+
+func TestNewEvaluator_OversizedModule(t *testing.T) {
+	dir := t.TempDir()
+	oversizedPath := filepath.Join(dir, "too_big.wasm")
+
+	// Create a WASM file larger than 1MB
+	oversized := make([]byte, MaxWasmSize+1)
+	oversized[0] = 0x00
+	oversized[1] = 0x61
+	oversized[2] = 0x73
+	oversized[3] = 0x6d // WASM magic header so it looks like a wasm file
+	if err := os.WriteFile(oversizedPath, oversized, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := NewEvaluator(oversizedPath, nil)
+	if err == nil {
+		t.Fatal("NewEvaluator() should return error for oversized module")
+	}
+	if !strings.Contains(err.Error(), "exceeds") {
+		t.Errorf("error should mention size limit, got: %v", err)
+	}
 }
 
 func TestNewEvaluator_InvalidPath(t *testing.T) {

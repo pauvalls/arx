@@ -9,9 +9,9 @@ import (
 	"syscall"
 
 	"github.com/pauvalls/arx/internal/application"
+	"github.com/pauvalls/arx/internal/bootstrap"
 	"github.com/pauvalls/arx/internal/domain"
 	"github.com/pauvalls/arx/internal/infrastructure/config"
-	"github.com/pauvalls/arx/internal/infrastructure/detector"
 	"github.com/pauvalls/arx/internal/infrastructure/lsp"
 	"github.com/pauvalls/arx/internal/ports"
 	"github.com/spf13/cobra"
@@ -70,7 +70,7 @@ func runLSP(cmd *cobra.Command, args []string) error {
 	var checkService *application.CheckService
 	if cfg != nil {
 		var detectors []ports.Detector
-		detectors = detector.GetDetectorsForConfig(cfg)
+		detectors = bootstrap.BuildDetectorsWithPlugins(cfg)
 		checkService = application.NewCheckService(reader, detectors, nil)
 	}
 

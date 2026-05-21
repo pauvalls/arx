@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	_ "github.com/pauvalls/arx/internal/bootstrap"
 	"github.com/pauvalls/arx/internal/infrastructure/config"
 	"github.com/pauvalls/arx/internal/infrastructure/detector"
 )

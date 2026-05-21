@@ -139,6 +139,40 @@ func TestCheckRunConclusion_Valid(t *testing.T) {
 	}
 }
 
+func TestFormatPRInfo(t *testing.T) {
+	tests := []struct {
+		name string
+		pr   PRInfo
+		want string
+	}{
+		{
+			name: "basic PR info",
+			pr: PRInfo{
+				PRNumber: 42,
+				BaseRef:  "main",
+				HeadRef:  "feature/foo",
+			},
+			want: "PR #42 (main...feature/foo)",
+		},
+		{
+			name: "PR with empty refs",
+			pr: PRInfo{
+				PRNumber: 1,
+			},
+			want: "PR #1 (...)",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := FormatPRInfo(tt.pr)
+			if got != tt.want {
+				t.Errorf("FormatPRInfo() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestAnnotationLevel_Valid(t *testing.T) {
 	tests := []struct {
 		level string

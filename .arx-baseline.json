@@ -1,0 +1,14 @@
+{
+  "version": "1.0",
+  "config_hash": "508ac3a4511dc83b5d7ee1eadd222943e997baca5d7a0720866c1ab0beead5d4",
+  "generated_at": "2026-05-21T08:29:50.857481978+02:00",
+  "violations": [
+    {
+      "rule_id": "no-circular-dependencies",
+      "source_layer": "infrastructure",
+      "target_layer": "infrastructure",
+      "import": "circular: infrastructure → infrastructure",
+      "file": "infrastructure (internal/infrastructure/server/server.go:16)"
+    }
+  ]
+}

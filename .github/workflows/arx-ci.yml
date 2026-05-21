@@ -25,21 +25,18 @@ jobs:
       - name: "Vet"
         run: go vet ./...
 
-      - name: "Test unit (race detector)"
-        run: go test -count=1 -race ./internal/... ./cmd/... ./test/unit/... 2>&1 | tail -5
-
-      - name: "Test integration (race detector)"
-        run: go test -count=1 -race ./test/integration/... 2>&1 | tail -5
-
-      - name: "Flaky test detection (warn only)"
-        run: |
-          go test -count=5 -race ./internal/domain/ ./internal/application/ 2>&1 || echo "⚠️  Flaky test detected — review output above"
+      - name: "Race detector (hard fail)"
+        run: go test -count=5 -race ./...
 
       - name: "Coverage check (core >50%)"
         run: |
           go test -cover -count=1 ./internal/... 2>&1 | tee /tmp/coverage.txt
           # Ensure all core packages have >50% coverage
           ! grep -E "coverage: [0-4][0-9]" /tmp/coverage.txt | grep -v "^?"
+
+      - name: "WASM size limit validation"
+        run: |
+          go test -count=1 -run TestNewEvaluator_OversizedModule ./internal/infrastructure/wasm/
 
   benchmark-regression:
     name: "Benchmark Regression"

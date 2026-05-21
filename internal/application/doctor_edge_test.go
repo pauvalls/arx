@@ -11,23 +11,108 @@ import (
 func TestDoctorService_CheckGitStatus_NoGit(t *testing.T) {
 	service := NewDoctorService("test", nil, config.NewYAMLReader())
 	result := service.checkGitStatus(t.TempDir())
-	// Git check failure doesn't fail overall (might not be in git repo)
 	if result.OK {
-		t.Log("git check passed unexpectedly (git may be installed)")
+		t.Log("git client not configured, expecting non-OK result")
+	}
+	if !stringsContains(result.Message, "Git client not configured") {
+		t.Logf("got: %s", result.Message)
 	}
 }
 
-func TestDoctorService_CheckGitStatus_GitNotFound(t *testing.T) {
-	// Use a tmp dir that we KNOW is not a git repo
-	// The checkGitStatus will try to exec git and it should either
-	// not find it or find that the dir is not a repo
-	service := NewDoctorService("test", nil, config.NewYAMLReader())
-	tmpDir := t.TempDir()
+func TestDoctorService_CheckGitStatus_GitNotInstalled(t *testing.T) {
+	mock := newMockGitClient()
+	mock.gitInstalled = false
 
-	result := service.checkGitStatus(tmpDir)
-	// The result should be deterministic — either git not installed or not a repo
+	service := NewDoctorService("test", nil, config.NewYAMLReader(), mock)
+	result := service.checkGitStatus(t.TempDir())
+
+	if result.OK {
+		t.Error("expected check to fail when git not installed")
+	}
+	if !stringsContains(result.Message, "Git not installed") {
+		t.Errorf("wrong message: %s", result.Message)
+	}
+}
+
+func TestDoctorService_CheckGitStatus_NotARepo(t *testing.T) {
+	mock := newMockGitClient()
+	mock.withRun("rev-parse --is-inside-work-tree", "", &execError{})
+
+	service := NewDoctorService("test", nil, config.NewYAMLReader(), mock)
+	result := service.checkGitStatus(t.TempDir())
+
 	if !result.OK {
-		t.Logf("git check returned: %s", result.Message)
+		t.Errorf("expected non-fatal for non-repo, got: %s", result.Message)
+	}
+	if !stringsContains(result.Message, "Not a git repository") {
+		t.Errorf("wrong message: %s", result.Message)
+	}
+}
+
+func TestDoctorService_CheckGitStatus_Clean(t *testing.T) {
+	mock := newMockGitClient()
+	mock.withRun("rev-parse --is-inside-work-tree", "true", nil)
+	mock.withRun("rev-parse --abbrev-ref HEAD", "main", nil)
+	mock.withStatus("", nil)
+
+	service := NewDoctorService("test", nil, config.NewYAMLReader(), mock)
+	result := service.checkGitStatus(t.TempDir())
+
+	if !result.OK {
+		t.Errorf("expected OK for clean repo, got: %s", result.Message)
+	}
+	if !stringsContains(result.Message, "clean") {
+		t.Errorf("expected 'clean' in message, got: %s", result.Message)
+	}
+}
+
+func TestDoctorService_CheckGitStatus_Dirty(t *testing.T) {
+	mock := newMockGitClient()
+	mock.withRun("rev-parse --is-inside-work-tree", "true", nil)
+	mock.withRun("rev-parse --abbrev-ref HEAD", "feature/foo", nil)
+	mock.withStatus(" M modified.go\n?? untracked.go", nil)
+
+	service := NewDoctorService("test", nil, config.NewYAMLReader(), mock)
+	result := service.checkGitStatus(t.TempDir())
+
+	if !result.OK {
+		t.Errorf("expected OK for dirty repo, got: %s", result.Message)
+	}
+	if !stringsContains(result.Message, "dirty") {
+		t.Errorf("expected 'dirty' in message, got: %s", result.Message)
+	}
+}
+
+func TestDoctorService_CheckGitStatus_BranchError(t *testing.T) {
+	mock := newMockGitClient()
+	mock.withRun("rev-parse --is-inside-work-tree", "true", nil)
+	mock.withRun("rev-parse --abbrev-ref HEAD", "", &execError{})
+
+	service := NewDoctorService("test", nil, config.NewYAMLReader(), mock)
+	result := service.checkGitStatus(t.TempDir())
+
+	if result.OK {
+		t.Errorf("expected failure for branch error, got: %s", result.Message)
+	}
+	if !stringsContains(result.Message, "Failed") {
+		t.Errorf("expected failure message, got: %s", result.Message)
+	}
+}
+
+func TestDoctorService_CheckGitStatus_StatusError(t *testing.T) {
+	mock := newMockGitClient()
+	mock.withRun("rev-parse --is-inside-work-tree", "true", nil)
+	mock.withRun("rev-parse --abbrev-ref HEAD", "main", nil)
+	mock.withStatus("", &execError{})
+
+	service := NewDoctorService("test", nil, config.NewYAMLReader(), mock)
+	result := service.checkGitStatus(t.TempDir())
+
+	if result.OK {
+		t.Errorf("expected failure for status error, got: %s", result.Message)
+	}
+	if !stringsContains(result.Message, "Failed") {
+		t.Errorf("expected failure message, got: %s", result.Message)
 	}
 }
 
@@ -43,7 +128,7 @@ func TestDoctorService_CheckProjectRoot_FileNotDir(t *testing.T) {
 	if result.OK {
 		t.Error("expected check to fail for file path")
 	}
-	if !containsMsg(result.Message, "not a directory") {
+	if !stringsContains(result.Message, "not a directory") {
 		t.Errorf("expected 'not a directory' message, got: %s", result.Message)
 	}
 }
@@ -59,8 +144,6 @@ func TestDoctorService_CheckProjectRoot_NoPermission(t *testing.T) {
 	}
 	defer os.Chmod(noAccess, 0755)
 
-	// On some systems (e.g., running as owner), chmod 0000 doesn't prevent access.
-	// Only verify the error message format if it failed.
 	service := NewDoctorService("test", nil, config.NewYAMLReader())
 	result := service.checkProjectRoot(noAccess)
 	_ = result
@@ -81,7 +164,6 @@ func TestDoctorService_CheckConfigFile_InvalidYAML(t *testing.T) {
 }
 
 func TestDoctorService_CreateWithConfigReader(t *testing.T) {
-	// Verify that the config reader is properly injected
 	reader := config.NewYAMLReader()
 	service := NewDoctorService("test", nil, reader)
 	if service.configReader == nil {
@@ -89,16 +171,17 @@ func TestDoctorService_CreateWithConfigReader(t *testing.T) {
 	}
 }
 
-// Helper
-func containsMsg(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr ||
-		(len(s) > len(substr) &&
-			(s[:len(substr)] == substr ||
-				s[len(s)-len(substr):] == substr ||
-				findSubstr(s, substr))))
+// execError is a minimal error type that satisfies the error interface for mocking.
+type execError struct{}
+
+func (e *execError) Error() string { return "exit status 1" }
+
+// stringsContains reports whether substr is within s.
+func stringsContains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && findSubstring(s, substr))
 }
 
-func findSubstr(s, substr string) bool {
+func findSubstring(s, substr string) bool {
 	for i := 0; i <= len(s)-len(substr); i++ {
 		if s[i:i+len(substr)] == substr {
 			return true

@@ -159,6 +159,40 @@ func TestWorkspaceConfig_ResolveProjects(t *testing.T) {
 			wantErr:   false,
 		},
 		{
+			name: "invalid glob pattern returns error",
+			config: WorkspaceConfig{
+				Version: "1",
+				Projects: []WorkspaceProject{
+					{Path: "services/[invalid"},
+				},
+			},
+			wantErr: true,
+			errMsg:  "invalid glob",
+		},
+		{
+			name: "glob matches file not directory is skipped",
+			config: WorkspaceConfig{
+				Version: "1",
+				Projects: []WorkspaceProject{
+					{Path: "*.go"},
+				},
+			},
+			wantCount: 0,
+			wantErr:   true,
+			errMsg:    "no matches",
+		},
+		{
+			name: "version empty from validate error",
+			config: WorkspaceConfig{
+				Version: "",
+				Projects: []WorkspaceProject{
+					{Path: "services/*"},
+				},
+			},
+			wantErr: true,
+			errMsg:  "version",
+		},
+		{
 			name: "overlapping glob results deduplicated",
 			config: WorkspaceConfig{
 				Version: "1",
@@ -283,6 +317,31 @@ func TestWorkspaceConfig_Merge(t *testing.T) {
 			wantRuleCount:  1,
 		},
 		{
+			name: "override with exclude patterns",
+			shared: &WorkspaceShared{
+				Layers:  sharedLayers,
+				Rules:   sharedRules,
+				Exclude: []string{"node_modules/**"},
+			},
+			override: &ProjectOverride{
+				Exclude: []string{"vendor/**", "dist/**"},
+			},
+			wantLayerCount: 3,
+			wantRuleCount:  1,
+		},
+		{
+			name: "override with MaxViolations",
+			shared: &WorkspaceShared{
+				Layers: sharedLayers,
+				Rules:  sharedRules,
+			},
+			override: &ProjectOverride{
+				MaxViolations: intPtr(100),
+			},
+			wantLayerCount: 3,
+			wantRuleCount:  1,
+		},
+		{
 			name: "override replaces layers but inherits no shared rules when not set",
 			shared: &WorkspaceShared{
 				Layers: sharedLayers,
@@ -365,6 +424,8 @@ func TestWorkspaceConfig_Merge(t *testing.T) {
 		})
 	}
 }
+
+func intPtr(i int) *int { return &i }
 
 func TestResolvedProject_NameFromPath(t *testing.T) {
 	tests := []struct {

@@ -141,6 +141,7 @@ rules:
       type: Can
       severity: info
       explanation: Interfaces may reference domain types for DTO mapping (use carefully)
+
 language_overrides:
     go:
         extensions:

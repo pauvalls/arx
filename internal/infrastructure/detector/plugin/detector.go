@@ -19,7 +19,7 @@ type PluginDetector struct {
 
 // NewPluginDetector creates a new PluginDetector from a plugin configuration.
 // The cfg must be validated before calling this function.
-func NewPluginDetector(cfg domain.PluginConfig) *PluginDetector {
+func NewPluginDetector(cfg domain.PluginConfig) ports.Detector {
 	return &PluginDetector{cfg: cfg}
 }
 

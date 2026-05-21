@@ -7,6 +7,7 @@ import (
 	"github.com/pauvalls/arx/internal/application"
 	"github.com/pauvalls/arx/internal/infrastructure/config"
 	"github.com/pauvalls/arx/internal/infrastructure/detector"
+	gitclient "github.com/pauvalls/arx/internal/infrastructure/git"
 	"github.com/spf13/cobra"
 )
 
@@ -52,8 +53,8 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	}
 	projectRoot = absPath
 
-	// Create doctor service with injected config reader
-	service := application.NewDoctorService(VersionString(), detector.GetDetectors(), config.NewYAMLReader())
+	// Create doctor service with injected config reader and git client
+	service := application.NewDoctorService(VersionString(), detector.GetDetectors(), config.NewYAMLReader(), gitclient.NewClient())
 
 	// Run diagnostics
 	result := service.Check(projectRoot)

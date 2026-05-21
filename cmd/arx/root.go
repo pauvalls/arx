@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/pauvalls/arx/internal/application"
+	"github.com/pauvalls/arx/internal/bootstrap"
 	"github.com/pauvalls/arx/internal/domain"
 	"github.com/pauvalls/arx/internal/infrastructure/config"
 	"github.com/pauvalls/arx/internal/infrastructure/detector"
@@ -68,7 +69,7 @@ func newCheckService(format ports.OutputFormat, cache ports.Cache, cfgs ...*doma
 
 	var detectors []ports.Detector
 	if len(cfgs) > 0 && cfgs[0] != nil {
-		detectors = detector.GetDetectorsForConfig(cfgs[0])
+		detectors = bootstrap.BuildDetectorsWithPlugins(cfgs[0])
 	} else {
 		detectors = detector.GetDetectors()
 	}

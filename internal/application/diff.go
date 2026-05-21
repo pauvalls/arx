@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/pauvalls/arx/internal/domain"
+	"github.com/pauvalls/arx/internal/ports"
 )
 
 // DiffResult holds the comparison between two architecture audit results.
@@ -81,18 +82,24 @@ func CompareViolations(before, after []domain.Violation) DiffResult {
 // DiffService runs architecture audits on two git refs and compares results.
 // Uses git worktree for isolated checkouts.
 type DiffService struct {
-	gitPath     func() string // returns path to git binary
+	gitPath     func() string // returns path to git binary (fallback when gitClient not used)
 	auditSvc    *AuditService
 	baselineSvc *BaselineService
+	gitClient   ports.GitClient
 }
 
 // NewDiffService creates a DiffService with the given audit and baseline services.
-func NewDiffService(auditSvc *AuditService, baselineSvc *BaselineService) *DiffService {
-	return &DiffService{
+// gitClient is optional (nil is accepted, falls back to direct exec calls).
+func NewDiffService(auditSvc *AuditService, baselineSvc *BaselineService, gitClient ...ports.GitClient) *DiffService {
+	s := &DiffService{
 		gitPath:     func() string { return "git" },
 		auditSvc:    auditSvc,
 		baselineSvc: baselineSvc,
 	}
+	if len(gitClient) > 0 {
+		s.gitClient = gitClient[0]
+	}
+	return s
 }
 
 // WithGitPath sets a custom git binary path (for testing).
@@ -107,24 +114,48 @@ func (s *DiffService) Compare(ctx context.Context, projectRoot, configPath, refB
 	gitBin := s.gitPath()
 
 	// Verify git is available
-	if _, err := exec.LookPath(gitBin); err != nil {
-		return nil, fmt.Errorf("git not found on PATH: %w\nInstall git or use 'arx check' on each ref manually", err)
+	if s.gitClient != nil {
+		if !s.gitClient.CheckGitInstalled() {
+			return nil, fmt.Errorf("git not found on PATH\nInstall git or use 'arx check' on each ref manually")
+		}
+	} else {
+		if _, err := exec.LookPath(gitBin); err != nil {
+			return nil, fmt.Errorf("git not found on PATH: %w\nInstall git or use 'arx check' on each ref manually", err)
+		}
 	}
 
 	// Verify project root is a git repository
-	if err := s.runGit(ctx, projectRoot, "rev-parse", "--git-dir"); err != nil {
-		return nil, fmt.Errorf("%s is not a git repository: %w", projectRoot, err)
+	var gitOpsErr error
+	if s.gitClient != nil {
+		_, gitOpsErr = s.gitClient.Run(ctx, projectRoot, "rev-parse", "--git-dir")
+	} else {
+		gitOpsErr = s.runGit(ctx, projectRoot, "rev-parse", "--git-dir")
+	}
+	if gitOpsErr != nil {
+		return nil, fmt.Errorf("%s is not a git repository: %w", projectRoot, gitOpsErr)
 	}
 
 	// Verify refs exist
 	for _, ref := range []string{refBefore, refAfter} {
-		if err := s.runGit(ctx, projectRoot, "rev-parse", "--verify", ref); err != nil {
+		var err error
+		if s.gitClient != nil {
+			_, err = s.gitClient.Run(ctx, projectRoot, "rev-parse", "--verify", ref)
+		} else {
+			err = s.runGit(ctx, projectRoot, "rev-parse", "--verify", ref)
+		}
+		if err != nil {
 			return nil, fmt.Errorf("ref %q does not exist: %w", ref, err)
 		}
 	}
 
 	// Check for dirty working tree
-	if err := s.runGit(ctx, projectRoot, "diff", "--quiet"); err != nil {
+	var dirtyErr error
+	if s.gitClient != nil {
+		_, dirtyErr = s.gitClient.Run(ctx, projectRoot, "diff", "--quiet")
+	} else {
+		dirtyErr = s.runGit(ctx, projectRoot, "diff", "--quiet")
+	}
+	if dirtyErr != nil {
 		return nil, fmt.Errorf("working tree has uncommitted changes. Commit or stash changes before running 'arx diff'")
 	}
 
@@ -139,17 +170,17 @@ func (s *DiffService) Compare(ctx context.Context, projectRoot, configPath, refB
 
 	// Ensure cleanup on exit
 	defer func() {
-		s.runGit(ctx, projectRoot, "worktree", "remove", "--force", beforePath)
-		s.runGit(ctx, projectRoot, "worktree", "remove", "--force", afterPath)
+		s.doGit(ctx, projectRoot, "worktree", "remove", "--force", beforePath)
+		s.doGit(ctx, projectRoot, "worktree", "remove", "--force", afterPath)
 		// Best effort cleanup of the base directory
 		os.RemoveAll(worktreeBase)
 	}()
 
 	// Create worktrees
-	if err := s.runGit(ctx, projectRoot, "worktree", "add", "--detach", beforePath, refBefore); err != nil {
+	if err := s.doGitErr(ctx, projectRoot, "worktree", "add", "--detach", beforePath, refBefore); err != nil {
 		return nil, fmt.Errorf("creating worktree for %q: %w", refBefore, err)
 	}
-	if err := s.runGit(ctx, projectRoot, "worktree", "add", "--detach", afterPath, refAfter); err != nil {
+	if err := s.doGitErr(ctx, projectRoot, "worktree", "add", "--detach", afterPath, refAfter); err != nil {
 		return nil, fmt.Errorf("creating worktree for %q: %w", refAfter, err)
 	}
 
@@ -171,6 +202,27 @@ func (s *DiffService) Compare(ctx context.Context, projectRoot, configPath, refB
 	result.ConfigChanged = reportBefore.ConfigHash != reportAfter.ConfigHash
 
 	return &result, nil
+}
+
+// doGit executes a git command in the specified directory, discarding output and errors.
+// Used for best-effort cleanup operations.
+func (s *DiffService) doGit(ctx context.Context, dir string, args ...string) {
+	_ = s.doGitErr(ctx, dir, args...)
+}
+
+// doGitErr executes a git command using the gitClient when available, falling back
+// to os/exec for commands not covered by the interface.
+func (s *DiffService) doGitErr(ctx context.Context, dir string, args ...string) error {
+	if s.gitClient != nil {
+		_, err := s.gitClient.Run(ctx, dir, args...)
+		return err
+	}
+	// Fallback to direct exec
+	cmd := exec.CommandContext(ctx, s.gitPath(), args...)
+	cmd.Dir = dir
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	return cmd.Run()
 }
 
 // runGit executes a git command in the specified directory.

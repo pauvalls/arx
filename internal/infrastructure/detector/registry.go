@@ -1,45 +1,36 @@
 package detector
 
 import (
-	"log"
-
-	crosslanguage "github.com/pauvalls/arx/internal/infrastructure/detector/crosslanguage"
-	csharpdetector "github.com/pauvalls/arx/internal/infrastructure/detector/csharp"
-	godetector "github.com/pauvalls/arx/internal/infrastructure/detector/go"
-	javadetector "github.com/pauvalls/arx/internal/infrastructure/detector/java"
-	kotlindetector "github.com/pauvalls/arx/internal/infrastructure/detector/kotlin"
-	phpdetector "github.com/pauvalls/arx/internal/infrastructure/detector/php"
-	"github.com/pauvalls/arx/internal/infrastructure/detector/plugin"
-	pydetector "github.com/pauvalls/arx/internal/infrastructure/detector/python"
-	rubydetector "github.com/pauvalls/arx/internal/infrastructure/detector/ruby"
-	rustdetector "github.com/pauvalls/arx/internal/infrastructure/detector/rust"
-	swiftdetector "github.com/pauvalls/arx/internal/infrastructure/detector/swift"
-	tsdetector "github.com/pauvalls/arx/internal/infrastructure/detector/typescript"
 	"github.com/pauvalls/arx/internal/domain"
 	"github.com/pauvalls/arx/internal/ports"
 )
 
-// GetDetectors returns all available language detectors.
+// registeredDetectors holds all registered language detectors.
+// Registration is done through a separate init package to avoid
+// infrastructure→infrastructure circular dependencies (C-01).
+var registeredDetectors []ports.Detector
+
+// Register adds detectors to the global registry.
+func Register(d ...ports.Detector) {
+	registeredDetectors = append(registeredDetectors, d...)
+}
+
+// GetDetectors returns all registered language detectors.
 func GetDetectors() []ports.Detector {
-	return []ports.Detector{
-		godetector.New(),
-		tsdetector.New(),
-		pydetector.New(),
-		javadetector.New(),
-		kotlindetector.New(),
-		rustdetector.New(),
-		csharpdetector.New(),
-		rubydetector.New(),
-		swiftdetector.New(),
-		phpdetector.New(),
-	}
+	result := make([]ports.Detector, len(registeredDetectors))
+	copy(result, registeredDetectors)
+	return result
+}
+
+// ResetDetectors clears the registry (for testing only).
+func ResetDetectors() {
+	registeredDetectors = nil
 }
 
 // GetPlugins creates detector wrappers for each plugin defined in the config.
-// It queries each plugin's capabilities, logs warnings for mismatches, and
-// skips plugins with duplicate names.
-func GetPlugins(cfg *domain.Config) []ports.Detector {
-	if cfg == nil || len(cfg.Plugins) == 0 {
+// Accepts a factory function to avoid importing the plugin sub-package directly.
+func GetPlugins(cfg *domain.Config, factory ports.PluginDetectorFactory) []ports.Detector {
+	if cfg == nil || len(cfg.Plugins) == 0 || factory == nil {
 		return nil
 	}
 
@@ -48,35 +39,26 @@ func GetPlugins(cfg *domain.Config) []ports.Detector {
 
 	for _, pc := range cfg.Plugins {
 		if seen[pc.Name] {
-			log.Printf("Warning: skipping plugin %q (duplicate name)", pc.Name)
 			continue
 		}
 		seen[pc.Name] = true
-
-		// Query capabilities for validation
-		caps, err := plugin.GetCapabilities(pc)
-		if err != nil {
-			log.Printf("Warning: plugin %q capabilities query failed: %v (will still register)", pc.Name, err)
-		} else if caps.Name != pc.Name {
-			log.Printf("Warning: plugin %q reports name %q in capabilities", pc.Name, caps.Name)
-		}
-
-		result = append(result, plugin.NewPluginDetector(pc))
+		result = append(result, factory(pc))
 	}
 
 	return result
 }
 
-// GetDetectorsForConfig returns all available detectors plus the cross-language
-// detector and any configured plugin detectors.
-func GetDetectorsForConfig(cfg *domain.Config) []ports.Detector {
+// GetDetectorsForConfig returns registered detectors plus plugin detectors.
+// Additional detectors (like cross-language) can be appended by the caller.
+func GetDetectorsForConfig(cfg *domain.Config, pluginFactory ...ports.PluginDetectorFactory) []ports.Detector {
 	detectors := GetDetectors()
-	if cfg != nil {
-		if cfg.CrossLanguage != nil {
-			detectors = append(detectors, crosslanguage.New(cfg.CrossLanguage))
-		}
-		// Append plugin detectors
-		pluginDetectors := GetPlugins(cfg)
+	if cfg == nil {
+		return detectors
+	}
+
+	// Append plugin detectors using the provided factory
+	if len(pluginFactory) > 0 && pluginFactory[0] != nil {
+		pluginDetectors := GetPlugins(cfg, pluginFactory[0])
 		detectors = append(detectors, pluginDetectors...)
 	}
 	return detectors
