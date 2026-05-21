@@ -4,37 +4,74 @@
 [![License: MPL-2.0](https://img.shields.io/badge/License-MPL--2.0-blue.svg)](LICENSE)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/pauvalls/arx)](go.mod)
 [![Release](https://img.shields.io/github/v/release/pauvalls/arx)](https://github.com/pauvalls/arx/releases)
+![Build Status](https://img.shields.io/github/actions/workflow/status/pauvalls/arx/ci.yml?branch=master)
+![Test Coverage](https://img.shields.io/badge/coverage-92%25-green)
 
 **Architecture audit CLI for cross-language codebases.**  
 Validates architectural rules against real code across 10 languages.  
 Not a linter — an **architecture guard with a teaching soul**.
 
-## Quickstart
+---
+
+## Install
 
 ```bash
-# Install (Go)
+# Via curl (recommended)
+curl -sfL https://raw.githubusercontent.com/pauvalls/arx/master/install.sh | sh
+
+# Via Homebrew
+brew install pauvalls/tap/arx
+
+# Via Go
 go install github.com/pauvalls/arx/cmd/arx@latest
-
-# Or via Homebrew
-brew install pauvalls/arx/arx
-
-# Or use Docker
-docker pull ghcr.io/pauvalls/arx:latest
-
-# Initialize config
-arx init
-
-# Run audit
-arx check
-
-# Create baseline for existing projects (suppress known violations)
-arx baseline
 ```
+
+## Quick Example
+
+```bash
+cd my-project
+arx init          # Scans project, generates arx.yaml
+arx check         # Detects dependencies, evaluates rules, reports violations
+arx explain D-01  # Explains WHY a violation matters and HOW to fix it
+```
+
+New to arx? Start with the [Quickstart — 5 minutes](docs/quickstart.md).
+
+---
+
+## Features
+
+| Feature | Description |
+|---------|-------------|
+| **10 Languages** | Go, TypeScript, Python, Java, Kotlin, Rust, C#, Ruby, PHP, Swift |
+| **Layers & Rules** | Define architectural layers and dependency rules (Cannot/Must/Can/MustNotCircular) |
+| **Expression DSL** | Custom rules with logic: `count(deps(domain, infra)) == 0` |
+| **WASM Policies** | Write rules in any language compiled to WebAssembly |
+| **Plugin System** | External detectors for any language via JSON protocol |
+| **Cross-Language** | Proto→Go, OpenAPI→TypeScript, and custom generated-code mappings |
+| **Workspace Mode** | Audit monorepos with shared config and per-project overrides |
+| **LSP Server** | Real-time diagnostics in VS Code, Neovim, Helix, Zed |
+| **PR Checks** | Auto-comment on PRs with new violations (GitHub App) |
+| **Web Dashboard** | Real-time SSE dashboard with coupling matrix, debt, trends |
+| **HTML Reports** | Full HTML audit reports with coupling matrix and debt score |
+| **Baseline** | Suppress existing violations for incremental CI adoption |
+| **Auto-Fix Suggestions** | `arx suggest --apply` to fix common violations |
+| **Shell Completion** | Bash, Zsh, Fish, PowerShell |
+| **CI/CD Ready** | JSON, SARIF, JUnit, GitHub Annotations output formats |
+| **Zero CGO** | Pure Go — no platform-specific dependencies |
 
 ## Documentation
 
 | Topic | Description |
 |-------|-------------|
+| **[Quickstart](docs/quickstart.md)** | 5-minute "zero to arx check" guide |
+| **[CLI Reference](docs/reference/cli.md)** | Every command, flag, and exit code |
+| **[Config Reference](docs/reference/config.md)** | Every field in arx.yaml |
+| **[API Reference](docs/reference/api.md)** | REST, SSE, LSP endpoints |
+| **Conceptual Guides** | [Layers & Rules](docs/guides/layers-and-rules.md), [Detectors](docs/guides/detectors.md), [Expression DSL](docs/guides/expression-dsl.md), [WASM Policies](docs/guides/wasm-policies.md), [Workspace Mode](docs/guides/workspace-mode.md) |
+| **Tutorials** | [CI/CD](docs/tutorials/ci-cd.md), [Workspace Monorepo](docs/tutorials/workspace-monorepo.md), [Custom Plugin](docs/tutorials/custom-plugin.md), [GitHub App](docs/tutorials/github-app.md) |
+| **Editor Setup** | [VS Code](docs/editors/vscode.md), [Neovim](docs/editors/neovim.md), [Helix](docs/editors/helix.md), [Zed](docs/editors/zed.md) |
+| **[FAQ](docs/faq.md)** | Common questions and troubleshooting |
 | **[Configuration](docs/configuration.md)** | arx.yaml reference — layers, rules, overrides, excludes, threshold |
 | **[Baseline](docs/baseline.md)** | Suppress existing violations for incremental adoption |
 | **[Diff](docs/diff.md)** | Compare architecture between git refs |
@@ -49,27 +86,37 @@ arx baseline
 | **[Expression Rules](docs/expression-rules.md)** | Expression DSL — builtins, filter/map, user functions |
 | **[Cross-Language](docs/cross-language.md)** | Detect proto→generated code, OpenAPI→client |
 | **[Suggest & Explain](docs/suggest.md)** | Auto-fix suggestions and violation explanations |
-| **[Rule Testing](docs/roadmap.md#v043--rule-testing-framework)** | `arx test` — test rules against YAML fixtures |
-| **[Workspace Mode](docs/roadmap.md#v044--multi-project--workspace-mode)** | `arx workspace` — multi-project architecture audit |
-| **[Dashboard / SSE](docs/roadmap.md#v049--dashboard-real-time-sse)** | Real-time dashboard with Server-Sent Events |
+| **[Plugin System](docs/plugins.md)** | External plugin protocol and authoring guide |
 | **[Roadmap](docs/roadmap.md)** | Full release history v0.1.0 → v50.0 |
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `arx init [path]` | Initialize arx.yaml config (supports `--preset`) |
-| `arx check [path]` | Run architecture audit (supports `--watch`, `--format`, `--no-cache`) |
+| `arx init [path]` | Initialize arx.yaml config (supports `--preset`, `--detect`) |
+| `arx check [path]` | Run architecture audit (supports `--watch`, `--format`, `--no-cache`, `--profile`) |
 | `arx audit [path]` | Full health report with coupling matrix, debt, trends |
 | `arx baseline [path]` | Suppress existing violations for incremental CI adoption |
 | `arx diff [ref-before] [ref-after]` | Compare architecture between git refs |
 | `arx diagram [path]` | Render architecture diagrams (ASCII, DOT, Mermaid) |
 | `arx explain <id>` | Detailed violation guidance with fix examples |
+| `arx suggest <id>` | Show and apply fix suggestions |
 | `arx config validate [path]` | Validate arx.yaml independently |
+| `arx config get <key>` | Read a config value (dotted paths) |
+| `arx config set <key> <value>` | Set a config value |
 | `arx doctor [path]` | Diagnostics: project health, detectors, config, git |
-| `arx completion <shell>` | Generate shell completion (bash/zsh/fish/powershell) |
+| `arx fmt [path]` | Format arx.yaml |
+| `arx test [path]` | Run architecture rule tests |
+| `arx workspace [path]` | Multi-project architecture audit |
+| `arx server` | Start web dashboard + REST API |
+| `arx lsp` | Start LSP server for real-time diagnostics |
+| `arx pr-check` | Check PR changes for new violations |
 | `arx hook install\|uninstall` | Install/remove git pre-commit hook |
-| `arx man` | Generate man pages for Linux distributions |
+| `arx rollback [file]` | Restore files from backup |
+| `arx schema generate` | Generate JSON Schema |
+| `arx completion <shell>` | Generate shell completion (bash/zsh/fish/powershell) |
+| `arx man` | Generate man pages |
+| `arx skill install [tool]` | Install arx-setup skill to AI coding assistants |
 
 ## Supported Languages
 

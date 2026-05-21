@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	_ "github.com/pauvalls/arx/internal/bootstrap"
 	"github.com/pauvalls/arx/internal/application"
 	"github.com/pauvalls/arx/internal/domain"
 	"github.com/pauvalls/arx/internal/infrastructure/config"
