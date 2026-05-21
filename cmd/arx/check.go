@@ -411,7 +411,7 @@ func printCheckResult(result checkResult, format ports.OutputFormat, isWatchUpda
 		// Other formats don't support threshold display yet
 		cfg := result.config
 		if cfg == nil {
-			cfg = &domain.Config{Version: "1"}
+			cfg = &domain.Config{Version: domain.SchemaVersion{Major: 1, Minor: 0}}
 		}
 		service := newCheckService(format, nil, cfg)
 		if err := service.Report(violations, format); err != nil {

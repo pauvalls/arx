@@ -64,7 +64,7 @@ func TestInitService_Write(t *testing.T) {
 	service := NewInitService(writer)
 
 	config := &domain.Config{
-		Version: "1.0",
+		Version: domain.SchemaVersion{Major: 1, Minor: 0},
 		Layers:  []domain.Layer{{Name: "domain", Paths: []string{"internal/domain/**"}}},
 		Rules:   []domain.Rule{},
 	}
@@ -94,8 +94,8 @@ func TestInitService_Init(t *testing.T) {
 		t.Fatalf("InitService.Init() error = %v", err)
 	}
 
-	if config.Version != "1.0" {
-		t.Errorf("InitService.Init() config.Version = %q, want %q", config.Version, "1.0")
+	if config.Version.String() != "1.0" {
+		t.Errorf("InitService.Init() config.Version = %q, want %q", config.Version.String(), "1.0")
 	}
 
 	if len(config.Rules) < 5 {
@@ -109,7 +109,7 @@ func TestInitService_Init(t *testing.T) {
 
 func TestCheckService_Load(t *testing.T) {
 	expectedConfig := &domain.Config{
-		Version: "1.0",
+		Version: domain.SchemaVersion{Major: 1, Minor: 0},
 		Layers:  []domain.Layer{{Name: "domain", Paths: []string{"internal/domain/**"}}},
 		Rules:   []domain.Rule{},
 	}
@@ -123,8 +123,8 @@ func TestCheckService_Load(t *testing.T) {
 		t.Fatalf("CheckService.Load() error = %v", err)
 	}
 
-	if config.Version != "1.0" {
-		t.Errorf("CheckService.Load() config.Version = %q, want %q", config.Version, "1.0")
+	if config.Version.String() != "1.0" {
+		t.Errorf("CheckService.Load() config.Version = %q, want %q", config.Version.String(), "1.0")
 	}
 }
 
@@ -211,7 +211,7 @@ func TestCheckService_Check(t *testing.T) {
 	ctx := context.Background()
 
 	config := &domain.Config{
-		Version: "1.0",
+		Version: domain.SchemaVersion{Major: 1, Minor: 0},
 		Layers: []domain.Layer{
 			{Name: "domain", Paths: []string{"internal/domain"}},
 			{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
@@ -270,7 +270,7 @@ func TestCheckService_Check_LoadError(t *testing.T) {
 func TestCheckService_Check_DetectError(t *testing.T) {
 	ctx := context.Background()
 	config := &domain.Config{
-		Version: "1.0",
+		Version: domain.SchemaVersion{Major: 1, Minor: 0},
 		Layers:  []domain.Layer{{Name: "domain", Paths: []string{"internal/domain"}}},
 		Rules:   []domain.Rule{},
 	}
@@ -294,7 +294,7 @@ func TestCheckService_Check_DetectError(t *testing.T) {
 func TestCheckService_Check_ReportError(t *testing.T) {
 	ctx := context.Background()
 	config := &domain.Config{
-		Version: "1.0",
+		Version: domain.SchemaVersion{Major: 1, Minor: 0},
 		Layers:  []domain.Layer{{Name: "domain", Paths: []string{"internal/domain"}}},
 		Rules:   []domain.Rule{},
 	}
@@ -312,7 +312,7 @@ func TestCheckService_Check_NoViolations(t *testing.T) {
 	ctx := context.Background()
 
 	config := &domain.Config{
-		Version: "1.0",
+		Version: domain.SchemaVersion{Major: 1, Minor: 0},
 		Layers: []domain.Layer{
 			{Name: "domain", Paths: []string{"internal/domain"}},
 			{Name: "application", Paths: []string{"internal/application"}},

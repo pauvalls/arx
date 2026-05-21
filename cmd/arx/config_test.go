@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/pauvalls/arx/internal/domain"
 	"github.com/spf13/cobra"
 )
 
@@ -758,5 +760,79 @@ rules:
 	output := stdout.String()
 	if !strings.Contains(output, "✓ Config valid") {
 		t.Errorf("expected success message, got: %s", output)
+	}
+}
+
+func TestConfigMigrateCommand_Registered(t *testing.T) {
+	// Verify the migrate subcommand exists on configCmd
+	migrateCmd, _, err := configCmd.Find([]string{"migrate"})
+	if err != nil {
+		t.Fatalf("config migrate command not found: %v", err)
+	}
+	if migrateCmd == nil {
+		t.Fatal("config migrate command is nil")
+	}
+	if migrateCmd.Use != "migrate" {
+		t.Errorf("expected use 'migrate', got %q", migrateCmd.Use)
+	}
+
+	// Verify flags
+	toFlag := migrateCmd.Flags().Lookup("to")
+	if toFlag == nil {
+		t.Error("expected --to flag on config migrate")
+	}
+
+	dryRunFlag := migrateCmd.Flags().Lookup("dry-run")
+	if dryRunFlag == nil {
+		t.Error("expected --dry-run flag on config migrate")
+	}
+
+	noBackupFlag := migrateCmd.Flags().Lookup("no-backup")
+	if noBackupFlag == nil {
+		t.Error("expected --no-backup flag on config migrate")
+	}
+}
+
+func TestConfigValidate_DeprecationWarnings(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "arx.yaml")
+
+	// Save original deprecated fields and restore
+	orig := domain.KnownDeprecatedFields
+	defer func() { domain.KnownDeprecatedFields = orig }()
+
+	domain.KnownDeprecatedFields = map[string]domain.DeprecatedField{
+		"exclude": {Field: "exclude", Message: "use 'ignore' instead"},
+	}
+
+	// Write config with deprecated field
+	data := []byte(`version: "1.0"
+layers:
+  - name: domain
+    paths: ["./domain"]
+rules: []
+exclude:
+  - vendor/
+`)
+	if err := os.WriteFile(configPath, data, 0644); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+
+	var stderr bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetErr(&stderr)
+
+	// Call runConfigValidate directly
+	configValidatePath = configPath
+	err := runConfigValidate(cmd, nil)
+
+	// Should still exit 0
+	if err != nil {
+		t.Errorf("expected exit 0 for deprecated fields, got error: %v", err)
+	}
+
+	// Should contain deprecation warning
+	if !strings.Contains(stderr.String(), "exclude") {
+		t.Errorf("expected deprecation warning for 'exclude', got: %s", stderr.String())
 	}
 }

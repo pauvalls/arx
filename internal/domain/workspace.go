@@ -154,8 +154,14 @@ func (wc *WorkspaceConfig) ResolveProjects(baseDir string) ([]ResolvedProject, e
 // Merge creates a domain.Config from shared config + project override (shallow merge).
 // Project-level fields REPLACE shared fields; fields not specified inherit from shared.
 func (wc *WorkspaceConfig) Merge(project *ResolvedProject) *Config {
+	sv := SchemaVersion{Major: 1, Minor: 0}
+	if wc.Version != "" {
+		if parsed, err := ParseSchemaVersion(wc.Version); err == nil {
+			sv = parsed
+		}
+	}
 	cfg := &Config{
-		Version: wc.Version,
+		Version: sv,
 	}
 
 	// Start with shared fields (if any)

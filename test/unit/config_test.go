@@ -40,8 +40,8 @@ rules:
 	}
 
 	// Validate
-	if config.Version != "1.0" {
-		t.Errorf("Expected version 1.0, got %q", config.Version)
+	if config.Version.String() != "1.0" {
+		t.Errorf("Expected version 1.0, got %q", config.Version.String())
 	}
 
 	if len(config.Layers) != 1 {
@@ -70,7 +70,7 @@ func TestYAMLReader_Validate(t *testing.T) {
 
 	// Valid config
 	validConfig := &domain.Config{
-		Version: "1.0",
+		Version: domain.SchemaVersion{Major: 1, Minor: 0},
 		Layers: []domain.Layer{
 			{Name: "domain", Paths: []string{"internal/domain"}},
 			{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},

@@ -127,7 +127,7 @@ func TestPluginDetectorViaConfig(t *testing.T) {
 
 	// Create config with plugins
 	cfg := &domain.Config{
-		Version: "1.0.0",
+		Version: domain.SchemaVersion{Major: 1, Minor: 0},
 		Layers: []domain.Layer{
 			{Name: "app", Paths: []string{"."}},
 			{Name: "infrastructure", Paths: []string{"infra"}},

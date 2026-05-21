@@ -144,7 +144,7 @@ func TestDocsConfigValid(t *testing.T) {
 		t.Fatalf("arx.yaml validation failed: %v", err)
 	}
 
-	if cfg.Version == "" {
+	if cfg.Version.Major == 0 && cfg.Version.Minor == 0 {
 		t.Error("config version is empty")
 	}
 	if len(cfg.Layers) == 0 {

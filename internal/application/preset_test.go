@@ -30,7 +30,7 @@ func TestPresetService_LoadValidPreset(t *testing.T) {
 			if cfg == nil {
 				t.Fatal("expected config, got nil")
 			}
-			if cfg.Version == "" {
+			if cfg.Version.Major == 0 && cfg.Version.Minor == 0 {
 				t.Error("expected version to be set")
 			}
 			if len(cfg.Layers) == 0 {

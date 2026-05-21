@@ -27,7 +27,7 @@ func mockDetectFunc(projectRoot string, layers []domain.Layer) ([]domain.Depende
 func TestRuleTestRunner_Run_Pass(t *testing.T) {
 	reader := &mockConfigReader{
 		config: &domain.Config{
-			Version: "1.0",
+			Version: domain.SchemaVersion{Major: 1, Minor: 0},
 			Layers: []domain.Layer{
 				{Name: "domain", Paths: []string{"internal/domain/"}},
 				{Name: "application", Paths: []string{"internal/application/"}},
@@ -68,7 +68,7 @@ func TestRuleTestRunner_Run_Pass(t *testing.T) {
 func TestRuleTestRunner_Run_FailCount(t *testing.T) {
 	reader := &mockConfigReader{
 		config: &domain.Config{
-			Version: "1.0",
+			Version: domain.SchemaVersion{Major: 1, Minor: 0},
 			Layers: []domain.Layer{
 				{Name: "domain", Paths: []string{"internal/domain/"}},
 				{Name: "application", Paths: []string{"internal/application/"}},
@@ -154,7 +154,7 @@ func TestRuleTestRunner_PanicRecovery(t *testing.T) {
 
 func TestRuleTestRunner_EmptySuite(t *testing.T) {
 	reader := &mockConfigReader{
-		config: &domain.Config{Version: "1.0"},
+		config: &domain.Config{Version: domain.SchemaVersion{Major: 1, Minor: 0}},
 	}
 
 	runner := NewRuleTestRunner(reader, mockDetectFunc)

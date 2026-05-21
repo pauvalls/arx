@@ -282,7 +282,7 @@ func TestGenerateConfig_LanguageOverrides(t *testing.T) {
 func TestWriteConfig_Success(t *testing.T) {
 	writer := newMockFileWriter()
 	config := &domain.Config{
-		Version: "1.0",
+		Version: domain.SchemaVersion{Major: 1, Minor: 0},
 		Layers: []domain.Layer{
 			{Name: "domain", Paths: []string{"internal/domain/**"}},
 		},
@@ -307,8 +307,8 @@ func TestWriteConfig_Success(t *testing.T) {
 		t.Errorf("WriteConfig() wrote invalid YAML: %v", err)
 	}
 
-	if parsed.Version != "1.0" {
-		t.Errorf("WriteConfig() wrote version %q, want %q", parsed.Version, "1.0")
+	if parsed.Version.String() != "1.0" {
+		t.Errorf("WriteConfig() wrote version %q, want %q", parsed.Version.String(), "1.0")
 	}
 
 	// Verify header comment
@@ -330,7 +330,7 @@ func TestWriteConfig_WriterError(t *testing.T) {
 	writer.err = os.ErrPermission
 
 	config := &domain.Config{
-		Version: "1.0",
+		Version: domain.SchemaVersion{Major: 1, Minor: 0},
 		Layers:  []domain.Layer{{Name: "domain", Paths: []string{"internal/domain/**"}}},
 		Rules:   []domain.Rule{},
 	}
@@ -392,7 +392,7 @@ func TestGenerateConfigWithPreset_CleanPreset(t *testing.T) {
 
 	ps := newMockPresetService()
 	ps.addPreset("clean", &domain.Config{
-		Version: "1.0",
+		Version: domain.SchemaVersion{Major: 1, Minor: 0},
 		Layers: []domain.Layer{
 			{Name: "domain", Paths: []string{"internal/domain/**"}},
 			{Name: "application", Paths: []string{"internal/application/**"}},
@@ -444,7 +444,7 @@ func TestGenerateConfigWithPreset_HexagonalPreset(t *testing.T) {
 
 	ps := newMockPresetService()
 	ps.addPreset("hexagonal", &domain.Config{
-		Version: "1.0",
+		Version: domain.SchemaVersion{Major: 1, Minor: 0},
 		Layers: []domain.Layer{
 			{Name: "domain", Paths: []string{"internal/domain/**"}},
 			{Name: "application", Paths: []string{"internal/application/**"}},
@@ -480,7 +480,7 @@ func TestGenerateConfigWithPreset_DddPreset(t *testing.T) {
 
 	ps := newMockPresetService()
 	ps.addPreset("ddd", &domain.Config{
-		Version: "1.0",
+		Version: domain.SchemaVersion{Major: 1, Minor: 0},
 		Layers: []domain.Layer{
 			{Name: "domain", Paths: []string{"internal/domain/**"}},
 			{Name: "application", Paths: []string{"internal/application/**"}},
@@ -534,7 +534,7 @@ func TestGenerateConfigWithPreset_AddsLanguageOverrides(t *testing.T) {
 
 	ps := newMockPresetService()
 	ps.addPreset("clean", &domain.Config{
-		Version: "1.0",
+		Version: domain.SchemaVersion{Major: 1, Minor: 0},
 		Layers: []domain.Layer{
 			{Name: "domain", Paths: []string{"internal/domain/**"}},
 			{Name: "application", Paths: []string{"internal/application/**"}},
@@ -605,7 +605,7 @@ func TestInitService_InitWithPreset_Valid(t *testing.T) {
 	writer := newMockFileWriter()
 	presetService := newMockPresetService()
 	presetService.addPreset("clean", &domain.Config{
-		Version: "1.0",
+		Version: domain.SchemaVersion{Major: 1, Minor: 0},
 		Layers: []domain.Layer{
 			{Name: "domain", Paths: []string{"internal/domain/**"}},
 			{Name: "application", Paths: []string{"internal/application/**"}},
@@ -654,8 +654,8 @@ func TestInitService_InitWithPreset_Valid(t *testing.T) {
 		t.Errorf("InitWithPreset() wrote invalid YAML: %v", err)
 	}
 
-	if parsed.Version != "1.0" {
-		t.Errorf("InitWithPreset() wrote version %q, want %q", parsed.Version, "1.0")
+	if parsed.Version.String() != "1.0" {
+		t.Errorf("InitWithPreset() wrote version %q, want %q", parsed.Version.String(), "1.0")
 	}
 }
 
@@ -665,7 +665,7 @@ func TestInitService_InitWithPreset_FileExists_NoForce(t *testing.T) {
 
 	presetService := newMockPresetService()
 	presetService.addPreset("clean", &domain.Config{
-		Version: "1.0",
+		Version: domain.SchemaVersion{Major: 1, Minor: 0},
 		Layers:  []domain.Layer{{Name: "domain", Paths: []string{"internal/domain/**"}}},
 		Rules:   []domain.Rule{},
 	})
@@ -692,7 +692,7 @@ func TestInitService_InitWithPreset_FileExists_WithForce(t *testing.T) {
 
 	presetService := newMockPresetService()
 	presetService.addPreset("clean", &domain.Config{
-		Version: "1.0",
+		Version: domain.SchemaVersion{Major: 1, Minor: 0},
 		Layers:  []domain.Layer{{Name: "domain", Paths: []string{"internal/domain/**"}}},
 		Rules:   []domain.Rule{},
 	})

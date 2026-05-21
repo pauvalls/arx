@@ -123,7 +123,7 @@ func GenerateConfig(projectInfo *ProjectInfo) (*domain.Config, error) {
 	}
 
 	config := &domain.Config{
-		Version: "1.0",
+		Version: domain.SchemaVersion{Major: 1, Minor: 0},
 		Layers:  projectInfo.SuggestedLayers,
 	}
 

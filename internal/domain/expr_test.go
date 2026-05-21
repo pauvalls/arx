@@ -481,7 +481,7 @@ func TestRule_CheckField_InvalidExpression(t *testing.T) {
 func TestConfig_Validate_CheckRuleStandalone(t *testing.T) {
 	// Valid: check-only rule
 	config := Config{
-		Version: "1.0.0",
+		Version: SchemaVersion{Major: 1, Minor: 0},
 		Layers: []Layer{
 			{Name: "domain", Paths: []string{"internal/domain"}},
 			{Name: "infra", Paths: []string{"internal/infrastructure"}},
@@ -502,7 +502,7 @@ func TestConfig_Validate_CheckRuleStandalone(t *testing.T) {
 
 func TestConfig_Validate_CheckRuleWithFromRejected(t *testing.T) {
 	config := Config{
-		Version: "1.0.0",
+		Version: SchemaVersion{Major: 1, Minor: 0},
 		Layers: []Layer{
 			{Name: "domain", Paths: []string{"internal/domain"}},
 			{Name: "infra", Paths: []string{"internal/infrastructure"}},
@@ -529,7 +529,7 @@ func TestConfig_Validate_CheckRuleWithFromRejected(t *testing.T) {
 
 func TestConfig_Validate_CheckRuleWithToRejected(t *testing.T) {
 	config := Config{
-		Version: "1.0.0",
+		Version: SchemaVersion{Major: 1, Minor: 0},
 		Layers: []Layer{
 			{Name: "domain", Paths: []string{"internal/domain"}},
 			{Name: "infra", Paths: []string{"internal/infrastructure"}},
@@ -554,7 +554,7 @@ func TestConfig_Validate_CheckRuleWithToRejected(t *testing.T) {
 
 func TestConfig_Validate_CheckRuleWithTemplateRejected(t *testing.T) {
 	config := Config{
-		Version: "1.0.0",
+		Version: SchemaVersion{Major: 1, Minor: 0},
 		Layers: []Layer{
 			{Name: "domain", Paths: []string{"internal/domain"}},
 		},
@@ -1629,7 +1629,7 @@ func TestCollectFuncCalls_Nil(t *testing.T) {
 
 func TestConfig_Validate_ValidUserFunctions(t *testing.T) {
 	config := Config{
-		Version: "1.0.0",
+		Version: SchemaVersion{Major: 1, Minor: 0},
 		Layers: []Layer{
 			{Name: "domain", Paths: []string{"domain/"}},
 			{Name: "infra", Paths: []string{"infra/"}},
@@ -1653,7 +1653,7 @@ func TestConfig_Validate_ValidUserFunctions(t *testing.T) {
 func TestConfig_Validate_UserFunctionCallsBuiltin(t *testing.T) {
 	// User function body that uses builtins and comparisons
 	config := Config{
-		Version: "1.0.0",
+		Version: SchemaVersion{Major: 1, Minor: 0},
 		Layers: []Layer{
 			{Name: "domain", Paths: []string{"domain/"}},
 			{Name: "infra", Paths: []string{"infra/"}},
@@ -1671,7 +1671,7 @@ func TestConfig_Validate_UserFunctionCallsBuiltin(t *testing.T) {
 func TestConfig_Validate_UserFunctionCrossReference(t *testing.T) {
 	// Function A calls function B — no cycle, should validate
 	config := Config{
-		Version: "1.0.0",
+		Version: SchemaVersion{Major: 1, Minor: 0},
 		Layers: []Layer{
 			{Name: "domain", Paths: []string{"domain/"}},
 			{Name: "infra", Paths: []string{"infra/"}},
@@ -1689,7 +1689,7 @@ func TestConfig_Validate_UserFunctionCrossReference(t *testing.T) {
 
 func TestConfig_Validate_UserFunctionCircularReference(t *testing.T) {
 	config := Config{
-		Version: "1.0.0",
+		Version: SchemaVersion{Major: 1, Minor: 0},
 		Layers: []Layer{
 			{Name: "domain", Paths: []string{"domain/"}},
 		},
@@ -1709,7 +1709,7 @@ func TestConfig_Validate_UserFunctionCircularReference(t *testing.T) {
 
 func TestConfig_Validate_UserFunctionIndirectCycle(t *testing.T) {
 	config := Config{
-		Version: "1.0.0",
+		Version: SchemaVersion{Major: 1, Minor: 0},
 		Layers: []Layer{
 			{Name: "domain", Paths: []string{"domain/"}},
 		},
@@ -1730,7 +1730,7 @@ func TestConfig_Validate_UserFunctionIndirectCycle(t *testing.T) {
 
 func TestConfig_Validate_UserFunctionSelfReference(t *testing.T) {
 	config := Config{
-		Version: "1.0.0",
+		Version: SchemaVersion{Major: 1, Minor: 0},
 		Layers: []Layer{
 			{Name: "domain", Paths: []string{"domain/"}},
 		},
@@ -1752,7 +1752,7 @@ func TestConfig_Validate_UserFunctionBuiltinShadowing(t *testing.T) {
 	for _, name := range tests {
 		t.Run(name, func(t *testing.T) {
 			config := Config{
-				Version: "1.0.0",
+				Version: SchemaVersion{Major: 1, Minor: 0},
 				Layers: []Layer{
 					{Name: "domain", Paths: []string{"domain/"}},
 				},
@@ -1773,7 +1773,7 @@ func TestConfig_Validate_UserFunctionBuiltinShadowing(t *testing.T) {
 
 func TestConfig_Validate_UserFunctionInvalidIdentifier(t *testing.T) {
 	config := Config{
-		Version: "1.0.0",
+		Version: SchemaVersion{Major: 1, Minor: 0},
 		Layers: []Layer{
 			{Name: "domain", Paths: []string{"domain/"}},
 		},
@@ -1792,7 +1792,7 @@ func TestConfig_Validate_UserFunctionInvalidIdentifier(t *testing.T) {
 
 func TestConfig_Validate_UserFunctionParseError(t *testing.T) {
 	config := Config{
-		Version: "1.0.0",
+		Version: SchemaVersion{Major: 1, Minor: 0},
 		Layers: []Layer{
 			{Name: "domain", Paths: []string{"domain/"}},
 		},
@@ -1992,7 +1992,7 @@ func TestEvaluateRules_UserFunction(t *testing.T) {
 
 	// Define a user function and a rule that calls it
 	config := Config{
-		Version: "1.0.0",
+		Version: SchemaVersion{Major: 1, Minor: 0},
 		Layers:  layers,
 		Functions: map[string]string{
 			"too_many_deps": "count(deps(domain, infra)) > 3",
@@ -2035,7 +2035,7 @@ func TestEvaluateRules_UserFunctionNoViolation(t *testing.T) {
 	}
 
 	config := Config{
-		Version: "1.0.0",
+		Version: SchemaVersion{Major: 1, Minor: 0},
 		Layers:  layers,
 		Functions: map[string]string{
 			"too_many_deps": "count(deps(domain, infra)) > 3",
@@ -2302,7 +2302,7 @@ func TestEvaluateRules_UserFunctionAllBuiltin(t *testing.T) {
 	}
 
 	config := Config{
-		Version: "1.0.0",
+		Version: SchemaVersion{Major: 1, Minor: 0},
 		Layers:  layers,
 		Functions: map[string]string{
 			"has_deps": "all(deps(domain, infra))",

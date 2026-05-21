@@ -9,7 +9,7 @@ import (
 // Helper: minimal config for tests
 func testConfig() *domain.Config {
 	return &domain.Config{
-		Version: "1",
+		Version: domain.SchemaVersion{Major: 1, Minor: 0},
 		Layers: []domain.Layer{
 			{Name: "domain", Paths: []string{"internal/domain/**"}},
 			{Name: "application", Paths: []string{"internal/application/**"}},

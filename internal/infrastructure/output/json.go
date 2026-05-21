@@ -13,6 +13,7 @@ import (
 // JSONReporter implements the ports.Reporter interface for JSON output
 type JSONReporter struct {
 	version                 string
+	schemaVersion           string
 	tool                    string
 	baselineSuppressedCount int
 	maxViolations           int
@@ -22,16 +23,23 @@ type JSONReporter struct {
 // NewJSONReporter creates a new JSON reporter
 func NewJSONReporter() *JSONReporter {
 	return &JSONReporter{
-		version: "1.0",
-		tool:    "arx",
+		version:       "1.0",
+		schemaVersion: "1.0",
+		tool:          "arx",
 	}
+}
+
+// SetSchemaVersion sets the config schema version for JSON output.
+func (r *JSONReporter) SetSchemaVersion(sv string) {
+	r.schemaVersion = sv
 }
 
 // NewJSONReporterWithBaseline creates a JSON reporter with baseline suppression info
 func NewJSONReporterWithBaseline(suppressedCount int) *JSONReporter {
 	return &JSONReporter{
-		version:               "1.0",
-		tool:                  "arx",
+		version:                 "1.0",
+		schemaVersion:           "1.0",
+		tool:                    "arx",
 		baselineSuppressedCount: suppressedCount,
 	}
 }
@@ -40,6 +48,7 @@ func NewJSONReporterWithBaseline(suppressedCount int) *JSONReporter {
 func NewJSONReporterWithThreshold(maxViolations int) *JSONReporter {
 	return &JSONReporter{
 		version:       "1.0",
+		schemaVersion: "1.0",
 		tool:          "arx",
 		maxViolations: maxViolations,
 	}
@@ -54,6 +63,7 @@ func (r *JSONReporter) SetPerformance(pr *domain.PerformanceReport) {
 // JSONOutput represents the structured JSON output format
 type JSONOutput struct {
 	Version                 string                `json:"version"`
+	SchemaVersion           string                `json:"schema_version"`
 	Tool                    string                `json:"tool"`
 	Violations              []JSONViolation       `json:"violations"`
 	Summary                 Summary               `json:"summary"`
@@ -146,6 +156,7 @@ func (r *JSONReporter) Report(violations []domain.Violation, format ports.Output
 	// Create output structure
 	output := JSONOutput{
 		Version:                 r.version,
+		SchemaVersion:           r.schemaVersion,
 		Tool:                    r.tool,
 		Violations:              jsonViolations,
 		Summary: Summary{
@@ -253,9 +264,10 @@ func (r *JSONReporter) buildJSONOutput(violations []domain.Violation) JSONOutput
 	}
 
 	out := JSONOutput{
-		Version: r.version,
-		Tool:    r.tool,
-		Violations: jsonViolations,
+		Version:       r.version,
+		SchemaVersion: r.schemaVersion,
+		Tool:          r.tool,
+		Violations:    jsonViolations,
 		Summary: Summary{
 			Total:           len(violations),
 			Errors:          errors,

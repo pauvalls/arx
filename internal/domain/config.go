@@ -36,7 +36,7 @@ type CrossLanguageMapping struct {
 // Config represents the complete Arx configuration
 type Config struct {
 	Schema         string                      `json:"$schema,omitempty" yaml:"$schema,omitempty"`
-	Version        string                      `json:"version" yaml:"version"`
+	Version        SchemaVersion               `json:"version" yaml:"version"`
 	Layers         []Layer                     `json:"layers" yaml:"layers"`
 	Rules          []Rule                      `json:"rules" yaml:"rules"`
 	LanguageOverrides map[string]LanguageOverride `json:"language_overrides,omitempty" yaml:"language_overrides,omitempty"`
@@ -54,8 +54,11 @@ type Config struct {
 
 // Validate validates the entire configuration
 func (c *Config) Validate() error {
-	if c.Version == "" {
+	if c.Version.Major == 0 && c.Version.Minor == 0 {
 		return fmt.Errorf("config version is required")
+	}
+	if err := c.Version.Validate(); err != nil {
+		return fmt.Errorf("config version: %w", err)
 	}
 
 	if len(c.Layers) == 0 {
@@ -160,6 +163,66 @@ func (c *Config) Validate() error {
 	}
 
 	return nil
+}
+
+// DeprecatedField describes a deprecated config field and its migration path.
+type DeprecatedField struct {
+	Field   string // dotted path, e.g. "rules[].old_field"
+	Message string // human-readable migration instruction
+}
+
+// KnownDeprecatedFields maps field names to their deprecation messages.
+// Initially empty — populated when fields are deprecated in future schema versions.
+var KnownDeprecatedFields = map[string]DeprecatedField{}
+
+// CheckDeprecated returns deprecation warning messages for fields in the config.
+// Uses KnownDeprecatedFields to detect usage of deprecated fields.
+func CheckDeprecated(cfg *Config) []string {
+	if cfg == nil {
+		return nil
+	}
+	var warnings []string
+	for field, info := range KnownDeprecatedFields {
+		if hasField(cfg, field) {
+			warnings = append(warnings, fmt.Sprintf("field %q is deprecated: %s", field, info.Message))
+		}
+	}
+	return warnings
+}
+
+// hasField checks if a config has a value for the given dot-path field.
+// This is a simple check that only handles top-level fields.
+func hasField(cfg *Config, field string) bool {
+	switch field {
+	case "version":
+		return cfg.Version.Major != 0 || cfg.Version.Minor != 0
+	case "layers":
+		return len(cfg.Layers) > 0
+	case "rules":
+		return len(cfg.Rules) > 0
+	case "exclude":
+		return len(cfg.Exclude) > 0
+	case "language_overrides":
+		return len(cfg.LanguageOverrides) > 0
+	case "severity_config":
+		return len(cfg.SeverityConfig) > 0
+	case "max_violations":
+		return true // zero is a valid value
+	case "severity_mapping":
+		return len(cfg.SeverityMapping) > 0
+	case "functions":
+		return len(cfg.Functions) > 0
+	case "cross_language":
+		return cfg.CrossLanguage != nil
+	case "workspace":
+		return cfg.Workspace != nil
+	case "plugins":
+		return len(cfg.Plugins) > 0
+	case "$schema":
+		return cfg.Schema != ""
+	default:
+		return false
+	}
 }
 
 // Hash returns a SHA-256 hex digest of the marshaled JSON config.

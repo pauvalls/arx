@@ -37,7 +37,7 @@ func TestDiagramService_Generate_WithLayers(t *testing.T) {
 		{Name: "domain", Paths: []string{"testdata/**"}},
 	}
 	config := &domain.Config{
-		Version: "1.0",
+		Version: domain.SchemaVersion{Major: 1, Minor: 0},
 		Layers:  layers,
 		Rules: []domain.Rule{
 			{ID: "R1", From: "domain", To: []string{"infrastructure"}, Type: domain.RuleTypeCannot},
@@ -60,7 +60,7 @@ func TestDiagramService_Generate_WithDetectors(t *testing.T) {
 	}
 
 	result, err := svc.Generate("/test", layers, &domain.Config{
-		Version: "1.0",
+		Version: domain.SchemaVersion{Major: 1, Minor: 0},
 		Layers:  layers,
 		Rules:   []domain.Rule{},
 	})

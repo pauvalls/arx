@@ -441,7 +441,7 @@ No más features nuevas. El producto está completo. Estas 5 releases son exclus
 |---------|---------|-----------|
 | **v0.56** | Quality Hardening | Cerrar los últimos gaps |
 | **v0.57** | Documentation & Onboarding | Que cualquiera pueda arrancar |
-| **v0.58** | Config Migration & Versioning | Contrato de schema estable |
+| **v0.58** | Config Migration & Versioning | ✅ Done |
 | **v0.59** | Performance Polish | Benchmarks publicados |
 | **v0.60** | 1.0.0 Release | Homebrew core, Marketplace, contrato |
 
@@ -513,7 +513,7 @@ No más features nuevas. El producto está completo. Estas 5 releases son exclus
 
 ---
 
-### 🔲 v0.58 — Config Migration & Versioning
+### ✅ v0.58 — Config Migration & Versioning
 **Priority:** 🟡 Media | **Effort:** M
 
 **Qué:** Garantizar que nadie se rompe cuando el schema evoluciona.

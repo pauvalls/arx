@@ -303,7 +303,7 @@ func TestCheckService_DetectCached(t *testing.T) {
 	cache := newMockCache()
 	reader := &mockConfigReader{
 		config: &domain.Config{
-			Version: "1.0",
+			Version: domain.SchemaVersion{Major: 1, Minor: 0},
 			Layers:  []domain.Layer{{Name: "domain", Paths: []string{"internal/domain"}}},
 			Rules:   []domain.Rule{},
 		},
@@ -333,7 +333,7 @@ func TestCheckService_DetectCached(t *testing.T) {
 func TestCheckService_Detect_BackwardCompat(t *testing.T) {
 	reader := &mockConfigReader{
 		config: &domain.Config{
-			Version: "1.0",
+			Version: domain.SchemaVersion{Major: 1, Minor: 0},
 			Layers:  []domain.Layer{{Name: "domain", Paths: []string{"internal/domain"}}},
 			Rules:   []domain.Rule{},
 		},

@@ -116,7 +116,7 @@ func TestPluginConfig_Validate(t *testing.T) {
 
 func TestPluginConfigInConfig_Validate(t *testing.T) {
 	cfg := Config{
-		Version: "1.0.0",
+		Version: SchemaVersion{Major: 1, Minor: 0},
 		Layers: []Layer{
 			{Name: "domain", Paths: []string{"internal/domain"}},
 		},
@@ -137,7 +137,7 @@ func TestPluginConfigInConfig_Validate(t *testing.T) {
 
 func TestPluginConfigInConfig_DuplicateNames(t *testing.T) {
 	cfg := Config{
-		Version: "1.0.0",
+		Version: SchemaVersion{Major: 1, Minor: 0},
 		Layers: []Layer{
 			{Name: "domain", Paths: []string{"internal/domain"}},
 		},

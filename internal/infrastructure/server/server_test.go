@@ -687,7 +687,7 @@ func TestServer_AllEndpointsReturnValidJSON(t *testing.T) {
 	srv := &Server{state: state}
 
 	cfg := &domain.Config{
-		Version: "1.0",
+		Version: domain.SchemaVersion{Major: 1, Minor: 0},
 		Layers:  []domain.Layer{{Name: "domain", Paths: []string{"internal/domain/**"}}},
 		Rules: []domain.Rule{
 			{
@@ -760,9 +760,9 @@ func TestServerState_ConfigGetter(t *testing.T) {
 // TestServerState_ConfigAfterSet tests the Config() getter returns config after SetCheckResult
 func TestServerState_ConfigAfterSet(t *testing.T) {
 	state := NewServerState(VersionInfo{Version: "test"})
-	cfg := &domain.Config{Version: "1.0"}
+	cfg := &domain.Config{Version: domain.SchemaVersion{Major: 1, Minor: 0}}
 	state.SetCheckResult(nil, domain.CouplingMatrix{}, domain.DebtScore{}, cfg, Metrics{}, nil)
-	if got := state.Config(); got == nil || got.Version != "1.0" {
+	if got := state.Config(); got == nil || got.Version.String() != "1.0" {
 		t.Errorf("expected config with version 1.0, got %v", got)
 	}
 }
@@ -825,7 +825,7 @@ func TestServer_HandlerConfigEmpty(t *testing.T) {
 func TestServer_HandlerConfigWithData(t *testing.T) {
 	state := NewServerState(VersionInfo{Version: "test"})
 	cfg := &domain.Config{
-		Version: "2.0",
+		Version: domain.SchemaVersion{Major: 2, Minor: 0},
 		Layers:  []domain.Layer{{Name: "domain", Paths: []string{"internal/domain/**"}}},
 		Rules: []domain.Rule{
 			{
@@ -1250,5 +1250,42 @@ func TestServer_HandlerMetricsEmptyState(t *testing.T) {
 	}
 	if result.FilesScanned != 0 {
 		t.Errorf("expected 0 files_scanned, got %d", result.FilesScanned)
+	}
+}
+
+func TestHandleConfigSchema(t *testing.T) {
+	state := NewServerState(VersionInfo{Version: "test"})
+	srv := &Server{state: state}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/config/schema", srv.handleConfigSchema)
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/api/config/schema")
+	if err != nil {
+		t.Fatalf("GET /api/config/schema error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	if ct := resp.Header.Get("Content-Type"); ct != "application/json" {
+		t.Errorf("Content-Type = %q, want application/json", ct)
+	}
+
+	var info SchemaInfoResponse
+	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if info.Current != "1.0" {
+		t.Errorf("current = %q, want %q", info.Current, "1.0")
+	}
+	if len(info.Supported) == 0 {
+		t.Error("supported is empty, expected at least one version")
 	}
 }

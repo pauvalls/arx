@@ -61,7 +61,7 @@ func (m *mockReporter) Report(violations []domain.Violation, format ports.Output
 
 func TestLoadConfig_Success(t *testing.T) {
 	expectedConfig := &domain.Config{
-		Version: "1.0",
+		Version: domain.SchemaVersion{Major: 1, Minor: 0},
 		Layers:  []domain.Layer{{Name: "domain", Paths: []string{"internal/domain/**"}}},
 		Rules:   []domain.Rule{},
 	}
@@ -72,8 +72,8 @@ func TestLoadConfig_Success(t *testing.T) {
 		t.Fatalf("LoadConfig() error = %v", err)
 	}
 
-	if config.Version != "1.0" {
-		t.Errorf("LoadConfig() config.Version = %q, want %q", config.Version, "1.0")
+	if config.Version.String() != "1.0" {
+		t.Errorf("LoadConfig() config.Version = %q, want %q", config.Version.String(), "1.0")
 	}
 }
 
@@ -88,7 +88,7 @@ func TestLoadConfig_ReadError(t *testing.T) {
 
 func TestLoadConfig_ValidationError(t *testing.T) {
 	reader := &mockConfigReader{
-		config:      &domain.Config{Version: "1.0", Layers: []domain.Layer{}, Rules: []domain.Rule{}},
+		config:      &domain.Config{Version: domain.SchemaVersion{Major: 1, Minor: 0}, Layers: []domain.Layer{}, Rules: []domain.Rule{}},
 		validateErr: errors.New("invalid config"),
 	}
 

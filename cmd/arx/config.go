@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/pauvalls/arx/internal/application"
 	"github.com/pauvalls/arx/internal/domain"
 	"github.com/pauvalls/arx/internal/infrastructure/config"
 	"github.com/spf13/cobra"
@@ -47,16 +48,7 @@ var (
 	configValidateOverride string
 )
 
-func init() {
-	configValidateCmd.Flags().StringVarP(&configValidatePath, "path", "p", "", "Path to config file (default: arx.yaml)")
-	configValidateCmd.Flags().BoolVarP(&configValidateStrict, "strict", "s", false, "Fail on unknown config keys")
-	configValidateCmd.Flags().BoolVar(&configValidateSchema, "schema", false, "Show JSON Schema reference for config")
-	configValidateCmd.Flags().StringVar(&configValidateOverride, "override", "", "Path to override YAML config (deep-merged into base)")
-	configCmd.AddCommand(configValidateCmd)
-	configCmd.AddCommand(configGetCmd)
-	configCmd.AddCommand(configSetCmd)
-	rootCmd.AddCommand(configCmd)
-}
+
 
 // knownConfigKeys lists all top-level keys understood by arx config.
 var knownConfigKeys = map[string]bool{
@@ -194,6 +186,12 @@ func runConfigValidate(cmd *cobra.Command, args []string) error {
 	if err := reader.Validate(cfg); err != nil {
 		fmt.Fprintf(cmd.ErrOrStderr(), "✗ Invalid config: %v\n", err)
 		return fmt.Errorf("invalid config: %w", err)
+	}
+
+	// Check for deprecated fields
+	warnings := domain.CheckDeprecated(cfg)
+	for _, w := range warnings {
+		fmt.Fprintf(cmd.ErrOrStderr(), "⚠ WARNING: %s\n", w)
 	}
 
 	fmt.Fprintf(cmd.OutOrStdout(), "✓ Config valid: %s\n", configPath)
@@ -366,4 +364,104 @@ var configSetCmd = &cobra.Command{
 		fmt.Fprintf(cmd.OutOrStdout(), "✓ %s set to %s\n", field, rawValue)
 		return nil
 	},
+}
+
+// configMigrateCmd represents the config migrate command
+var configMigrateCmd = &cobra.Command{
+	Use:   "migrate",
+	Short: "Migrate config to a new schema version",
+	Long: `Migrate the arx.yaml configuration file to a new schema version.
+
+If --to is not specified, migrates to the latest supported version.
+Use --dry-run to preview changes without modifying files.
+The --backup flag (default: true) creates arx.yaml.bak before modifying.
+
+Examples:
+  arx config migrate                    # Auto-detect, migrate to latest
+  arx config migrate --to "2.0"         # Migrate to specific version
+  arx config migrate --dry-run          # Show what would change
+  arx config migrate --no-backup        # Skip backup creation`,
+	RunE: runConfigMigrate,
+}
+
+var (
+	configMigrateTo      string
+	configMigrateDryRun  bool
+	configMigrateNoBackup bool
+)
+
+func init() {
+	configValidateCmd.Flags().StringVarP(&configValidatePath, "path", "p", "", "Path to config file (default: arx.yaml)")
+	configValidateCmd.Flags().BoolVarP(&configValidateStrict, "strict", "s", false, "Fail on unknown config keys")
+	configValidateCmd.Flags().BoolVar(&configValidateSchema, "schema", false, "Show JSON Schema reference for config")
+	configValidateCmd.Flags().StringVar(&configValidateOverride, "override", "", "Path to override YAML config (deep-merged into base)")
+	configCmd.AddCommand(configValidateCmd)
+	configCmd.AddCommand(configGetCmd)
+	configCmd.AddCommand(configSetCmd)
+	configMigrateCmd.Flags().StringVar(&configMigrateTo, "to", "", "Target schema version (default: latest)")
+	configMigrateCmd.Flags().BoolVar(&configMigrateDryRun, "dry-run", false, "Show changes without modifying files")
+	configMigrateCmd.Flags().BoolVar(&configMigrateNoBackup, "no-backup", false, "Skip backup creation")
+	configCmd.AddCommand(configMigrateCmd)
+	rootCmd.AddCommand(configCmd)
+}
+
+func runConfigMigrate(cmd *cobra.Command, args []string) error {
+	configPath := "arx.yaml"
+	if len(args) > 0 {
+		configPath = args[0]
+	}
+
+	if !filepath.IsAbs(configPath) {
+		abs, err := filepath.Abs(configPath)
+		if err != nil {
+			return fmt.Errorf("invalid path: %w", err)
+		}
+		configPath = abs
+	}
+
+	// Build registry with default migrations
+	reg := domain.NewRegistry()
+	for _, m := range application.DefaultMigrationFuncs {
+		if err := reg.Register(m); err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Warning: failed to register migration %s→%s: %v\n", m.From, m.To, err)
+		}
+	}
+
+	svc := application.NewMigrateService(reg)
+
+	// Determine target version
+	var toVersion domain.SchemaVersion
+	if configMigrateTo != "" {
+		var err error
+		toVersion, err = domain.ParseSchemaVersion(configMigrateTo)
+		if err != nil {
+			return fmt.Errorf("invalid target version %q: %w", configMigrateTo, err)
+		}
+	} else {
+		// Auto-detect: migrate to latest (highest To version in registry)
+		toVersion = domain.SchemaVersion{Major: 2, Minor: 0} // Default latest
+	}
+
+	dryRun := configMigrateDryRun
+
+	result, err := svc.Migrate(configPath, toVersion, dryRun)
+	if err != nil {
+		return fmt.Errorf("migration failed: %w", err)
+	}
+
+	// Print result
+	for _, step := range result.Steps {
+		fmt.Fprintln(cmd.OutOrStdout(), step)
+	}
+
+	if result.DryRun {
+		fmt.Fprintln(cmd.OutOrStdout(), "Dry run — no files modified.")
+	} else {
+		fmt.Fprintf(cmd.OutOrStdout(), "Migration complete: %s → %s\n", result.From, result.To)
+		if result.BackupPath != "" {
+			fmt.Fprintf(cmd.OutOrStdout(), "Backup created: %s\n", result.BackupPath)
+		}
+	}
+
+	return nil
 }

@@ -39,7 +39,7 @@ rules:
 	// Create a service with mock config reader that returns violations
 	configReader := &mockConfigReader{
 		config: &domain.Config{
-			Version: "1.0",
+			Version: domain.SchemaVersion{Major: 1, Minor: 0},
 			Layers: []domain.Layer{
 				{Name: "domain", Paths: []string{"domain/**"}},
 				{Name: "infrastructure", Paths: []string{"infrastructure/**"}},

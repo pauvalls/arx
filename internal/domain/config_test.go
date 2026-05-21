@@ -17,7 +17,7 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "valid config",
 			config: Config{
-				Version: "1.0.0",
+				Version: SchemaVersion{Major: 1, Minor: 0},
 				Layers: []Layer{
 					{Name: "domain", Paths: []string{"internal/domain"}},
 					{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
@@ -48,7 +48,7 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "missing layers",
 			config: Config{
-				Version: "1.0.0",
+				Version: SchemaVersion{Major: 1, Minor: 0},
 				Layers:  []Layer{},
 				Rules:   []Rule{},
 			},
@@ -58,7 +58,7 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "duplicate layer names",
 			config: Config{
-				Version: "1.0.0",
+				Version: SchemaVersion{Major: 1, Minor: 0},
 				Layers: []Layer{
 					{Name: "domain", Paths: []string{"internal/domain"}},
 					{Name: "domain", Paths: []string{"pkg/domain"}},
@@ -71,7 +71,7 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "rule references unknown layer in from",
 			config: Config{
-				Version: "1.0.0",
+				Version: SchemaVersion{Major: 1, Minor: 0},
 				Layers: []Layer{
 					{Name: "domain", Paths: []string{"internal/domain"}},
 				},
@@ -91,7 +91,7 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "rule references unknown layer in to",
 			config: Config{
-				Version: "1.0.0",
+				Version: SchemaVersion{Major: 1, Minor: 0},
 				Layers: []Layer{
 					{Name: "domain", Paths: []string{"internal/domain"}},
 				},
@@ -111,7 +111,7 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "valid config with all optional fields",
 			config: Config{
-				Version: "1.0.0",
+				Version: SchemaVersion{Major: 1, Minor: 0},
 				Layers: []Layer{
 					{
 						Name:        "domain",
@@ -171,7 +171,7 @@ func TestConfig_Validate_Pattern(t *testing.T) {
 		{
 			name: "valid config with pattern-only rule",
 			config: Config{
-				Version: "1.0.0",
+				Version: SchemaVersion{Major: 1, Minor: 0},
 				Layers: []Layer{
 					{Name: "domain", Paths: []string{"internal/domain"}},
 					{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
@@ -190,7 +190,7 @@ func TestConfig_Validate_Pattern(t *testing.T) {
 		{
 			name: "valid config with combined pattern+from/to rule",
 			config: Config{
-				Version: "1.0.0",
+				Version: SchemaVersion{Major: 1, Minor: 0},
 				Layers: []Layer{
 					{Name: "domain", Paths: []string{"internal/domain"}},
 					{Name: "application", Paths: []string{"internal/application"}},
@@ -211,7 +211,7 @@ func TestConfig_Validate_Pattern(t *testing.T) {
 		{
 			name: "invalid regex in rule pattern fails with rule ID in error",
 			config: Config{
-				Version: "1.0.0",
+				Version: SchemaVersion{Major: 1, Minor: 0},
 				Layers: []Layer{
 					{Name: "domain", Paths: []string{"internal/domain"}},
 					{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
@@ -253,7 +253,7 @@ func TestConfig_Hash(t *testing.T) {
 		{
 			name: "basic config produces consistent hash",
 			config: Config{
-				Version: "1.0.0",
+				Version: SchemaVersion{Major: 1, Minor: 0},
 				Layers: []Layer{
 					{Name: "domain", Paths: []string{"internal/domain"}},
 					{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
@@ -272,7 +272,7 @@ func TestConfig_Hash(t *testing.T) {
 		{
 			name: "config with optional fields",
 			config: Config{
-				Version: "1.0.0",
+				Version: SchemaVersion{Major: 1, Minor: 0},
 				Layers: []Layer{
 					{Name: "domain", Paths: []string{"internal/domain"}},
 				},
@@ -318,13 +318,13 @@ func TestConfig_Hash(t *testing.T) {
 
 func TestConfig_Hash_DifferentConfigs(t *testing.T) {
 	config1 := Config{
-		Version: "1.0.0",
+		Version: SchemaVersion{Major: 1, Minor: 0},
 		Layers:  []Layer{{Name: "domain", Paths: []string{"internal/domain"}}},
 		Rules:   []Rule{},
 	}
 
 	config2 := Config{
-		Version: "2.0.0",
+		Version: SchemaVersion{Major: 2, Minor: 0},
 		Layers:  []Layer{{Name: "domain", Paths: []string{"internal/domain"}}},
 		Rules:   []Rule{},
 	}
@@ -346,7 +346,7 @@ func TestConfig_Hash_DifferentConfigs(t *testing.T) {
 
 func TestConfig_Hash_FieldChange(t *testing.T) {
 	base := Config{
-		Version: "1.0.0",
+		Version: SchemaVersion{Major: 1, Minor: 0},
 		Layers:  []Layer{{Name: "domain", Paths: []string{"internal/domain"}}},
 		Rules:   []Rule{},
 	}
@@ -356,7 +356,7 @@ func TestConfig_Hash_FieldChange(t *testing.T) {
 	// Changing each field should produce a different hash
 	t.Run("version change", func(t *testing.T) {
 		c := base
-		c.Version = "2.0.0"
+		c.Version = SchemaVersion{Major: 2, Minor: 0}
 		h, _ := c.Hash()
 		if h == baseHash {
 			t.Error("version change should produce different hash")
@@ -401,7 +401,7 @@ func TestConfig_Validate_RuleExcludes(t *testing.T) {
 		{
 			name: "valid rule with exclude patterns",
 			config: Config{
-				Version: "1.0.0",
+				Version: SchemaVersion{Major: 1, Minor: 0},
 				Layers: []Layer{
 					{Name: "domain", Paths: []string{"internal/domain"}},
 					{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
@@ -422,7 +422,7 @@ func TestConfig_Validate_RuleExcludes(t *testing.T) {
 		{
 			name: "rule with trailing slash exclude is valid",
 			config: Config{
-				Version: "1.0.0",
+				Version: SchemaVersion{Major: 1, Minor: 0},
 				Layers: []Layer{
 					{Name: "domain", Paths: []string{"internal/domain"}},
 					{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
@@ -443,7 +443,7 @@ func TestConfig_Validate_RuleExcludes(t *testing.T) {
 		{
 			name: "multiple rules with excludes",
 			config: Config{
-				Version: "1.0.0",
+				Version: SchemaVersion{Major: 1, Minor: 0},
 				Layers: []Layer{
 					{Name: "domain", Paths: []string{"internal/domain"}},
 					{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
@@ -527,7 +527,7 @@ func TestConfig_MaxViolations_Validation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			config := Config{
-				Version: "1.0.0",
+				Version: SchemaVersion{Major: 1, Minor: 0},
 				Layers: []Layer{
 					{Name: "domain", Paths: []string{"internal/domain"}},
 				},
@@ -576,7 +576,7 @@ func TestConfig_ViolationThreshold(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			config := Config{
-				Version:       "1.0.0",
+				Version:       SchemaVersion{Major: 1, Minor: 0},
 				Layers:        []Layer{{Name: "domain", Paths: []string{"internal/domain"}}},
 				Rules:         []Rule{},
 				MaxViolations: tt.maxViolations,
@@ -602,7 +602,7 @@ func TestConfig_Validate_TemplateRules(t *testing.T) {
 		{
 			name: "valid template rule passes",
 			config: Config{
-				Version: "1.0.0",
+				Version: SchemaVersion{Major: 1, Minor: 0},
 				Layers: []Layer{
 					{Name: "domain", Paths: []string{"internal/domain"}},
 					{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
@@ -625,7 +625,7 @@ func TestConfig_Validate_TemplateRules(t *testing.T) {
 		{
 			name: "unknown template fails at config level",
 			config: Config{
-				Version: "1.0.0",
+				Version: SchemaVersion{Major: 1, Minor: 0},
 				Layers: []Layer{
 					{Name: "domain", Paths: []string{"internal/domain"}},
 				},
@@ -644,7 +644,7 @@ func TestConfig_Validate_TemplateRules(t *testing.T) {
 		{
 			name: "missing params fails at config level",
 			config: Config{
-				Version: "1.0.0",
+				Version: SchemaVersion{Major: 1, Minor: 0},
 				Layers: []Layer{
 					{Name: "domain", Paths: []string{"internal/domain"}},
 				},
@@ -666,7 +666,7 @@ func TestConfig_Validate_TemplateRules(t *testing.T) {
 		{
 			name: "template referencing unknown layer fails",
 			config: Config{
-				Version: "1.0.0",
+				Version: SchemaVersion{Major: 1, Minor: 0},
 				Layers: []Layer{
 					{Name: "domain", Paths: []string{"internal/domain"}},
 					{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
@@ -690,7 +690,7 @@ func TestConfig_Validate_TemplateRules(t *testing.T) {
 		{
 			name: "template with unknown target layer fails",
 			config: Config{
-				Version: "1.0.0",
+				Version: SchemaVersion{Major: 1, Minor: 0},
 				Layers: []Layer{
 					{Name: "domain", Paths: []string{"internal/domain"}},
 					{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
@@ -714,7 +714,7 @@ func TestConfig_Validate_TemplateRules(t *testing.T) {
 		{
 			name: "mixed standard + template rules — all valid",
 			config: Config{
-				Version: "1.0.0",
+				Version: SchemaVersion{Major: 1, Minor: 0},
 				Layers: []Layer{
 					{Name: "domain", Paths: []string{"internal/domain"}},
 					{Name: "application", Paths: []string{"internal/application"}},
@@ -744,7 +744,7 @@ func TestConfig_Validate_TemplateRules(t *testing.T) {
 		{
 			name: "no-leak template with unknown forbidden layer",
 			config: Config{
-				Version: "1.0.0",
+				Version: SchemaVersion{Major: 1, Minor: 0},
 				Layers: []Layer{
 					{Name: "domain", Paths: []string{"internal/domain"}},
 					{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
@@ -767,7 +767,7 @@ func TestConfig_Validate_TemplateRules(t *testing.T) {
 		{
 			name: "layer-balance template — no layer refs to validate",
 			config: Config{
-				Version: "1.0.0",
+				Version: SchemaVersion{Major: 1, Minor: 0},
 				Layers: []Layer{
 					{Name: "domain", Paths: []string{"internal/domain"}},
 				},
@@ -809,7 +809,7 @@ func TestConfig_Validate_TemplateRules(t *testing.T) {
 
 func TestConfig_SeverityMapping_Valid(t *testing.T) {
 	config := Config{
-		Version: "1.0.0",
+		Version: SchemaVersion{Major: 1, Minor: 0},
 		Layers: []Layer{
 			{Name: "domain", Paths: []string{"internal/domain"}},
 			{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
@@ -841,7 +841,7 @@ func TestConfig_SeverityMapping_Valid(t *testing.T) {
 
 func TestConfig_SeverityMapping_InvalidTargetSeverity(t *testing.T) {
 	config := Config{
-		Version: "1.0.0",
+		Version: SchemaVersion{Major: 1, Minor: 0},
 		Layers: []Layer{
 			{Name: "domain", Paths: []string{"internal/domain"}},
 		},
@@ -864,7 +864,7 @@ func TestConfig_SeverityMapping_InvalidTargetSeverity(t *testing.T) {
 
 func TestConfig_SeverityMapping_Empty(t *testing.T) {
 	config := Config{
-		Version: "1.0.0",
+		Version: SchemaVersion{Major: 1, Minor: 0},
 		Layers: []Layer{
 			{Name: "domain", Paths: []string{"internal/domain"}},
 			{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
@@ -893,7 +893,7 @@ func TestConfig_SeverityMapping_Empty(t *testing.T) {
 
 func TestConfig_SeverityMapping_RuleSeverityRemapped(t *testing.T) {
 	config := Config{
-		Version: "1.0.0",
+		Version: SchemaVersion{Major: 1, Minor: 0},
 		Layers: []Layer{
 			{Name: "domain", Paths: []string{"internal/domain"}},
 			{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
@@ -934,7 +934,7 @@ func TestConfig_SeverityMapping_RuleSeverityRemapped(t *testing.T) {
 
 func TestConfig_SeverityMapping_OverrideRemapped(t *testing.T) {
 	config := Config{
-		Version: "1.0.0",
+		Version: SchemaVersion{Major: 1, Minor: 0},
 		Layers: []Layer{
 			{Name: "domain", Paths: []string{"internal/domain"}},
 			{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
@@ -975,7 +975,7 @@ func TestConfig_SeverityMapping_OverrideRemapped(t *testing.T) {
 func TestConfig_SchemaField_MarshalsYAML(t *testing.T) {
 	config := Config{
 		Schema:  "./arx-schema.json",
-		Version: "1.0",
+		Version: SchemaVersion{Major: 1, Minor: 0},
 		Layers:  []Layer{{Name: "domain", Paths: []string{"internal/domain/**"}}},
 		Rules:   []Rule{},
 	}
@@ -1015,7 +1015,7 @@ rules: []
 
 func TestConfig_SchemaField_OmittedWhenEmpty(t *testing.T) {
 	config := Config{
-		Version: "1.0",
+		Version: SchemaVersion{Major: 1, Minor: 0},
 		Layers:  []Layer{{Name: "domain", Paths: []string{"internal/domain/**"}}},
 		Rules:   []Rule{},
 	}
@@ -1034,7 +1034,7 @@ func TestConfig_SchemaField_OmittedWhenEmpty(t *testing.T) {
 
 func TestConfig_Validate_CrossLanguage_EmptySourcePattern(t *testing.T) {
 	config := Config{
-		Version: "1.0.0",
+		Version: SchemaVersion{Major: 1, Minor: 0},
 		Layers:  []Layer{{Name: "domain", Paths: []string{"internal/domain"}}},
 		Rules:   []Rule{},
 		CrossLanguage: &CrossLanguageConfig{
@@ -1058,7 +1058,7 @@ func TestConfig_Validate_CrossLanguage_EmptySourcePattern(t *testing.T) {
 
 func TestConfig_Validate_CrossLanguage_EmptyGeneratedPattern(t *testing.T) {
 	config := Config{
-		Version: "1.0.0",
+		Version: SchemaVersion{Major: 1, Minor: 0},
 		Layers:  []Layer{{Name: "domain", Paths: []string{"internal/domain"}}},
 		Rules:   []Rule{},
 		CrossLanguage: &CrossLanguageConfig{
@@ -1082,7 +1082,7 @@ func TestConfig_Validate_CrossLanguage_EmptyGeneratedPattern(t *testing.T) {
 
 func TestConfig_Validate_CrossLanguage_EmptyLanguage(t *testing.T) {
 	config := Config{
-		Version: "1.0.0",
+		Version: SchemaVersion{Major: 1, Minor: 0},
 		Layers:  []Layer{{Name: "domain", Paths: []string{"internal/domain"}}},
 		Rules:   []Rule{},
 		CrossLanguage: &CrossLanguageConfig{
@@ -1106,7 +1106,7 @@ func TestConfig_Validate_CrossLanguage_EmptyLanguage(t *testing.T) {
 
 func TestConfig_Validate_CrossLanguage_InvalidMatchStrategy(t *testing.T) {
 	config := Config{
-		Version: "1.0.0",
+		Version: SchemaVersion{Major: 1, Minor: 0},
 		Layers:  []Layer{{Name: "domain", Paths: []string{"internal/domain"}}},
 		Rules:   []Rule{},
 		CrossLanguage: &CrossLanguageConfig{
@@ -1133,7 +1133,7 @@ func TestConfig_Validate_CrossLanguage_InvalidMatchStrategy(t *testing.T) {
 
 func TestConfig_Validate_CheckExpressionWithFrom(t *testing.T) {
 	config := Config{
-		Version: "1.0.0",
+		Version: SchemaVersion{Major: 1, Minor: 0},
 		Layers:  []Layer{{Name: "domain", Paths: []string{"internal/domain"}}},
 		Rules: []Rule{
 			{
@@ -1157,7 +1157,7 @@ func TestConfig_Validate_CheckExpressionWithFrom(t *testing.T) {
 
 func TestConfig_Validate_CheckExpressionWithTo(t *testing.T) {
 	config := Config{
-		Version: "1.0.0",
+		Version: SchemaVersion{Major: 1, Minor: 0},
 		Layers:  []Layer{{Name: "domain", Paths: []string{"internal/domain"}}},
 		Rules: []Rule{
 			{
@@ -1181,7 +1181,7 @@ func TestConfig_Validate_CheckExpressionWithTo(t *testing.T) {
 
 func TestConfig_Validate_CheckExpressionWithTemplate(t *testing.T) {
 	config := Config{
-		Version: "1.0.0",
+		Version: SchemaVersion{Major: 1, Minor: 0},
 		Layers:  []Layer{{Name: "domain", Paths: []string{"internal/domain"}}},
 		Rules: []Rule{
 			{
@@ -1205,7 +1205,7 @@ func TestConfig_Validate_CheckExpressionWithTemplate(t *testing.T) {
 
 func TestConfig_Validate_CheckExpressionWithPattern(t *testing.T) {
 	config := Config{
-		Version: "1.0.0",
+		Version: SchemaVersion{Major: 1, Minor: 0},
 		Layers:  []Layer{{Name: "domain", Paths: []string{"internal/domain"}}},
 		Rules: []Rule{
 			{
@@ -1231,7 +1231,7 @@ func TestConfig_Validate_CheckExpressionWithPattern(t *testing.T) {
 
 func TestConfig_Validate_FunctionInvalidIdentifier(t *testing.T) {
 	config := Config{
-		Version: "1.0.0",
+		Version: SchemaVersion{Major: 1, Minor: 0},
 		Layers:  []Layer{{Name: "domain", Paths: []string{"internal/domain"}}},
 		Rules:   []Rule{},
 		Functions: map[string]string{
@@ -1249,7 +1249,7 @@ func TestConfig_Validate_FunctionInvalidIdentifier(t *testing.T) {
 
 func TestConfig_Validate_FunctionBuiltinShadow(t *testing.T) {
 	config := Config{
-		Version: "1.0.0",
+		Version: SchemaVersion{Major: 1, Minor: 0},
 		Layers:  []Layer{{Name: "domain", Paths: []string{"internal/domain"}}},
 		Rules:   []Rule{},
 		Functions: map[string]string{
@@ -1267,7 +1267,7 @@ func TestConfig_Validate_FunctionBuiltinShadow(t *testing.T) {
 
 func TestConfig_Validate_FunctionParseError(t *testing.T) {
 	config := Config{
-		Version: "1.0.0",
+		Version: SchemaVersion{Major: 1, Minor: 0},
 		Layers:  []Layer{{Name: "domain", Paths: []string{"internal/domain"}}},
 		Rules:   []Rule{},
 		Functions: map[string]string{
@@ -1282,7 +1282,7 @@ func TestConfig_Validate_FunctionParseError(t *testing.T) {
 
 func TestConfig_Validate_FunctionCycleDetection(t *testing.T) {
 	config := Config{
-		Version: "1.0.0",
+		Version: SchemaVersion{Major: 1, Minor: 0},
 		Layers:  []Layer{{Name: "domain", Paths: []string{"internal/domain"}}},
 		Rules:   []Rule{},
 		Functions: map[string]string{
@@ -1303,7 +1303,7 @@ func TestConfig_Validate_FunctionCycleDetection(t *testing.T) {
 
 func TestConfig_Validate_TemplateRefsNonStringInSlice(t *testing.T) {
 	config := Config{
-		Version: "1.0.0",
+		Version: SchemaVersion{Major: 1, Minor: 0},
 		Layers: []Layer{
 			{Name: "domain", Paths: []string{"internal/domain"}},
 		},
@@ -1331,7 +1331,7 @@ func TestConfig_Validate_TemplateRefsNonStringInSlice(t *testing.T) {
 
 func TestConfig_Validate_NoLeakWithEmptyForbidden(t *testing.T) {
 	config := Config{
-		Version: "1.0.0",
+		Version: SchemaVersion{Major: 1, Minor: 0},
 		Layers: []Layer{
 			{Name: "domain", Paths: []string{"internal/domain"}},
 			{Name: "infrastructure", Paths: []string{"internal/infrastructure"}},
@@ -1359,7 +1359,7 @@ func TestConfig_Validate_NoLeakWithEmptyForbidden(t *testing.T) {
 
 func TestConfig_Validate_MaxDepsWithUnknownToLayer(t *testing.T) {
 	config := Config{
-		Version: "1.0.0",
+		Version: SchemaVersion{Major: 1, Minor: 0},
 		Layers: []Layer{
 			{Name: "domain", Paths: []string{"internal/domain"}},
 		},
@@ -1383,5 +1383,48 @@ func TestConfig_Validate_MaxDepsWithUnknownToLayer(t *testing.T) {
 	// Now to is []string, and validateTemplateLayerRefs should catch it
 	if !strings.Contains(err.Error(), "references unknown layer") {
 		t.Errorf("error = %q, want to contain 'references unknown layer'", err.Error())
+	}
+}
+
+// ─── Deprecation Checks ──────────────────────────────────────────────────────
+
+func TestCheckDeprecated_Empty(t *testing.T) {
+	cfg := &Config{
+		Version: SchemaVersion{Major: 1, Minor: 0},
+		Layers:  []Layer{{Name: "domain", Paths: []string{"internal/domain"}}},
+		Rules:   []Rule{},
+	}
+
+	warnings := CheckDeprecated(cfg)
+	if len(warnings) != 0 {
+		t.Errorf("CheckDeprecated() = %v, want empty", warnings)
+	}
+}
+
+func TestCheckDeprecated_WithDeprecatedField(t *testing.T) {
+	// Save original and restore
+	orig := KnownDeprecatedFields
+	defer func() { KnownDeprecatedFields = orig }()
+
+	KnownDeprecatedFields = map[string]DeprecatedField{
+		"exclude": {Field: "exclude", Message: "use 'ignore' instead"},
+	}
+
+	cfg := &Config{
+		Version: SchemaVersion{Major: 1, Minor: 0},
+		Layers:  []Layer{{Name: "domain", Paths: []string{"internal/domain"}}},
+		Rules:   []Rule{},
+		Exclude: []string{"vendor"},
+	}
+
+	warnings := CheckDeprecated(cfg)
+	if len(warnings) != 1 {
+		t.Fatalf("CheckDeprecated() = %v, want 1 warning", warnings)
+	}
+	if !strings.Contains(warnings[0], "exclude") {
+		t.Errorf("warning should mention 'exclude', got: %q", warnings[0])
+	}
+	if !strings.Contains(warnings[0], "use 'ignore' instead") {
+		t.Errorf("warning should mention migration path, got: %q", warnings[0])
 	}
 }

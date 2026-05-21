@@ -40,8 +40,8 @@ func TestReadPipeline_WithIncludesAndEnvVars(t *testing.T) {
 		t.Fatalf("Read() error = %v", err)
 	}
 
-	if cfg.Version != "1.0" {
-		t.Errorf("Version = %q, want %q", cfg.Version, "1.0")
+	if cfg.Version.String() != "1.0" {
+		t.Errorf("Version = %q, want %q", cfg.Version.String(), "1.0")
 	}
 	if len(cfg.Layers) != 1 || cfg.Layers[0].Name != "infra" {
 		t.Errorf("unexpected layers: %+v", cfg.Layers)
@@ -63,8 +63,8 @@ func TestReadPipeline_NoIncludesNoEnvVars(t *testing.T) {
 		t.Fatalf("Read() error = %v", err)
 	}
 
-	if cfg.Version != "1.0" {
-		t.Errorf("Version = %q, want %q", cfg.Version, "1.0")
+	if cfg.Version.String() != "1.0" {
+		t.Errorf("Version = %q, want %q", cfg.Version.String(), "1.0")
 	}
 	if len(cfg.Layers) != 1 || cfg.Layers[0].Name != "domain" {
 		t.Errorf("unexpected layers: %+v", cfg.Layers)
@@ -112,7 +112,7 @@ func TestReadPipeline_SkipsIncludeResolutionWhenNoExclamation(t *testing.T) {
 		t.Fatalf("Read() error = %v", err)
 	}
 
-	if cfg.Version != "1.5" {
-		t.Errorf("Version = %q, want %q", cfg.Version, "1.5")
+	if cfg.Version.String() != "1.5" {
+		t.Errorf("Version = %q, want %q", cfg.Version.String(), "1.5")
 	}
 }

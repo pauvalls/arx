@@ -502,3 +502,22 @@ func TestMarkdownReporter_GenerateCommitMessage(t *testing.T) {
 		})
 	}
 }
+
+func TestJSONOutput_SchemaVersion(t *testing.T) {
+	reporter := NewJSONReporter()
+	reporter.SetSchemaVersion("2.0")
+
+	output := reporter.buildJSONOutput(nil)
+	if output.SchemaVersion != "2.0" {
+		t.Errorf("SchemaVersion = %q, want %q", output.SchemaVersion, "2.0")
+	}
+}
+
+func TestJSONOutput_SchemaVersionDefault(t *testing.T) {
+	reporter := NewJSONReporter()
+
+	output := reporter.buildJSONOutput(nil)
+	if output.SchemaVersion != "1.0" {
+		t.Errorf("SchemaVersion = %q, want %q", output.SchemaVersion, "1.0")
+	}
+}

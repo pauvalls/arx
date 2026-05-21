@@ -91,7 +91,7 @@ func TestConfigReaderInterface(t *testing.T) {
 
 	reader := &MockConfigReader{
 		config: &domain.Config{
-			Version: "1.0.0",
+			Version: domain.SchemaVersion{Major: 1, Minor: 0},
 			Layers:  []domain.Layer{{Name: "domain", Paths: []string{"internal/domain"}}},
 			Rules:   []domain.Rule{},
 		},
@@ -104,8 +104,8 @@ func TestConfigReaderInterface(t *testing.T) {
 	if config == nil {
 		t.Errorf("Read() returned nil config")
 	}
-	if config.Version != "1.0.0" {
-		t.Errorf("Read() config.Version = %q, want %q", config.Version, "1.0.0")
+	if config.Version.String() != "1.0" {
+		t.Errorf("Read() config.Version = %q, want %q", config.Version.String(), "1.0")
 	}
 }
 

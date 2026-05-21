@@ -72,6 +72,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/coupling", s.handleCoupling)
 	mux.HandleFunc("/api/debt", s.handleDebt)
 	mux.HandleFunc("/api/metrics", s.handleMetrics)
+	mux.HandleFunc("/api/config/schema", s.handleConfigSchema)
 	mux.HandleFunc("/api/config", s.handleConfig)
 	mux.HandleFunc("/api/reload", s.handleReload)
 	mux.HandleFunc("/api/events", s.handleSSE)
@@ -343,6 +344,37 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		"rules":     ruleSummary,
 		"functions": funcNames,
 	})
+}
+
+// SchemaInfoResponse is the JSON response for GET /api/config/schema.
+type SchemaInfoResponse struct {
+	Current   string   `json:"current"`
+	Supported []string `json:"supported"`
+	SchemaURL string   `json:"schema_url"`
+}
+
+// handleConfigSchema returns version and migration info for the config schema.
+func (s *Server) handleConfigSchema(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	current := "1.0"
+	supported := []string{"1.0"}
+
+	cfg := s.state.Config()
+	if cfg != nil {
+		current = cfg.Version.String()
+	}
+
+	info := SchemaInfoResponse{
+		Current:   current,
+		Supported: supported,
+		SchemaURL: "", // Local schema — no network dependency
+	}
+
+	writeJSON(w, http.StatusOK, info)
 }
 
 // handleReload forces a config reload and re-check.
