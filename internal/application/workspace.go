@@ -15,6 +15,8 @@ import (
 // WorkspaceOptions holds configurable options for workspace execution.
 type WorkspaceOptions struct {
 	Verbose bool
+	Jobs    int  // max workers for detector concurrency (0 = unlimited)
+	Cache   ports.Cache // shared cache instance across projects (nil = no cache)
 }
 
 // WorkspaceService orchestrates the workspace audit flow:
@@ -111,7 +113,7 @@ func (s *WorkspaceService) Run(ctx context.Context, wc *domain.WorkspaceConfig, 
 	var projectReports []domain.ProjectReport
 
 	for _, project := range projects {
-		pr := s.runProject(ctx, wc, project)
+		pr := s.runProject(ctx, wc, project, opts)
 		projectReports = append(projectReports, pr)
 	}
 
@@ -120,14 +122,20 @@ func (s *WorkspaceService) Run(ctx context.Context, wc *domain.WorkspaceConfig, 
 }
 
 // runProject runs the audit for a single project with error isolation.
-func (s *WorkspaceService) runProject(ctx context.Context, wc *domain.WorkspaceConfig, project domain.ResolvedProject) domain.ProjectReport {
+func (s *WorkspaceService) runProject(ctx context.Context, wc *domain.WorkspaceConfig, project domain.ResolvedProject, opts WorkspaceOptions) domain.ProjectReport {
 	start := time.Now()
 
 	// Merge shared config with project override
 	merged := wc.Merge(&project)
 
-	// Run detectors
-	dependencies, err := RunDetectors(ctx, project.Path, merged.Layers, s.detectors)
+	// Run detectors with optional cache and worker pool
+	var dependencies []domain.Dependency
+	var err error
+	if opts.Cache != nil {
+		dependencies, err = RunDetectorsCached(ctx, project.Path, merged.Layers, s.detectors, opts.Cache)
+	} else {
+		dependencies, err = RunDetectors(ctx, project.Path, merged.Layers, s.detectors, opts.Jobs)
+	}
 	if err != nil {
 		elapsed := time.Since(start)
 		return domain.NewProjectReport(project.Path, nil, elapsed, err)

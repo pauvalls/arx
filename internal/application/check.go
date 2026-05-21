@@ -50,7 +50,13 @@ type DetectorResult struct {
 // Unlike RunDetectors, this returns status for every detector regardless of applicability.
 // Each detector runs in its own goroutine with a derived context. A single detector failure
 // does NOT cancel other detectors — all errors are collected and returned together.
-func RunDetectorsWithStatus(ctx context.Context, projectRoot string, layers []domain.Layer, detectors []ports.Detector) (*DetectorResult, error) {
+// If maxWorkers > 0, at most maxWorkers detectors run concurrently (worker pool via semaphore).
+// If maxWorkers <= 0, all detectors start concurrently (unlimited, existing behavior).
+func RunDetectorsWithStatus(ctx context.Context, projectRoot string, layers []domain.Layer, detectors []ports.Detector, maxWorkers ...int) (*DetectorResult, error) {
+	maxWorkersVal := 0
+	if len(maxWorkers) > 0 {
+		maxWorkersVal = maxWorkers[0]
+	}
 	if len(detectors) == 0 {
 		return nil, fmt.Errorf("no detectors provided")
 	}
@@ -61,6 +67,12 @@ func RunDetectorsWithStatus(ctx context.Context, projectRoot string, layers []do
 	statuses := make([]DetectorStatus, len(detectors))
 	errs := make([]error, len(detectors))
 
+	// Semaphore for worker pool when maxWorkers > 0
+	var sem chan struct{}
+	if maxWorkersVal > 0 {
+		sem = make(chan struct{}, maxWorkersVal)
+	}
+
 	for i, detector := range detectors {
 		if detector == nil {
 			continue
@@ -70,8 +82,15 @@ func RunDetectorsWithStatus(ctx context.Context, projectRoot string, layers []do
 		d := detector
 		wg.Add(1)
 
+		if sem != nil {
+			sem <- struct{}{}
+		}
+
 		go func() {
 			defer wg.Done()
+			if sem != nil {
+				defer func() { <-sem }()
+			}
 			// Each detector gets its own cancellable context so one failure
 			// doesn't cancel others.
 			dCtx, cancel := context.WithCancel(ctx)
@@ -132,8 +151,13 @@ func RunDetectorsWithStatus(ctx context.Context, projectRoot string, layers []do
 // RunDetectors executes all applicable detectors concurrently and aggregates their dependencies.
 // A detector is considered applicable if its Detect() method returns true for the project.
 // Detectors run in parallel; an error in one detector cancels the context for others.
-func RunDetectors(ctx context.Context, projectRoot string, layers []domain.Layer, detectors []ports.Detector) ([]domain.Dependency, error) {
-	result, err := RunDetectorsWithStatus(ctx, projectRoot, layers, detectors)
+// maxWorkers controls concurrent goroutines (0 = unlimited, existing behavior).
+func RunDetectors(ctx context.Context, projectRoot string, layers []domain.Layer, detectors []ports.Detector, maxWorkers ...int) ([]domain.Dependency, error) {
+	maxWorkersVal := 0
+	if len(maxWorkers) > 0 {
+		maxWorkersVal = maxWorkers[0]
+	}
+	result, err := RunDetectorsWithStatus(ctx, projectRoot, layers, detectors, maxWorkersVal)
 	if err != nil {
 		if result != nil {
 			return result.Dependencies, err
@@ -146,13 +170,25 @@ func RunDetectors(ctx context.Context, projectRoot string, layers []domain.Layer
 // RunDetectorsWithProfile executes all detectors concurrently with profiling.
 // It returns the aggregated dependencies, a performance report with per-detector timing,
 // and any errors collected from detectors. A single detector failure does NOT cancel others.
-func RunDetectorsWithProfile(ctx context.Context, projectRoot string, layers []domain.Layer, detectors []ports.Detector) ([]domain.Dependency, *domain.PerformanceReport, error) {
+// If maxWorkers > 0, at most maxWorkers detectors run concurrently (worker pool via semaphore).
+func RunDetectorsWithProfile(ctx context.Context, projectRoot string, layers []domain.Layer, detectors []ports.Detector, maxWorkers ...int) ([]domain.Dependency, *domain.PerformanceReport, error) {
+	maxWorkersVal := 0
+	if len(maxWorkers) > 0 {
+		maxWorkersVal = maxWorkers[0]
+	}
+
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	var allDeps []domain.Dependency
 	var allErrs error
 	start := time.Now()
 	collector := domain.NewPerfCollector()
+
+	// Semaphore for worker pool when maxWorkers > 0
+	var sem chan struct{}
+	if maxWorkersVal > 0 {
+		sem = make(chan struct{}, maxWorkersVal)
+	}
 
 	for _, detector := range detectors {
 		if detector == nil {
@@ -162,8 +198,15 @@ func RunDetectorsWithProfile(ctx context.Context, projectRoot string, layers []d
 		d := detector
 		wg.Add(1)
 
+		if sem != nil {
+			sem <- struct{}{}
+		}
+
 		go func() {
 			defer wg.Done()
+			if sem != nil {
+				defer func() { <-sem }()
+			}
 
 			dCtx, cancel := context.WithCancel(ctx)
 			defer cancel()

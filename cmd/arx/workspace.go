@@ -8,12 +8,14 @@ import (
 
 	"github.com/pauvalls/arx/internal/application"
 	"github.com/pauvalls/arx/internal/bootstrap"
-	"github.com/pauvalls/arx/internal/domain"
+	arxcache "github.com/pauvalls/arx/internal/infrastructure/cache"
 	"github.com/pauvalls/arx/internal/infrastructure/config"
 	"github.com/pauvalls/arx/internal/infrastructure/detector"
 	"github.com/pauvalls/arx/internal/infrastructure/output"
 	"github.com/pauvalls/arx/internal/ports"
 	"github.com/spf13/cobra"
+
+	"github.com/pauvalls/arx/internal/domain"
 )
 
 // workspaceCmd represents the workspace command
@@ -45,12 +47,14 @@ var (
 	workspaceJSON    bool
 	workspaceVerbose bool
 	workspaceOutput  string
+	workspaceJobs    int
 )
 
 func init() {
 	workspaceCmd.Flags().BoolVarP(&workspaceJSON, "json", "j", false, "Output JSON report to stdout")
 	workspaceCmd.Flags().BoolVarP(&workspaceVerbose, "verbose", "v", false, "Show detailed per-project breakdown")
 	workspaceCmd.Flags().StringVarP(&workspaceOutput, "output", "o", "", "Write report to file")
+	workspaceCmd.Flags().IntVar(&workspaceJobs, "jobs", 0, "Max concurrent detectors per project (0 = unlimited)")
 
 	rootCmd.AddCommand(workspaceCmd)
 }
@@ -88,8 +92,14 @@ func runWorkspace(cmd *cobra.Command, args []string) error {
 	}
 	svc := application.NewWorkspaceService(detectors)
 
+	// Create shared cache at workspace root
+	cacheDir := filepath.Join(absRoot, ".arx-cache")
+	sharedCache := arxcache.NewFileCache(cacheDir)
+
 	opts := application.WorkspaceOptions{
 		Verbose: workspaceVerbose,
+		Jobs:    workspaceJobs,
+		Cache:   sharedCache,
 	}
 
 	// Load workspace config

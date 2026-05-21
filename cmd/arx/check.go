@@ -75,6 +75,7 @@ var (
 	checkSeverity   string
 	checkDiff       bool
 	checkProfile    bool
+	checkJobs       int
 )
 
 func init() {
@@ -89,6 +90,7 @@ func init() {
 	checkCmd.Flags().StringVar(&checkSeverity, "severity", "", "Filter by severity: error|warning|info")
 	checkCmd.Flags().BoolVar(&checkDiff, "diff", false, "Show violations added/removed since last check")
 	checkCmd.Flags().BoolVar(&checkProfile, "profile", false, "Show per-detector performance profile")
+	checkCmd.Flags().IntVar(&checkJobs, "jobs", 0, "Max concurrent detectors (0 = number of CPUs)")
 	rootCmd.AddCommand(checkCmd)
 }
 
@@ -154,6 +156,7 @@ func runCheck(cmd *cobra.Command, args []string) error {
 
 	// Create service with nil cache for initial config load
 	service := newCheckService(format, nil)
+	service.Jobs = checkJobs
 
 	// If verbose, print config info
 	if checkVerbose {
@@ -242,6 +245,7 @@ func runCheckWithService(service *application.CheckService, config *domain.Confi
 	// Re-create service with cache and config (for plugin detectors)
 	if cache != nil {
 		service = newCheckService(format, cache, config)
+		service.Jobs = checkJobs
 	}
 
 	var dependencies []domain.Dependency

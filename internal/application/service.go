@@ -126,6 +126,7 @@ type CheckService struct {
 	detectors []ports.Detector
 	reporter  ports.Reporter
 	cache     ports.Cache
+	Jobs      int // max workers for detector concurrency (0 = unlimited)
 }
 
 // NewCheckService creates a new CheckService with the given dependencies.
@@ -154,17 +155,17 @@ func (s *CheckService) Load(configPath string) (*domain.Config, error) {
 
 // Detect runs all applicable detectors and returns aggregated dependencies.
 func (s *CheckService) Detect(ctx context.Context, projectRoot string, layers []domain.Layer) ([]domain.Dependency, error) {
-	return RunDetectors(ctx, projectRoot, layers, s.detectors)
+	return RunDetectors(ctx, projectRoot, layers, s.detectors, s.Jobs)
 }
 
 // DetectWithStatus runs all detectors and returns per-detector status along with aggregated dependencies.
 func (s *CheckService) DetectWithStatus(ctx context.Context, projectRoot string, layers []domain.Layer) (*DetectorResult, error) {
-	return RunDetectorsWithStatus(ctx, projectRoot, layers, s.detectors)
+	return RunDetectorsWithStatus(ctx, projectRoot, layers, s.detectors, s.Jobs)
 }
 
 // DetectWithProfile runs all applicable detectors with profiling and returns performance data.
 func (s *CheckService) DetectWithProfile(ctx context.Context, projectRoot string, layers []domain.Layer) ([]domain.Dependency, *domain.PerformanceReport, error) {
-	return RunDetectorsWithProfile(ctx, projectRoot, layers, s.detectors)
+	return RunDetectorsWithProfile(ctx, projectRoot, layers, s.detectors, s.Jobs)
 }
 
 // DetectCached runs all applicable detectors with caching support.
@@ -198,7 +199,7 @@ func (s *CheckService) Check(ctx context.Context, configPath, projectRoot string
 	}
 
 	// Cross-language detector is pre-appended to s.detectors by the composition root
-	dependencies, err := RunDetectors(ctx, projectRoot, config.Layers, s.detectors)
+	dependencies, err := RunDetectors(ctx, projectRoot, config.Layers, s.detectors, s.Jobs)
 	if err != nil {
 		return err
 	}

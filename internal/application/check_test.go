@@ -640,6 +640,205 @@ func TestRunDetectorsWithProfile_ErrorDetectorStillTimed(t *testing.T) {
 	}
 }
 
+func TestRunDetectorsWithStatus_DefaultZero_AllGoroutines(t *testing.T) {
+	// With maxWorkers=0 (default), all detectors should run concurrently.
+	// maxWorkers=0 means unlimited, just like the original behavior.
+	// We verify by passing no maxWorkers variadic (defaults to 0).
+	ctx := context.Background()
+
+	started1 := make(chan struct{})
+	started2 := make(chan struct{})
+	finish1 := make(chan struct{})
+	finish2 := make(chan struct{})
+
+	d1 := &mockBlockingDetector{
+		mockDetector: mockDetector{
+			name:         "d1",
+			detectResult: true,
+			extractDeps:  []domain.Dependency{{SourceFile: "a.go", SourceLine: 1, ImportPath: "fmt"}},
+		},
+		startSignal:  started1,
+		finishSignal: finish1,
+	}
+	d2 := &mockBlockingDetector{
+		mockDetector: mockDetector{
+			name:         "d2",
+			detectResult: true,
+			extractDeps:  []domain.Dependency{{SourceFile: "b.go", SourceLine: 1, ImportPath: "os"}},
+		},
+		startSignal:  started2,
+		finishSignal: finish2,
+	}
+
+	resultCh := make(chan *DetectorResult, 1)
+	go func() {
+		res, err := RunDetectorsWithStatus(ctx, "/test", []domain.Layer{}, []ports.Detector{d1, d2})
+		if err == nil {
+			resultCh <- res
+		}
+	}()
+
+	// Both should start concurrently (default 0 = unlimited)
+	select {
+	case <-started1:
+	case <-time.After(2 * time.Second):
+		t.Fatal("detector 1 did not start")
+	}
+	select {
+	case <-started2:
+	case <-time.After(2 * time.Second):
+		t.Fatal("detector 2 did not start — detectors not running concurrently with default")
+	}
+
+	close(finish1)
+	close(finish2)
+
+	select {
+	case <-resultCh:
+		// ok
+	case <-time.After(2 * time.Second):
+		t.Fatal("RunDetectorsWithStatus did not complete")
+	}
+}
+
+func TestRunDetectorsWithStatus_WorkerPool_LimitsConcurrency(t *testing.T) {
+	// With maxWorkers=1, only ONE detector runs at a time.
+	ctx := context.Background()
+
+	started1 := make(chan struct{})
+	started2 := make(chan struct{})
+	finish1 := make(chan struct{})
+	finish2 := make(chan struct{})
+
+	d1 := &mockBlockingDetector{
+		mockDetector: mockDetector{
+			name:         "slow",
+			detectResult: true,
+			extractDeps:  []domain.Dependency{{SourceFile: "a.go", SourceLine: 1, ImportPath: "fmt"}},
+		},
+		startSignal:  started1,
+		finishSignal: finish1,
+	}
+	d2 := &mockBlockingDetector{
+		mockDetector: mockDetector{
+			name:         "fast",
+			detectResult: true,
+			extractDeps:  []domain.Dependency{{SourceFile: "b.go", SourceLine: 1, ImportPath: "os"}},
+		},
+		startSignal:  started2,
+		finishSignal: finish2,
+	}
+
+	resultCh := make(chan *DetectorResult, 1)
+	go func() {
+		res, err := RunDetectorsWithStatus(ctx, "/test", []domain.Layer{}, []ports.Detector{d1, d2}, 1)
+		if err == nil {
+			resultCh <- res
+		}
+	}()
+
+	// Only d1 should start (d2 blocked by semaphore)
+	select {
+	case <-started1:
+		// d1 started
+	case <-time.After(2 * time.Second):
+		t.Fatal("detector 1 did not start")
+	}
+
+	// d2 should NOT start until d1 finishes (maxWorkers=1)
+	select {
+	case <-started2:
+		t.Fatal("detector 2 started before detector 1 finished — semaphore not limiting")
+	case <-time.After(500 * time.Millisecond):
+		// expected: d2 is blocked
+	}
+
+	// Let d1 finish — d2 should now start
+	close(finish1)
+
+	select {
+	case <-started2:
+		// d2 started after d1 finished
+	case <-time.After(2 * time.Second):
+		t.Fatal("detector 2 did not start after detector 1 finished")
+	}
+
+	close(finish2)
+
+	select {
+	case <-resultCh:
+		// ok
+	case <-time.After(2 * time.Second):
+		t.Fatal("RunDetectorsWithStatus did not complete")
+	}
+}
+
+func TestRunDetectorsWithProfile_WorkerPool_LimitsConcurrency(t *testing.T) {
+	// Profile variant with maxWorkers=1 should also limit concurrency.
+	ctx := context.Background()
+
+	started1 := make(chan struct{})
+	started2 := make(chan struct{})
+	finish1 := make(chan struct{})
+	finish2 := make(chan struct{})
+
+	d1 := &mockBlockingDetector{
+		mockDetector: mockDetector{
+			name:         "slow",
+			detectResult: true,
+			extractDeps:  []domain.Dependency{{SourceFile: "a.go", SourceLine: 1, ImportPath: "fmt"}},
+		},
+		startSignal:  started1,
+		finishSignal: finish1,
+	}
+	d2 := &mockBlockingDetector{
+		mockDetector: mockDetector{
+			name:         "fast",
+			detectResult: true,
+			extractDeps:  []domain.Dependency{{SourceFile: "b.go", SourceLine: 1, ImportPath: "os"}},
+		},
+		startSignal:  started2,
+		finishSignal: finish2,
+	}
+
+	resultCh := make(chan struct{}, 1)
+	go func() {
+		_, _, _ = RunDetectorsWithProfile(ctx, "/test", []domain.Layer{}, []ports.Detector{d1, d2}, 1)
+		resultCh <- struct{}{}
+	}()
+
+	// Only d1 should start
+	select {
+	case <-started1:
+	case <-time.After(2 * time.Second):
+		t.Fatal("detector 1 did not start")
+	}
+
+	// d2 should be blocked
+	select {
+	case <-started2:
+		t.Fatal("detector 2 started before detector 1 finished — profile semaphore not limiting")
+	case <-time.After(500 * time.Millisecond):
+		// expected
+	}
+
+	close(finish1)
+
+	select {
+	case <-started2:
+	case <-time.After(2 * time.Second):
+		t.Fatal("detector 2 did not start after detector 1 finished")
+	}
+
+	close(finish2)
+
+	select {
+	case <-resultCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("RunDetectorsWithProfile did not complete")
+	}
+}
+
 func TestRunDetectorsWithProfile_NoDetectors(t *testing.T) {
 	ctx := context.Background()
 

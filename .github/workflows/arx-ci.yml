@@ -55,22 +55,52 @@ jobs:
       - name: "Install benchstat"
         run: go install golang.org/x/perf/cmd/benchstat@latest
 
-      - name: "Run benchmarks"
-        run: go test -bench=/Detection -benchmem -count=5 ./internal/application/ | tee /tmp/bench.pr
+      - name: "Download baseline artifact (previous release)"
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: bench-baseline
+          path: .bench-baseline-dl
 
-      - name: "Compare with baseline (warn on >10% regression on 10k)"
+      - name: "Use downloaded baseline if available"
         run: |
-          benchstat .bench-baseline /tmp/bench.pr 2>&1 || true
-          echo "---"
-          benchstat .bench-baseline /tmp/bench.pr 2>&1 | grep "DetectionPipeline_10k" | awk '{
-            if ($$3 ~ /[0-9]+%/) {
-              gsub(/%/, "", $$3);
-              if ($$3+0 > 10) {
-                print "⚠️  REGRESSION: DetectionPipeline_10k " $$3 " slower than baseline";
-                exit 1
+          if [ -f .bench-baseline-dl/.bench-baseline ]; then
+            cp .bench-baseline-dl/.bench-baseline .bench-baseline
+            echo "Using downloaded baseline from previous release"
+          else
+            echo "No previous baseline artifact found — will generate baseline"
+          fi
+
+      - name: "Run benchmarks and generate current baseline"
+        run: |
+          go test -bench=/Detection -benchmem -count=5 ./internal/application/ | tee /tmp/bench.pr
+          # Always update .bench-baseline with current run for artifact upload
+          cp /tmp/bench.pr .bench-baseline
+
+      - name: "Upload benchmark baseline"
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-baseline
+          path: .bench-baseline
+
+      - name: "Compare with previous baseline (hard fail on >5% regression on 10k)"
+        run: |
+          if [ -f .bench-baseline-dl/.bench-baseline ]; then
+            echo "Comparing with previous baseline..."
+            benchstat .bench-baseline-dl/.bench-baseline /tmp/bench.pr 2>&1 || true
+            echo "---"
+            benchstat .bench-baseline-dl/.bench-baseline /tmp/bench.pr 2>&1 | grep "DetectionPipeline_10k" | awk '{
+              if ($$3 ~ /[0-9]+%/) {
+                gsub(/%/, "", $$3);
+                if ($$3+0 > 5) {
+                  print "❌ FAIL: DetectionPipeline_10k " $$3 " slower than baseline (threshold: 5%)";
+                  exit 1
+                }
               }
-            }
-          }' && echo "✓ No significant regression detected" || echo "⚠️  Regression check completed (baseline comparison is informational)"
+            }' && echo "✓ No significant regression detected" || true
+          else
+            echo "No previous baseline found — first run, skipping comparison"
+          fi
 
   architecture-audit:
     name: "Architecture Audit"

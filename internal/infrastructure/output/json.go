@@ -113,62 +113,7 @@ func (r *JSONReporter) Report(violations []domain.Violation, format ports.Output
 		return fmt.Errorf("json reporter only supports json format")
 	}
 
-	// Convert domain violations to JSON violations
-	jsonViolations := make([]JSONViolation, 0, len(violations))
-	errors := 0
-	warnings := 0
-	info := 0
-	overriddenCount := 0
-
-	for _, v := range violations {
-		// Determine severity from the violation's Severity field
-		var severity string
-		switch v.Severity {
-		case domain.SeverityWarning:
-			severity = "warning"
-			warnings++
-		case domain.SeverityInfo:
-			severity = "info"
-			info++
-		default:
-			severity = "error"
-			errors++
-		}
-
-		if v.Overridden {
-			overriddenCount++
-		}
-
-		jsonViolations = append(jsonViolations, JSONViolation{
-			ID:          v.ID,
-			RuleID:      v.RuleID,
-			Severity:    severity,
-			File:        v.File,
-			Line:        v.Line,
-			SourceLayer: v.SourceLayer,
-			TargetLayer: v.TargetLayer,
-			Import:      v.Import,
-			Message:     v.Message,
-			Overridden:  v.Overridden,
-		})
-	}
-
-	// Create output structure
-	output := JSONOutput{
-		Version:                 r.version,
-		SchemaVersion:           r.schemaVersion,
-		Tool:                    r.tool,
-		Violations:              jsonViolations,
-		Summary: Summary{
-			Total:           len(violations),
-			Errors:          errors,
-			Warnings:        warnings,
-			Info:            info,
-			OverriddenCount: overriddenCount,
-		},
-		BaselineSuppressedCount: r.baselineSuppressedCount,
-		MaxViolations:           r.maxViolations,
-	}
+	output := r.buildJSONOutput(violations)
 
 	// Marshal to JSON with indentation for readability
 	jsonData, err := json.MarshalIndent(output, "", "  ")

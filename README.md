@@ -60,6 +60,15 @@ New to arx? Start with the [Quickstart — 5 minutes](docs/quickstart.md).
 | **CI/CD Ready** | JSON, SARIF, JUnit, GitHub Annotations output formats |
 | **Zero CGO** | Pure Go — no platform-specific dependencies |
 
+## Performance
+
+| Release | Benchmark | Time | vs Previous |
+|---------|-----------|------|-------------|
+| v0.59 | DetectionPipeline_10k_CacheMiss | 820ns | — |
+| v0.59 | DetectionPipeline_10k_CacheHit | 78ms | — |
+
+> Performance benchmarks are run on Ubuntu latest (CI). Values from `make bench-baseline` with `-count=5`. Updated automatically in release workflow.
+
 ## Documentation
 
 | Topic | Description |

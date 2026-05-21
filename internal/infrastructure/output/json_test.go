@@ -10,6 +10,7 @@ import (
 
 	"github.com/pauvalls/arx/internal/application"
 	"github.com/pauvalls/arx/internal/domain"
+	"github.com/pauvalls/arx/internal/ports"
 )
 
 func captureJSONReporterOutput(t *testing.T, f func()) string {
@@ -221,6 +222,126 @@ func TestJSONReporter_ReportWithContext_EmptyDetectors(t *testing.T) {
 	// detectors should be omitted when empty (omitempty)
 	if strings.Contains(output, `"detectors"`) {
 		t.Error("Empty detectors should be omitted from JSON output")
+	}
+}
+
+func TestJSONReporter_Report_WithPerformance_IncludesField(t *testing.T) {
+	reporter := NewJSONReporter()
+	perf := &domain.PerformanceReport{
+		Total: 69300000, // 69.3ms
+		Phases: []domain.PhaseTiming{
+			{Name: "Go", Duration: 45200000},
+			{Name: "Python", Duration: 12100000},
+		},
+	}
+	reporter.SetPerformance(perf)
+
+	violations := []domain.Violation{
+		{ID: "v1", RuleID: "r1", File: "a.go", Line: 1, Severity: domain.SeverityError},
+	}
+
+	output := captureJSONReporterOutput(t, func() {
+		if err := reporter.Report(violations, ports.OutputFormatJSON); err != nil {
+			t.Fatalf("Report failed: %v", err)
+		}
+	})
+
+	var result map[string]interface{}
+	if err := json.Unmarshal([]byte(output), &result); err != nil {
+		t.Fatalf("Failed to unmarshal JSON: %v", err)
+	}
+
+	if _, ok := result["performance"]; !ok {
+		t.Fatal("Missing 'performance' field in JSON output when SetPerformance was called")
+	}
+
+	perfField, ok := result["performance"].(map[string]interface{})
+	if !ok {
+		t.Fatal("performance is not an object")
+	}
+
+	totalNs, ok := perfField["total_duration_ns"].(float64)
+	if !ok {
+		t.Fatal("total_duration_ns is not a number")
+	}
+	if totalNs != 69300000 {
+		t.Errorf("total_duration_ns = %v, want 69300000", totalNs)
+	}
+
+	phases, ok := perfField["phases"].([]interface{})
+	if !ok {
+		t.Fatal("phases is not an array")
+	}
+	if len(phases) != 2 {
+		t.Fatalf("phases count = %d, want 2", len(phases))
+	}
+
+	first := phases[0].(map[string]interface{})
+	if first["name"] != "Go" {
+		t.Errorf("first phase name = %v, want 'Go'", first["name"])
+	}
+	durationNs, ok := first["duration_ns"].(float64)
+	if !ok {
+		t.Fatal("phase duration_ns is not a number")
+	}
+	if durationNs != 45200000 {
+		t.Errorf("first phase duration_ns = %v, want 45200000", durationNs)
+	}
+}
+
+func TestJSONReporter_Report_WithoutPerformance_OmitsField(t *testing.T) {
+	reporter := NewJSONReporter()
+
+	violations := []domain.Violation{
+		{ID: "v1", RuleID: "r1", File: "a.go", Line: 1, Severity: domain.SeverityError},
+	}
+
+	output := captureJSONReporterOutput(t, func() {
+		if err := reporter.Report(violations, ports.OutputFormatJSON); err != nil {
+			t.Fatalf("Report failed: %v", err)
+		}
+	})
+
+	if strings.Contains(output, `"performance"`) {
+		t.Error("'performance' field should be omitted when not set")
+	}
+}
+
+func TestJSONReporter_ReportWithContext_WithPerformance_IncludesField(t *testing.T) {
+	reporter := NewJSONReporter()
+	perf := &domain.PerformanceReport{
+		Total: 50000000,
+		Phases: []domain.PhaseTiming{
+			{Name: "Go", Duration: 30000000},
+		},
+	}
+	reporter.SetPerformance(perf)
+
+	violations := []domain.Violation{
+		{ID: "v1", RuleID: "r1", File: "a.go", Line: 1, Severity: domain.SeverityError},
+	}
+
+	output := captureJSONReporterOutput(t, func() {
+		if err := reporter.ReportWithContext(violations, nil); err != nil {
+			t.Fatalf("ReportWithContext failed: %v", err)
+		}
+	})
+
+	var result map[string]interface{}
+	if err := json.Unmarshal([]byte(output), &result); err != nil {
+		t.Fatalf("Failed to unmarshal JSON: %v", err)
+	}
+
+	if _, ok := result["performance"]; !ok {
+		t.Fatal("Missing 'performance' field in ReportWithContext output when SetPerformance was called")
+	}
+
+	phases, ok := result["performance"].(map[string]interface{})["phases"].([]interface{})
+	if !ok {
+		t.Fatal("performance.phases is not an array")
+	}
+	if len(phases) != 1 {
+		t.Fatalf("performance.phases count = %d, want 1", len(phases))
 	}
 }
 

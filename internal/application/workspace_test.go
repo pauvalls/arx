@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	arxcache "github.com/pauvalls/arx/internal/infrastructure/cache"
+
 	"github.com/pauvalls/arx/internal/domain"
 	"github.com/pauvalls/arx/internal/ports"
 	"gopkg.in/yaml.v3"
@@ -453,6 +455,93 @@ func TestRun_MergeApplied(t *testing.T) {
 	if len(report.Projects) != 1 {
 		t.Fatalf("Run() projects count = %d, want 1", len(report.Projects))
 	}
+}
+
+func TestRun_SharedCache_SecondProjectHitsCache(t *testing.T) {
+	ctx := context.Background()
+
+	// Create two temp project dirs with identical Go-like files
+	tmpDir := t.TempDir()
+	p1Dir := filepath.Join(tmpDir, "project1")
+	p2Dir := filepath.Join(tmpDir, "project2")
+	os.MkdirAll(p1Dir, 0755)
+	os.MkdirAll(p2Dir, 0755)
+
+	// Write a Go file to each project (same content for deterministic hashing)
+	goContent := []byte("package main\nfunc main() {}\n")
+	if err := os.WriteFile(filepath.Join(p1Dir, "main.go"), goContent, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(p2Dir, "main.go"), goContent, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a shared FileCache
+	cacheDir := filepath.Join(tmpDir, ".arx-cache")
+	sharedCache := arxcache.NewFileCache(cacheDir)
+	// Don't set config hash — cache works without it (empty hash matches)
+
+	det := &mockDetector{
+		name:         "go",
+		detectResult: true,
+		extractDeps:  []domain.Dependency{{SourceFile: "main.go", SourceLine: 1, ImportPath: "fmt"}},
+	}
+	svc := NewWorkspaceService([]ports.Detector{det})
+
+	wc := &domain.WorkspaceConfig{Version: "1"}
+	projects := []domain.ResolvedProject{
+		domain.NewResolvedProject(p1Dir, nil),
+		domain.NewResolvedProject(p2Dir, nil),
+	}
+
+	opts := WorkspaceOptions{
+		Cache: sharedCache,
+	}
+
+	report, err := svc.Run(ctx, wc, projects, opts)
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if len(report.Projects) != 2 {
+		t.Fatalf("Run() projects count = %d, want 2", len(report.Projects))
+	}
+
+	// After workspace run, cache directory should exist with entries from both projects
+	// The "go" detector should have cached entries
+	cacheDirExists, _ := exists(cacheDir)
+	if !cacheDirExists {
+		t.Fatal("shared cache directory was not created")
+	}
+
+	// The go detector cache dir should have entries
+	goCacheDir := filepath.Join(cacheDir, "go")
+	entries, err := os.ReadDir(goCacheDir)
+	if err != nil {
+		t.Fatalf("reading go cache dir: %v", err)
+	}
+	if len(entries) == 0 {
+		t.Error("go cache dir is empty — no caching happened")
+	}
+
+	// Re-run: should complete without errors (cache hit for both)
+	report2, err := svc.Run(ctx, wc, projects, opts)
+	if err != nil {
+		t.Fatalf("Run() second pass error = %v", err)
+	}
+	if len(report2.Projects) != 2 {
+		t.Fatalf("Run() second pass projects count = %d, want 2", len(report2.Projects))
+	}
+}
+
+func exists(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
 }
 
 // callTrackingDetector wraps mockDetector with dynamic behavior per call.

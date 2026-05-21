@@ -76,6 +76,10 @@ bench-compare:
 bench-baseline:
 	$(GO) test -bench=/Detection -benchmem -count=10 ./internal/application/ | tee .bench-baseline
 
+# Generate benchmark baseline for CI (tighter confidence, -count=15)
+bench-baseline-ci:
+	$(GO) test -bench=/Detection -benchmem -count=15 ./internal/application/ | tee .bench-baseline
+
 # Build WASM reference policies (requires tinygo)
 wasm-policies:
 	@if command -v tinygo >/dev/null 2>&1; then \
