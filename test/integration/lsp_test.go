@@ -38,6 +38,22 @@ func writeLSP(w io.Writer, msg interface{}) error {
 }
 
 // readLSP reads a single JSON-RPC message from a buffered reader.
+// readResponse reads LSP messages until it gets a response with the expected ID.
+// This handles server-pushed notifications (like diagnostics) that arrive between
+// a request and its response.
+func readResponse(br *bufio.Reader, wantID int) (*lspResponse, error) {
+	for i := 0; i < 10; i++ {
+		resp, err := readLSP(br)
+		if err != nil {
+			return nil, err
+		}
+		if resp.ID != nil && *resp.ID == wantID {
+			return resp, nil
+		}
+	}
+	return nil, fmt.Errorf("timeout waiting for response ID %d", wantID)
+}
+
 func readLSP(br *bufio.Reader) (*lspResponse, error) {
 	var contentLength int
 	for {
@@ -130,15 +146,12 @@ func TestLSP_FullLifecycle(t *testing.T) {
 		t.Fatalf("write initialize: %v", err)
 	}
 
-	resp, err := readLSP(br)
+	resp, err := readResponse(br, 1)
 	if err != nil {
 		t.Fatalf("read initialize response: %v\nstderr: %s", err, stderr.String())
 	}
 	if resp.Error != nil {
 		t.Fatalf("initialize error: %+v", resp.Error)
-	}
-	if resp.ID == nil || *resp.ID != 1 {
-		t.Errorf("initialize response ID = %v, want 1", resp.ID)
 	}
 	if resp.Result == nil {
 		t.Fatal("initialize result should not be nil")
@@ -181,13 +194,6 @@ func TestLSP_FullLifecycle(t *testing.T) {
 		t.Fatalf("write didOpen: %v", err)
 	}
 
-	// Give the server time to process the notification
-	time.Sleep(200 * time.Millisecond)
-
-	// Drain any notifications (diagnostics) from the pipe without goroutine race
-	// We use a non-blocking check: set a short read deadline isn't possible on pipes
-	// Instead, we just accept any pending non-response messages
-	// For now, the server doesn't push diagnostics, so there shouldn't be any
 	t.Log("✓ DidOpen OK")
 
 	// 3. CodeAction
@@ -212,15 +218,12 @@ func TestLSP_FullLifecycle(t *testing.T) {
 		t.Fatalf("write codeAction: %v", err)
 	}
 
-	resp, err = readLSP(br)
+	resp, err = readResponse(br, 3)
 	if err != nil {
 		t.Fatalf("read codeAction response: %v", err)
 	}
 	if resp.Error != nil {
 		t.Fatalf("codeAction error: %+v", resp.Error)
-	}
-	if resp.ID == nil || *resp.ID != 3 {
-		t.Errorf("codeAction response ID = %v, want 3", resp.ID)
 	}
 	t.Log("✓ CodeAction OK")
 
@@ -243,15 +246,12 @@ func TestLSP_FullLifecycle(t *testing.T) {
 		t.Fatalf("write hover: %v", err)
 	}
 
-	resp, err = readLSP(br)
+	resp, err = readResponse(br, 4)
 	if err != nil {
 		t.Fatalf("read hover response: %v", err)
 	}
 	if resp.Error != nil {
 		t.Fatalf("hover error: %+v", resp.Error)
-	}
-	if resp.ID == nil || *resp.ID != 4 {
-		t.Errorf("hover response ID = %v, want 4", resp.ID)
 	}
 	t.Log("✓ Hover OK")
 
@@ -265,15 +265,12 @@ func TestLSP_FullLifecycle(t *testing.T) {
 		t.Fatalf("write shutdown: %v", err)
 	}
 
-	resp, err = readLSP(br)
+	resp, err = readResponse(br, 5)
 	if err != nil {
 		t.Fatalf("read shutdown response: %v", err)
 	}
 	if resp.Error != nil {
 		t.Fatalf("shutdown error: %+v", resp.Error)
-	}
-	if resp.ID == nil || *resp.ID != 5 {
-		t.Errorf("shutdown response ID = %v, want 5", resp.ID)
 	}
 	t.Log("✓ Shutdown OK")
 

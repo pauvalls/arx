@@ -1,254 +1,674 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "Arx Architecture Configuration",
-  "description": "Schema for arx.yaml — Arx architecture linter configuration",
-  "type": "object",
-  "additionalProperties": false,
+  "$id": "arx-config",
+  "$schema": "https://json-schema.org/draft-07/schema#",
   "properties": {
     "$schema": {
-      "type": "string",
-      "description": "JSON Schema reference for IDE autocompletion",
-      "format": "uri"
+      "type": "string"
     },
-    "version": {
-      "type": "string",
-      "description": "Configuration format version (e.g. \"1.0\")"
-    },
-    "layers": {
-      "type": "array",
-      "description": "Architectural layers in the system",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "name": {
-            "type": "string",
-            "description": "Unique layer identifier"
-          },
-          "paths": {
-            "type": "array",
-            "description": "Glob patterns matching files in this layer",
-            "items": {
-              "type": "string"
-            }
-          },
-          "description": {
-            "type": "string",
-            "description": "Human-readable description of the layer"
-          },
-          "tags": {
-            "type": "array",
-            "description": "Semantic tags for the layer",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": ["name", "paths"]
-      }
-    },
-    "rules": {
-      "type": "array",
-      "description": "Architectural rules to enforce between layers",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "id": {
-            "type": "string",
-            "description": "Unique rule identifier"
-          },
-          "from": {
-            "type": "string",
-            "description": "Source layer name (references a layer)"
-          },
-          "to": {
-            "type": "array",
-            "description": "Target layer names (references layers)",
-            "items": {
-              "type": "string"
-            }
-          },
-          "type": {
-            "type": "string",
-            "description": "Rule type: Cannot, Must, Can, MustNotCircular",
-            "enum": ["Cannot", "Must", "Can", "MustNotCircular", "cannot", "must", "can", "mustnotcircular"]
-          },
-          "severity": {
-            "type": "string",
-            "description": "Violation severity: error, warning, info",
-            "enum": ["error", "warning", "info"]
-          },
-          "explanation": {
-            "type": "string",
-            "description": "Human-readable explanation of the rule"
-          },
-          "pattern": {
-            "type": "string",
-            "description": "Regex pattern for import-path matching (pattern-only rule)"
-          },
-          "template": {
-            "type": "string",
-            "description": "Template name (max-deps, no-leak, layer-balance)"
-          },
-          "params": {
-            "type": "object",
-            "description": "Parameters for template rules"
-          },
-          "check": {
-            "oneOf": [
-              {"type": "string", "description": "Single expression"},
-              {
-                "type": "array",
-                "items": {"type": "string", "description": "Expression ANDed together"},
-                "description": "Multiple expressions ANDed together"
-              }
-            ]
-          },
-          "overrides": {
-            "type": "array",
-            "description": "Per-directory severity/enabled overrides",
-            "items": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "path": {
-                  "type": "string",
-                  "description": "Directory path prefix for the override"
-                },
-                "severity": {
-                  "type": "string",
-                  "description": "Override severity: error, warning, info",
-                  "enum": ["error", "warning", "info"]
-                },
-                "enabled": {
-                  "type": "boolean",
-                  "description": "Whether the rule is enabled for this path"
-                }
+    "cross_language": {
+      "properties": {
+        "mappings": {
+          "items": {
+            "properties": {
+              "generated_pattern": {
+                "type": "string"
               },
-              "required": ["path"]
-            }
+              "header_patterns": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "language": {
+                "type": "string"
+              },
+              "match_strategy": {
+                "type": "string"
+              },
+              "source_pattern": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "source_pattern",
+              "generated_pattern",
+              "language"
+            ],
+            "title": "CrossLanguageMapping",
+            "type": "object"
           },
-          "exclude": {
-            "type": "array",
-            "description": "Per-rule file exclusion patterns (glob)",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": ["id"]
-      }
-    },
-    "language_overrides": {
-      "type": "object",
-      "description": "Language-specific import/comment configuration",
-      "additionalProperties": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "extensions": {
-            "type": "array",
-            "description": "File extensions for this language",
-            "items": {
-              "type": "string"
-            }
-          },
-          "comment": {
-            "type": "string",
-            "description": "Comment prefix (e.g. //, #)"
-          },
-          "import": {
-            "type": "string",
-            "description": "Import keyword (e.g. import, use, require)"
-          }
+          "type": "array"
         }
-      }
+      },
+      "required": [
+        "mappings"
+      ],
+      "title": "CrossLanguageConfig",
+      "type": "object"
     },
     "exclude": {
-      "type": "array",
-      "description": "Global file exclusion patterns (glob)",
       "items": {
         "type": "string"
-      }
-    },
-    "severity_config": {
-      "type": "object",
-      "description": "Per-severity behavior configuration",
-      "additionalProperties": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "fail_build": {
-            "type": "boolean",
-            "description": "Whether this severity causes build failure"
-          },
-          "show_in_ui": {
-            "type": "boolean",
-            "description": "Whether to display in UI output"
-          }
-        }
-      }
-    },
-    "max_violations": {
-      "type": "integer",
-      "description": "Maximum allowed violations before failing (0 = unlimited)",
-      "minimum": 0
-    },
-    "severity_mapping": {
-      "type": "object",
-      "description": "Map custom severity names to standard ones (error, warning, info)",
-      "additionalProperties": {
-        "type": "string",
-        "enum": ["error", "warning", "info"]
-      }
+      },
+      "type": "array"
     },
     "functions": {
-      "type": "object",
-      "description": "User-defined expression functions",
       "additionalProperties": {
-        "type": "string",
-        "description": "Expression string (e.g. 'count(deps(domain, infra)) > 0')"
-      }
+        "type": "string"
+      },
+      "type": "object"
     },
-    "plugins": {
-      "type": "array",
-      "description": "External plugin detectors (custom language support)",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
+    "language_overrides": {
+      "additionalProperties": {
         "properties": {
-          "name": {
-            "type": "string",
-            "description": "Unique plugin identifier"
-          },
-          "command": {
-            "type": "string",
-            "description": "Plugin binary path or command"
-          },
-          "args": {
-            "type": "array",
-            "description": "Command-line arguments for the plugin",
-            "items": { "type": "string" }
-          },
-          "languages": {
-            "type": "array",
-            "description": "Languages this plugin supports",
-            "items": { "type": "string" }
-          },
-          "timeout": {
-            "type": "string",
-            "description": "Plugin execution timeout (e.g. 30s)",
-            "pattern": "^[0-9]+[smh]$"
+          "comment": {
+            "type": "string"
           },
           "extensions": {
-            "type": "array",
-            "description": "File extensions this plugin handles",
-            "items": { "type": "string" }
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "import": {
+            "type": "string"
           }
         },
-        "required": ["name", "command", "languages"]
-      }
+        "required": [
+          "extensions"
+        ],
+        "title": "LanguageOverride",
+        "type": "object"
+      },
+      "type": "object"
+    },
+    "layers": {
+      "items": {
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "paths": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "paths"
+        ],
+        "title": "Layer",
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "max_violations": {
+      "type": "integer"
+    },
+    "plugins": {
+      "items": {
+        "properties": {
+          "args": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "command": {
+            "type": "string"
+          },
+          "extensions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "languages": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          },
+          "timeout": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "command",
+          "languages"
+        ],
+        "title": "PluginConfig",
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "rules": {
+      "items": {
+        "properties": {
+          "check": {
+            "properties": {
+              "Expr": {},
+              "Raw": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "Raw",
+              "Expr"
+            ],
+            "title": "CheckExpr",
+            "type": "object"
+          },
+          "exclude": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "explanation": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "overrides": {
+            "items": {
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "severity": {
+                  "enum": [
+                    "error",
+                    "warning",
+                    "info",
+                    ""
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path"
+              ],
+              "title": "RuleOverride",
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "params": {
+            "additionalProperties": {},
+            "type": "object"
+          },
+          "pattern": {
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "error",
+              "warning",
+              "info",
+              ""
+            ],
+            "type": "string"
+          },
+          "template": {
+            "type": "string"
+          },
+          "to": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "type": {
+            "type": "string"
+          },
+          "wasm": {
+            "properties": {
+              "params": {
+                "additionalProperties": {},
+                "type": "object"
+              },
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "title": "WasmConfig",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "from",
+          "to",
+          "type",
+          "severity"
+        ],
+        "title": "Rule",
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "severity_config": {
+      "additionalProperties": {
+        "properties": {
+          "fail_build": {
+            "type": "boolean"
+          },
+          "show_in_ui": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "fail_build",
+          "show_in_ui"
+        ],
+        "title": "SeverityConfig",
+        "type": "object"
+      },
+      "type": "object"
+    },
+    "severity_mapping": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "version": {
+      "properties": {
+        "Major": {
+          "type": "integer"
+        },
+        "Minor": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "Major",
+        "Minor"
+      ],
+      "title": "SchemaVersion",
+      "type": "object"
+    },
+    "workspace": {
+      "properties": {
+        "projects": {
+          "items": {
+            "properties": {
+              "override": {
+                "properties": {
+                  "exclude": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "layers": {
+                    "items": {
+                      "properties": {
+                        "description": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "paths": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "tags": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "paths"
+                      ],
+                      "title": "Layer",
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "max_violations": {
+                    "type": "integer"
+                  },
+                  "rules": {
+                    "items": {
+                      "properties": {
+                        "check": {
+                          "properties": {
+                            "Expr": {},
+                            "Raw": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "Raw",
+                            "Expr"
+                          ],
+                          "title": "CheckExpr",
+                          "type": "object"
+                        },
+                        "exclude": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "explanation": {
+                          "type": "string"
+                        },
+                        "from": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "overrides": {
+                          "items": {
+                            "properties": {
+                              "enabled": {
+                                "type": "boolean"
+                              },
+                              "path": {
+                                "type": "string"
+                              },
+                              "severity": {
+                                "enum": [
+                                  "error",
+                                  "warning",
+                                  "info",
+                                  ""
+                                ],
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "path"
+                            ],
+                            "title": "RuleOverride",
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
+                        "params": {
+                          "additionalProperties": {},
+                          "type": "object"
+                        },
+                        "pattern": {
+                          "type": "string"
+                        },
+                        "severity": {
+                          "enum": [
+                            "error",
+                            "warning",
+                            "info",
+                            ""
+                          ],
+                          "type": "string"
+                        },
+                        "template": {
+                          "type": "string"
+                        },
+                        "to": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "wasm": {
+                          "properties": {
+                            "params": {
+                              "additionalProperties": {},
+                              "type": "object"
+                            },
+                            "path": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "path"
+                          ],
+                          "title": "WasmConfig",
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "from",
+                        "to",
+                        "type",
+                        "severity"
+                      ],
+                      "title": "Rule",
+                      "type": "object"
+                    },
+                    "type": "array"
+                  }
+                },
+                "title": "ProjectOverride",
+                "type": "object"
+              },
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "title": "WorkspaceProject",
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "shared": {
+          "properties": {
+            "exclude": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "layers": {
+              "items": {
+                "properties": {
+                  "description": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "paths": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "tags": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "name",
+                  "paths"
+                ],
+                "title": "Layer",
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "rules": {
+              "items": {
+                "properties": {
+                  "check": {
+                    "properties": {
+                      "Expr": {},
+                      "Raw": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "Raw",
+                      "Expr"
+                    ],
+                    "title": "CheckExpr",
+                    "type": "object"
+                  },
+                  "exclude": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "explanation": {
+                    "type": "string"
+                  },
+                  "from": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "overrides": {
+                    "items": {
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "path": {
+                          "type": "string"
+                        },
+                        "severity": {
+                          "enum": [
+                            "error",
+                            "warning",
+                            "info",
+                            ""
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "path"
+                      ],
+                      "title": "RuleOverride",
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "params": {
+                    "additionalProperties": {},
+                    "type": "object"
+                  },
+                  "pattern": {
+                    "type": "string"
+                  },
+                  "severity": {
+                    "enum": [
+                      "error",
+                      "warning",
+                      "info",
+                      ""
+                    ],
+                    "type": "string"
+                  },
+                  "template": {
+                    "type": "string"
+                  },
+                  "to": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "type": {
+                    "type": "string"
+                  },
+                  "wasm": {
+                    "properties": {
+                      "params": {
+                        "additionalProperties": {},
+                        "type": "object"
+                      },
+                      "path": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "path"
+                    ],
+                    "title": "WasmConfig",
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "id",
+                  "from",
+                  "to",
+                  "type",
+                  "severity"
+                ],
+                "title": "Rule",
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "title": "WorkspaceShared",
+          "type": "object"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "projects"
+      ],
+      "title": "WorkspaceConfig",
+      "type": "object"
     }
-  }
+  },
+  "required": [
+    "version",
+    "layers",
+    "rules"
+  ],
+  "title": "Config",
+  "type": "object"
 }
