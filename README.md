@@ -1,5 +1,10 @@
+<div align="center">
+
 # Arx
-![Uploading image.png…]()
+
+<img src="assets/arx.png" alt="arx — cross-language architecture audit CLI" width="100%" />
+
+</div>
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/pauvalls/arx)](https://goreportcard.com/report/github.com/pauvalls/arx)
 [![License: MPL-2.0](https://img.shields.io/badge/License-MPL--2.0-blue.svg)](LICENSE)
